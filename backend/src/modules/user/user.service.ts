@@ -22,7 +22,7 @@ export class UserService {
     return this.userRepository.find();
   }
 
-  async findOne(id: number) {
+  async findOne(id: string) {
     const user = await this.userRepository.findOneBy({ id });
     if (!user) {
       throw HttpError.notFound(`User #${id} not found`, 'USER_NOT_FOUND');
@@ -30,12 +30,12 @@ export class UserService {
     return user;
   }
 
-  async update(id: number, updateUserDto: UpdateUserDto) {
+  async update(id: string, updateUserDto: UpdateUserDto) {
     const user = await this.findOne(id);
     return this.userRepository.save(this.userRepository.merge(user, updateUserDto));
   }
 
-  async remove(id: number) {
+  async remove(id: string) {
     const user = await this.findOne(id);
     await this.userRepository.remove(user);
   }
