@@ -26,8 +26,8 @@ export class HttpError extends Error {
     return new HttpError(HttpStatus.UNAUTHORIZED, message, code);
   }
 
-  static forbidden(message = 'Forbidden', code = 'FORBIDDEN') {
-    return new HttpError(HttpStatus.FORBIDDEN, message, code);
+  static forbidden(message = 'Forbidden', code = 'FORBIDDEN', details?: unknown) {
+    return new HttpError(HttpStatus.FORBIDDEN, message, code, details);
   }
 
   static notFound(message = 'Not found', code = 'NOT_FOUND') {

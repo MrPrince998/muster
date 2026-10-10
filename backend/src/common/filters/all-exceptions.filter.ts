@@ -23,6 +23,7 @@ export interface ErrorResponseBody {
 const PG_UNIQUE_VIOLATION = '23505';
 const PG_FOREIGN_KEY_VIOLATION = '23503';
 const PG_NOT_NULL_VIOLATION = '23502';
+const PG_CHECK_VIOLATION = '23514';
 const PG_INVALID_TEXT_REPRESENTATION = '22P02';
 
 /**
@@ -87,6 +88,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
         case PG_FOREIGN_KEY_VIOLATION:
           return HttpError.conflict('Related resource conflict', 'FOREIGN_KEY_VIOLATION', detail);
         case PG_NOT_NULL_VIOLATION:
+        case PG_CHECK_VIOLATION:
         case PG_INVALID_TEXT_REPRESENTATION:
           return HttpError.badRequest('Invalid input', 'INVALID_INPUT');
       }

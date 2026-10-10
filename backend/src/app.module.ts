@@ -5,9 +5,24 @@ import { AppService } from './app.service.js';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter.js';
 import { DatabaseModule } from './database/database.module.js';
 import { UserModule } from './modules/user/user.module.js';
+import { OrganisationModule } from './modules/organisation/organisation.module.js';
+import { ClubModule } from './modules/club/club.module.js';
+import { PermissionModule } from './modules/permission/permission.module.js';
+import { EventModule } from './modules/event/event.module.js';
+import { RegistrationModule } from './modules/registration/registration.module.js';
+import { InviteModule } from './modules/invite/invite.module.js';
 
 @Module({
-  imports: [DatabaseModule, UserModule],
+  imports: [
+    DatabaseModule,
+    UserModule,
+    OrganisationModule,
+    ClubModule,
+    PermissionModule,
+    InviteModule,
+    EventModule,
+    RegistrationModule,
+  ],
   controllers: [AppController],
   providers: [
     AppService,
