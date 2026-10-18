@@ -1,0 +1,158 @@
+"use client";
+
+import { useSearchParams } from "next/navigation";
+import { useState } from "react";
+import { asApiError } from "@/lib/api/client";
+import type { ClubEvent } from "@/types/event.interface";
+import { useWorkspace } from "../org-shell/workspace-context";
+import {
+  useCancelRegistration,
+  useClubEvents,
+  useEventAttendees,
+  usePublishEvent,
+  useRegister,
+} from "../services/event.service";
+import OrgHomeView, { type EventTab } from "./org-home.view";
+import type { PanelAction } from "./parts/event-panel";
+
+/** What each refusal means for the person, in the panel. */
+function actionMessage(code: string): string {
+  switch (code) {
+    case "EVENT_FULL":
+      return "Someone took the last place just before you. The event is full now.";
+    case "EVENT_ENDED":
+      return "This event has already ended.";
+    case "EVENT_NOT_OPEN":
+      return "This event isn't open for registration.";
+    case "ALREADY_REGISTERED":
+      return "You're already registered.";
+    case "ALREADY_CHECKED_IN":
+      return "You've already been checked in, so your place can't be cancelled.";
+    case "REGISTRATION_NOT_FOUND":
+      return "You weren't registered for this event.";
+    case "EVENT_NOT_DRAFT":
+      return "This event is already published.";
+    case "MISSING_PERMISSION":
+      return "You don't have permission to do that in this club.";
+    case "NETWORK_ERROR":
+      return "Can't reach Muster. Check your connection, then try again.";
+    default:
+      return "Something went wrong on our side. Try again in a moment.";
+  }
+}
+
+/**
+ * /o/[slug]: the workspace you opened, its clubs (with your permissions in
+ * each), the chosen club's events, and the one you open. Owns selection and
+ * actions; the view only renders.
+ */
+export default function OrgHomeContainer() {
+  const { organisation, clubs } = useWorkspace();
+  const orgId = organisation.orgId;
+  // the club lives in the URL (?club=), so a reload or a shared link keeps it;
+  // without one, the default club (listed first)
+  const clubParam = useSearchParams().get("club");
+  const club = clubs.data.find((c) => c.id === clubParam) ?? clubs.data[0] ?? null;
+  const has = (permission: string) => !!club?.permissions.includes(permission as never);
+  const canSeeDrafts = has("event.manage_own") || has("event.manage_any");
+
+  const [tab, setTab] = useState<EventTab>("upcoming");
+  const upcoming = useClubEvents(club?.id, "upcoming");
+  const past = useClubEvents(club?.id, "past");
+  const drafts = useClubEvents(club?.id, "drafts", canSeeDrafts);
+
+  const [openEventId, setOpenEventId] = useState<string | null>(null);
+  const allEvents = [...(upcoming.data ?? []), ...(past.data ?? []), ...(drafts.data ?? [])];
+  const openEvent = allEvents.find((event) => event.id === openEventId) ?? null;
+  const attendees = useEventAttendees(
+    club?.id ?? "",
+    openEventId,
+    has("registration.view") && openEvent?.status !== "draft",
+  );
+
+  const [dialog, setDialog] = useState<"new-event" | "edit-event" | null>(null);
+  const [pending, setPending] = useState<PanelAction | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  const register = useRegister(club?.id ?? "");
+  const cancel = useCancelRegistration(club?.id ?? "");
+  const publish = usePublishEvent(club?.id ?? "", orgId ?? "");
+
+  // one action at a time from the panel; its errors show there
+  const run = async (action: PanelAction, work: () => Promise<unknown>) => {
+    setPending(action);
+    setActionError(null);
+    try {
+      await work();
+    } catch (error) {
+      setActionError(actionMessage(asApiError(error).code));
+    } finally {
+      setPending(null);
+    }
+  };
+
+  const openEventPanel = (id: string | null) => {
+    setOpenEventId(id);
+    setActionError(null);
+  };
+
+  // new club in the URL: start again on Upcoming with nothing open
+  const [shownClubId, setShownClubId] = useState(club?.id);
+  if (club?.id !== shownClubId) {
+    setShownClubId(club?.id);
+    setTab("upcoming");
+    setOpenEventId(null);
+    setActionError(null);
+  }
+
+  const lists: Record<EventTab, { data: ClubEvent[]; loading: boolean; failed: boolean }> = {
+    upcoming: { data: upcoming.data ?? [], loading: upcoming.isPending, failed: upcoming.isError },
+    past: { data: past.data ?? [], loading: past.isPending, failed: past.isError },
+    drafts: { data: drafts.data ?? [], loading: canSeeDrafts && drafts.isPending, failed: drafts.isError },
+  };
+
+  return (
+    <OrgHomeView
+      organisation={organisation}
+      clubs={clubs}
+      club={club}
+      can={{
+        createEvents: has("event.create"),
+        publishEvents: has("event.publish"),
+        seeDrafts: canSeeDrafts,
+        viewAttendees: has("registration.view"),
+        scanTickets: has("checkin.scan"),
+      }}
+      tab={tab}
+      onTabChange={setTab}
+      lists={lists}
+      onRetryEvents={() => {
+        upcoming.refetch();
+        past.refetch();
+        if (canSeeDrafts) drafts.refetch();
+      }}
+      openEvent={openEvent}
+      onOpenEvent={openEventPanel}
+      panel={{
+        attendees: { list: attendees.data ?? [], loading: attendees.isPending && attendees.fetchStatus !== "idle", failed: attendees.isError },
+        pending,
+        error: actionError,
+        onRegister: () => openEvent && run("register", () => register.mutateAsync({ eventId: openEvent.id })),
+        onCancel: () => openEvent && run("cancel", () => cancel.mutateAsync({ eventId: openEvent.id })),
+        onPublish: () =>
+          openEvent &&
+          run("publish", async () => {
+            await publish.mutateAsync({ eventId: openEvent.id });
+            setTab("upcoming");
+          }),
+        onEdit: () => setDialog("edit-event"),
+      }}
+      dialog={dialog}
+      onDialogChange={setDialog}
+      onEventSaved={(saved) => {
+        setTab(saved.status === "draft" ? "drafts" : "upcoming");
+        openEventPanel(saved.id);
+      }}
+    />
+  );
+}
