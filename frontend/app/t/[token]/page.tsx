@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import { PublicShell } from "@/components/pages/public/public-shell";
 import GuestTicketContainer from "@/components/pages/public/ticket/guest-ticket.container";
 
@@ -14,7 +15,10 @@ export const instant = false;
 export default function GuestTicketPage() {
   return (
     <PublicShell>
-      <GuestTicketContainer />
+      {/* it reads the address (useParams): Next needs a boundary to build the page */}
+      <Suspense>
+        <GuestTicketContainer />
+      </Suspense>
     </PublicShell>
   );
 }

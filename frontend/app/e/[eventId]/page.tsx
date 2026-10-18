@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import PublicEventContainer from "@/components/pages/public/event/public-event.container";
 import { PublicShell } from "@/components/pages/public/public-shell";
 
@@ -13,7 +14,10 @@ export const instant = false;
 export default function PublicEventPage() {
   return (
     <PublicShell>
-      <PublicEventContainer />
+      {/* it reads the address (useParams): Next needs a boundary to build the page */}
+      <Suspense>
+        <PublicEventContainer />
+      </Suspense>
     </PublicShell>
   );
 }
