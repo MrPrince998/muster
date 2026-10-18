@@ -15,7 +15,7 @@ export const BEARER_AUTH = 'access-token';
  */
 export function setupSwagger(app: INestApplication): void {
   const config = new DocumentBuilder()
-    .setTitle('Campus Pass API')
+    .setTitle('Muster API')
     .setDescription(
       'Multi-tenant club and event management. Every error uses the ErrorResponse shape; ' +
         'branch on `code`, not on `message`.',

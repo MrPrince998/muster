@@ -1,7 +1,7 @@
 import { escapeHtml } from './html.js';
 
-// Working title (README): rename here and every email follows.
-export const APP_NAME = 'Campus Pass';
+// The product's name in every email (subjects, footers): change it here and they all follow.
+export const APP_NAME = 'Muster';
 
 export interface RenderedEmail {
   subject: string;

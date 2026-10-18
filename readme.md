@@ -1,6 +1,4 @@
-# Campus Pass
-
-> **Working title.** The name is a placeholder and will be renamed.
+# Muster
 
 A multi-tenant SaaS for running club and community events: create a workspace, organise it into clubs, publish events, email signed QR tickets, scan people in at the door from a phone, and see how each event performed.
 

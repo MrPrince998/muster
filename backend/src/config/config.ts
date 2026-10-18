@@ -79,6 +79,6 @@ export const config = {
         : process.env.RESEND_API_KEY || undefined,
     // onboarding@resend.dev works without a verified domain, but only
     // delivers to the address that owns the Resend account
-    from: process.env.EMAIL_FROM ?? "Campus Pass <onboarding@resend.dev>",
+    from: process.env.EMAIL_FROM ?? "Muster <onboarding@resend.dev>",
   },
 } as const;
