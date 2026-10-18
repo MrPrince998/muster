@@ -103,6 +103,8 @@ All tenants share one database and one set of tables. Every tenant-owned row car
 
 **Two layers of protection:** guards check membership in the app, and RLS enforces it in the database. If application code forgets a `WHERE org_id = ...`, the database still returns only the current tenant's rows.
 
+**Finding the tenant first.** Some requests only carry a public identifier (`/o/:slug`, `/join/:code`, a ticket's event id), and under RLS the app cannot look anything up before it knows the org. A handful of `SECURITY DEFINER` database functions (`org_id_for_slug`, `org_id_for_club`, `org_id_for_event`, `org_id_for_invite_code`) answer only "which org is this?" and return an id, never tenant data. `user_organisations(user_id)` lists a user's own workspaces, the one query that is cross-tenant by nature.
+
 Why this approach: clubs are many and small, one migration updates everyone, and cross-club features (a student in several clubs, a workspace-wide rollup) stay simple queries.
 
 ### Signed tickets
@@ -210,9 +212,10 @@ backend/src/
 │   ├── guards/            (planned) auth, tenant, @RequirePermission()
 │   └── decorators/        (planned) @CurrentUser(), @CurrentOrg()
 ├── database/
-│   ├── database.module.ts TypeORM connection
-│   ├── migrations/        (planned) schema, RLS policies, database roles
-│   └── with-tenant.ts     (planned) transaction + SET LOCAL app.current_org_id
+│   ├── database.module.ts TypeORM connection (as the limited app role)
+│   ├── data-source.ts     TypeORM CLI connection (as the schema owner)
+│   ├── migrations/        schema, RLS policies, database roles, tenant lookups
+│   └── tenant.service.ts  withTenant() and tenant resolution
 └── modules/
     ├── user/              users (scaffolded)
     ├── auth/              (planned) register, login, me
@@ -273,19 +276,17 @@ Requires Docker. Node 22+ and pnpm are only needed to run things outside Docker.
 
 ```bash
 # 1. configure the backend (also read by the db container)
-#    set POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB, JWT_SECRET, ...
-#    DATABASE_URL must use host "db" inside Docker:
-#    postgresql://<user>:<password>@db:5432/<db>
-backend/.env
+cp backend/.env.example backend/.env    # then replace every change-me
 
-# 2. start everything
+# 2. start everything; the backend applies migrations before it starts
 docker compose up --build
 ```
 
 | Service | URL on your machine |
 |---|---|
 | Frontend | http://localhost:3000 |
-| Backend API | http://localhost:5001 (port 5000 inside Docker) |
+| Backend API | http://localhost:5001 (port 5001 inside Docker) |
+| API docs (Swagger) | http://localhost:5001/docs, OpenAPI JSON at `/docs-json` (off in production unless `SWAGGER_ENABLED=true`) |
 | PostgreSQL | localhost:5432 |
 
 The backend is published on **5001** because macOS uses port 5000 for AirPlay Receiver.
@@ -298,9 +299,30 @@ After adding packages to the backend, refresh the container's `node_modules` vol
 docker compose rm -sf backend && docker volume rm muster_backend_node_modules && docker compose up -d --build backend
 ```
 
-Tests: `cd backend && pnpm test` (unit), `pnpm test:e2e` (end to end).
+Two database connections, both in `backend/.env`:
 
-*(planned)* `.env.example`, `pnpm migration:run`, and `pnpm seed` (two demo workspaces, clubs, roles, and events). `TICKET_SECRET` and `RESEND_API_KEY` will be added with tickets and email.
+| Variable | Role | Used by |
+|---|---|---|
+| `DATABASE_URL` | `muster_app`: no superuser, no `BYPASSRLS`, data access only | the running app |
+| `MIGRATION_DATABASE_URL` | the schema owner (`POSTGRES_USER`) | migrations only |
+
+The first migration run creates `muster_app` with the password in `DATABASE_URL`.
+
+Migrations (run inside the container, where the database host is `db`):
+
+```bash
+docker compose exec backend pnpm migration:run      # apply pending
+docker compose exec backend pnpm migration:revert   # undo the last one
+docker compose exec backend pnpm migration:show     # list applied / pending
+docker compose exec backend pnpm migration:check    # fail if entities and schema differ
+docker compose exec backend pnpm migration:generate src/database/migrations/AddSomething
+```
+
+Generated migrations are a starting point: review them, and add RLS for any new tenant table by hand.
+
+Tests: `cd backend && pnpm test` (unit). End-to-end tests, including tenant isolation, need the database: `docker compose exec backend pnpm test:e2e`.
+
+*(planned)* `pnpm seed` (two demo workspaces, clubs, roles, and events). `TICKET_SECRET` and `RESEND_API_KEY` will be added with tickets and email.
 
 Notes: Resend only delivers to arbitrary addresses once you verify a sending domain, so use its test mode during development. The camera scanner needs HTTPS (`localhost` is allowed).
 
