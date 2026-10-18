@@ -1,26 +1,174 @@
 @import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+@custom-variant dark (&:is(.dark *));
+
+/* always emitted as variables, so the theme tokens below can point at them */
+@theme static {
+  /* Brand: cobalt, the ink of a printed ticket. One hue, flat, no gradients.
+     600 is the brand colour itself (white text on it: 7.1:1). */
+  --color-cobalt-50: #eef0fd;
+  --color-cobalt-100: #dce1fb;
+  --color-cobalt-200: #bcc5f7;
+  --color-cobalt-300: #929ff0;
+  --color-cobalt-400: #6a7de8;
+  --color-cobalt-500: #4a5fe0;
+  --color-cobalt-600: #2f45d8;
+  --color-cobalt-700: #2536b4;
+  --color-cobalt-800: #1f2c8f;
+  --color-cobalt-900: #1b2570;
+  --color-cobalt-950: #111745;
+  --color-cobalt: var(--color-cobalt-600);
+  /* text: a navy ink from the same hue, never a neutral near-black */
+  --color-ink: #1a1f36;
+  /* the door stamp; also the error colour, so "wrong" looks the same everywhere */
+  --color-stamp: #d7263d;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
+  /* one family: Archivo's width axis gives the condensed poster voice */
+  --font-sans: var(--font-archivo);
+  --font-heading: var(--font-archivo);
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+  /* auth brand panel: one 4.8s check-in, looping. Both share the cycle so
+     the stamp always lands right after the scan line finishes. */
+  --animate-scan: scan 4.8s ease-in-out infinite;
+  --animate-stamp: stamp 4.8s ease-out infinite;
+
+  @keyframes scan {
+    0% { transform: translateY(0); opacity: 0; }
+    4%, 26% { opacity: 1; }
+    30% { transform: translateY(var(--scan-distance, 7rem)); opacity: 0; }
+    100% { transform: translateY(var(--scan-distance, 7rem)); opacity: 0; }
   }
+  @keyframes stamp {
+    0%, 32% { opacity: 0; transform: scale(1.6); }
+    38% { opacity: 1; transform: scale(0.96); }
+    41%, 86% { opacity: 1; transform: scale(1); }
+    94%, 100% { opacity: 0; transform: scale(1); }
+  }
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+:root {
+  --background: #ffffff;
+  --foreground: var(--color-ink);
+  --card: #ffffff;
+  --card-foreground: var(--color-ink);
+  --popover: #ffffff;
+  --popover-foreground: var(--color-ink);
+  --primary: var(--color-cobalt-600);
+  --primary-foreground: #ffffff;
+  --secondary: var(--color-cobalt-50);
+  --secondary-foreground: var(--color-cobalt-800);
+  --muted: #f3f4f8;
+  --muted-foreground: #5b6178;
+  --accent: var(--color-cobalt-50);
+  --accent-foreground: var(--color-cobalt-800);
+  --destructive: var(--color-stamp);
+  --border: #e2e4ee;
+  --input: #d8dbe7;
+  --ring: var(--color-cobalt-600);
+  --chart-1: var(--color-cobalt-600);
+  --chart-2: var(--color-cobalt-300);
+  --chart-3: var(--color-cobalt-800);
+  --chart-4: var(--color-cobalt-200);
+  --chart-5: var(--color-cobalt-950);
+  --radius: 0.625rem;
+  --sidebar: #f7f8fc;
+  --sidebar-foreground: var(--color-ink);
+  --sidebar-primary: var(--color-cobalt-600);
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: var(--color-cobalt-50);
+  --sidebar-accent-foreground: var(--color-cobalt-800);
+  --sidebar-border: #e2e4ee;
+  --sidebar-ring: var(--color-cobalt-600);
+}
+
+/* Dark: the same cobalt at night, deep navy surfaces instead of grey-black */
+.dark {
+  --background: #0e1230;
+  --foreground: #eef0fd;
+  --card: #151a3d;
+  --card-foreground: #eef0fd;
+  --popover: #151a3d;
+  --popover-foreground: #eef0fd;
+  --primary: var(--color-cobalt-300);
+  --primary-foreground: var(--color-cobalt-950);
+  --secondary: #1d2350;
+  --secondary-foreground: #eef0fd;
+  --muted: #1d2350;
+  --muted-foreground: #a3aac9;
+  --accent: #1d2350;
+  --accent-foreground: #eef0fd;
+  --destructive: #f2667a;
+  --border: rgb(255 255 255 / 10%);
+  --input: rgb(255 255 255 / 15%);
+  --ring: var(--color-cobalt-400);
+  --chart-1: var(--color-cobalt-300);
+  --chart-2: var(--color-cobalt-500);
+  --chart-3: var(--color-cobalt-100);
+  --chart-4: var(--color-cobalt-700);
+  --chart-5: var(--color-cobalt-200);
+  --sidebar: #151a3d;
+  --sidebar-foreground: #eef0fd;
+  --sidebar-primary: var(--color-cobalt-300);
+  --sidebar-primary-foreground: var(--color-cobalt-950);
+  --sidebar-accent: #1d2350;
+  --sidebar-accent-foreground: #eef0fd;
+  --sidebar-border: rgb(255 255 255 / 10%);
+  --sidebar-ring: var(--color-cobalt-400);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  html {
+    /* the page's own ground, not the browser's: white even where the body
+       ends (overscroll, short pages) */
+    @apply bg-background font-sans;
+    color-scheme: only light;
+  }
 }
