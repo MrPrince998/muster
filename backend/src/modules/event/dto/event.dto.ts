@@ -1,4 +1,4 @@
-import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional, OmitType, PartialType } from '@nestjs/swagger';
 import {
   IsBoolean,
   IsDateString,
@@ -23,7 +23,7 @@ export class ListEventsQuery {
     enum: EVENT_SCOPES,
     default: 'upcoming',
     description:
-      'upcoming: published, not ended, soonest first. past: published, ended, latest first. drafts: unpublished, only those you can manage.',
+      'upcoming: published or cancelled, not ended, soonest first. past: published or cancelled, ended, latest first. drafts: unpublished, only those you can manage.',
   })
   @IsOptional()
   @IsIn(EVENT_SCOPES)
@@ -75,8 +75,21 @@ export class CreateEventDto {
   publish?: boolean;
 }
 
-// publishing has its own route, so an edit never changes the status
-export class UpdateEventDto extends PartialType(CreateEventDto) {}
+// publishing and cancelling have their own routes, so an edit never changes the status
+export class UpdateEventDto extends PartialType(OmitType(CreateEventDto, ['publish'] as const)) {
+  /** false stops new registrations (the event still runs); true opens them again. */
+  @IsOptional()
+  @IsBoolean()
+  registrationOpen?: boolean;
+}
+
+export class CancelEventDto {
+  /** Sent to everyone registered with the cancellation. @example 'The speaker is ill.' */
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  reason?: string;
+}
 
 export class EventDto {
   @ApiProperty({ format: 'uuid' })
@@ -108,6 +121,15 @@ export class EventDto {
 
   @ApiProperty({ enum: Object.values(EventStatus) })
   status: EventStatus;
+
+  @ApiProperty({ description: 'Whether new registrations are taken (closing them early keeps the event running)' })
+  registrationOpen: boolean;
+
+  @ApiPropertyOptional({ type: Date, nullable: true })
+  cancelledAt: Date | null;
+
+  @ApiPropertyOptional({ type: String, nullable: true, description: "The organisers' note with the cancellation" })
+  cancelReason: string | null;
 
   @ApiProperty({ description: 'Active registrations (checked-in ones included)' })
   registeredCount: number;

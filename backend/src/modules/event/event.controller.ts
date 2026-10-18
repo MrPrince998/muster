@@ -1,8 +1,21 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  ParseUUIDPipe,
+  Patch,
+  Post,
+  Query,
+} from '@nestjs/common';
 import {
   ApiBadRequestResponse,
   ApiConflictResponse,
   ApiCreatedResponse,
+  ApiNoContentResponse,
   ApiNotFoundResponse,
   ApiOkResponse,
   ApiTags,
@@ -12,7 +25,10 @@ import type { ClubAccess } from '../permission/club-access.js';
 import { CurrentClubAccess } from '../permission/decorators/current-club-access.decorator.js';
 import { RequirePermission } from '../permission/decorators/require-permission.decorator.js';
 import { Permission } from '../permission/permissions.js';
-import { CreateEventDto, EventAttendeeDto, EventDto, ListEventsQuery, UpdateEventDto } from './dto/event.dto.js';
+import {
+  CancelEventDto,
+  CreateEventDto,
+  EventAttendeeDto, EventDto, ListEventsQuery, UpdateEventDto } from './dto/event.dto.js';
 import { EventService } from './event.service.js';
 
 const error = (description: string) => ({ description, type: ErrorResponseDto });
@@ -60,13 +76,16 @@ export class EventController {
    * Edit an event
    *
    * @remarks Needs event.manage_any, or event.manage_own for events you
-   * created. Fields left out keep their value.
+   * created. Fields left out keep their value. A new time or place on a
+   * published event is emailed to everyone registered.
    */
   @Patch(':eventId')
   @RequirePermission()
   @ApiOkResponse({ type: EventDto })
   @ApiNotFoundResponse(error('No such event (EVENT_NOT_FOUND)'))
-  @ApiConflictResponse(error('Capacity below the people already registered (CAPACITY_BELOW_REGISTERED)'))
+  @ApiConflictResponse(
+    error('Capacity below the people already registered (CAPACITY_BELOW_REGISTERED), or cancelled (EVENT_CANCELLED)'),
+  )
   update(
     @CurrentClubAccess() access: ClubAccess,
     @Param('eventId', ParseUUIDPipe) eventId: string,
@@ -86,6 +105,44 @@ export class EventController {
     @Param('eventId', ParseUUIDPipe) eventId: string,
   ): Promise<EventDto> {
     return this.events.publish(access, eventId);
+  }
+
+  /**
+   * Cancel a published event
+   *
+   * @remarks Same permission as editing it. The event stays listed as
+   * cancelled, its tickets stop working, and everyone registered is emailed
+   * (with the reason, if given).
+   */
+  @Post(':eventId/cancel')
+  @RequirePermission()
+  @ApiCreatedResponse({ type: EventDto })
+  @ApiNotFoundResponse(error('No such event (EVENT_NOT_FOUND)'))
+  @ApiConflictResponse(
+    error('A draft (EVENT_IS_DRAFT), already cancelled (EVENT_ALREADY_CANCELLED) or over (EVENT_ENDED)'),
+  )
+  cancel(
+    @CurrentClubAccess() access: ClubAccess,
+    @Param('eventId', ParseUUIDPipe) eventId: string,
+    @Body() dto: CancelEventDto,
+  ): Promise<EventDto> {
+    return this.events.cancel(access, eventId, dto);
+  }
+
+  /**
+   * Delete a draft
+   *
+   * @remarks Same permission as editing it. Published events are cancelled
+   * instead, so their history stays.
+   */
+  @Delete(':eventId')
+  @RequirePermission()
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiNoContentResponse({ description: 'Deleted' })
+  @ApiNotFoundResponse(error('No such event (EVENT_NOT_FOUND)'))
+  @ApiConflictResponse(error('Not a draft (EVENT_NOT_DRAFT)'))
+  remove(@CurrentClubAccess() access: ClubAccess, @Param('eventId', ParseUUIDPipe) eventId: string): Promise<void> {
+    return this.events.remove(access, eventId);
   }
 
   /** Who's going */

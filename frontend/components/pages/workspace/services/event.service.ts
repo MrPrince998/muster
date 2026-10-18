@@ -1,6 +1,6 @@
 import { useApiMutation } from "@/lib/api/useApiMutation";
 import { useApiQuery } from "@/lib/api/useApiQuery";
-import type { ClubEvent, EventAttendee, EventInput, EventScope } from "@/types/event.interface";
+import type { ClubEvent, EventAttendee, EventChanges, EventInput, EventScope } from "@/types/event.interface";
 
 // Everything about a club's events sits under one key, so any change can
 // refresh all three lists (and the counts) at once.
@@ -43,9 +43,13 @@ export const useCreateEvent = (clubId: string, orgId: string) =>
     { invalidates: refreshes(clubId, orgId) },
   );
 
-/** Edits an event you can manage. Fails with CAPACITY_BELOW_REGISTERED if capacity < registrations. */
+/**
+ * Edits an event you can manage, or opens/closes registration. Fails with
+ * CAPACITY_BELOW_REGISTERED if capacity < registrations, EVENT_CANCELLED once cancelled.
+ * A new time or place is emailed to everyone registered.
+ */
 export const useUpdateEvent = (clubId: string, orgId: string) =>
-  useApiMutation<ClubEvent, { eventId: string } & Partial<EventInput>>(
+  useApiMutation<ClubEvent, { eventId: string } & EventChanges>(
     ({ eventId, ...changes }) => ({ method: "patch", url: `/clubs/${clubId}/events/${eventId}`, data: changes }),
     { invalidates: refreshes(clubId, orgId) },
   );
@@ -56,7 +60,21 @@ export const usePublishEvent = (clubId: string, orgId: string) =>
     { invalidates: refreshes(clubId, orgId) },
   );
 
-/** Takes a place. Fails with EVENT_FULL, EVENT_ENDED, EVENT_NOT_OPEN or ALREADY_REGISTERED. */
+/** Calls off a published event; everyone registered is emailed, with the reason if given. */
+export const useCancelEvent = (clubId: string, orgId: string) =>
+  useApiMutation<ClubEvent, { eventId: string; reason?: string }>(
+    ({ eventId, reason }) => ({ method: "post", url: `/clubs/${clubId}/events/${eventId}/cancel`, data: { reason } }),
+    { invalidates: [...refreshes(clubId, orgId), ["me", "tickets"]] },
+  );
+
+/** Deletes a draft. Published events are cancelled instead (EVENT_NOT_DRAFT). */
+export const useDeleteEvent = (clubId: string, orgId: string) =>
+  useApiMutation<void, { eventId: string }>(
+    ({ eventId }) => ({ method: "delete", url: `/clubs/${clubId}/events/${eventId}` }),
+    { invalidates: refreshes(clubId, orgId) },
+  );
+
+/** Takes a place. Fails with EVENT_FULL, EVENT_ENDED, EVENT_NOT_OPEN, REGISTRATION_CLOSED or ALREADY_REGISTERED. */
 export const useRegister = (clubId: string) =>
   useApiMutation<{ id: string }, { eventId: string }>(
     ({ eventId }) => ({ method: "post", url: `/clubs/${clubId}/events/${eventId}/my-registration` }),

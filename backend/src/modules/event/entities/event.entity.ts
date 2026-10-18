@@ -47,6 +47,9 @@ export type EventStatus = (typeof EventStatus)[keyof typeof EventStatus];
 @Check('events_capacity_positive', `"capacity" IS NULL OR "capacity" > 0`)
 // a published or cancelled event must have been published at some point
 @Check('events_published_at', `"status" = 'draft' OR "published_at" IS NOT NULL`)
+// cancelled exactly when it has a cancellation time; only a cancelled event has a reason
+@Check('events_cancelled_at', `("status" = 'cancelled') = ("cancelled_at" IS NOT NULL)`)
+@Check('events_cancel_reason', `"cancel_reason" IS NULL OR "status" = 'cancelled'`)
 // a club's events by date: the main listing and calendar query
 @Index('events_club_id_starts_at_idx', ['clubId', 'startsAt'])
 // target for registrations' foreign key: proves a registration's org_id is
@@ -96,6 +99,17 @@ export class Event {
 
   @Column({ name: 'published_at', type: 'timestamptz', nullable: true })
   publishedAt: Date | null;
+
+  // set: no new registrations, though the event still runs; null: open
+  @Column({ name: 'registration_closed_at', type: 'timestamptz', nullable: true })
+  registrationClosedAt: Date | null;
+
+  @Column({ name: 'cancelled_at', type: 'timestamptz', nullable: true })
+  cancelledAt: Date | null;
+
+  // the organiser's note to the people registered, shown with the cancellation
+  @Column({ name: 'cancel_reason', type: 'varchar', length: 500, nullable: true })
+  cancelReason: string | null;
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;

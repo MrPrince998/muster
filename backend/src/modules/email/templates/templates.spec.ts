@@ -1,3 +1,4 @@
+import { eventCancelledTemplate, eventChangedTemplate } from './event-update.js';
 import { formatDuration } from './html.js';
 import { resetPasswordTemplate } from './reset-password.js';
 import { verifyEmailTemplate } from './verify-email.js';
@@ -69,5 +70,34 @@ describe('join request templates', () => {
     });
     expect(email.html).not.toContain('<a href=');
     expect(email.text).toContain('You can ask again after 13 October 2026 at 08:05 UTC.');
+  });
+});
+
+describe('event update emails', () => {
+  const base = { name: 'Ada', eventTitle: 'Demo Night', clubName: 'Robotics', url: 'https://app.example.com/o/csu?club=c1' };
+
+  it("cancelled: names the event and its time, and quotes the organisers' note, escaped", () => {
+    const email = eventCancelledTemplate({ ...base, when: 'Saturday 24 October 2026, 18:30 to 22:00 (AEDT)', reason: 'Speaker <b>ill</b>' });
+    expect(email.subject).toBe('Cancelled: Demo Night');
+    expect(email.text).toContain('Saturday 24 October 2026');
+    expect(email.text).toContain('They said: "Speaker <b>ill</b>"');
+    expect(email.html).not.toContain('<b>ill</b>');
+  });
+
+  it('cancelled: leaves the note out when there is none', () => {
+    const email = eventCancelledTemplate({ ...base, when: 'Saturday', reason: null });
+    expect(email.text).not.toContain('They said');
+  });
+
+  it('changed: says what changed, with the old value', () => {
+    const moved = eventChangedTemplate({ ...base, when: 'Sunday', where: 'Hall B', before: { when: 'Saturday' } });
+    expect(moved.subject).toBe('Changed: Demo Night');
+    expect(moved.text).toContain('has a new time');
+    expect(moved.text).toContain('When: Sunday (was Saturday)');
+    expect(moved.text).toContain('Where: Hall B');
+
+    const both = eventChangedTemplate({ ...base, when: 'Sunday', where: null, before: { when: 'Saturday', where: 'Hall B' } });
+    expect(both.text).toContain('has a new time and place');
+    expect(both.text).toContain('Where: to be announced (was Hall B)');
   });
 });

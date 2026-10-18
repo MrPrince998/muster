@@ -1,11 +1,26 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { EmailSender } from './email-sender.js';
+import { EmailSender, type OutgoingEmail } from './email-sender.js';
+import {
+  eventCancelledTemplate,
+  eventChangedTemplate,
+  type EventCancelledEmailData,
+  type EventChangedEmailData,
+} from './templates/event-update.js';
 import { joinRequestApprovedTemplate, joinRequestRejectedTemplate } from './templates/join-request.js';
 import { resetPasswordTemplate } from './templates/reset-password.js';
 import { ticketTemplate, type TicketEmailData } from './templates/ticket.js';
 import { verifyEmailTemplate } from './templates/verify-email.js';
 
 export const APP_URL = Symbol('APP_URL');
+// the gap between emails in a bulk send: Resend accepts a few requests a second
+export const BULK_PACE_MS = Symbol('BULK_PACE_MS');
+
+/** One registrant of an event, for the emails sent to all of them. */
+export interface EventRecipient {
+  registrationId: string;
+  to: string;
+  name: string;
+}
 
 export interface TokenEmail {
   to: string;
@@ -41,6 +56,7 @@ export class EmailService {
   constructor(
     private readonly sender: EmailSender,
     @Inject(APP_URL) private readonly appUrl: string,
+    @Inject(BULK_PACE_MS) private readonly bulkPaceMs: number,
   ) {}
 
   sendVerifyEmail({ to, name, token, expiresInMinutes, idempotencyKey, next }: TokenEmail): Promise<void> {
@@ -96,6 +112,31 @@ export class EmailService {
     });
   }
 
+  /** Tells everyone registered that the event is off. Each person gets it once, however often this runs. */
+  sendEventCancelled(
+    recipients: EventRecipient[],
+    event: Omit<EventCancelledEmailData, 'name' | 'url'> & { orgSlug: string; clubId: string; eventId: string },
+  ): Promise<void> {
+    const url = this.clubEventsUrl(event.orgSlug, event.clubId);
+    return this.sendEach('event cancelled', recipients, (r) => ({
+      to: r.to,
+      ...eventCancelledTemplate({ ...event, name: r.name, url }),
+      idempotencyKey: `event-cancelled/${r.registrationId}`,
+    }));
+  }
+
+  /** Tells everyone registered about a new time or place. */
+  sendEventChanged(
+    recipients: EventRecipient[],
+    event: Omit<EventChangedEmailData, 'name' | 'url'> & { orgSlug: string; clubId: string; eventId: string },
+  ): Promise<void> {
+    const url = this.clubEventsUrl(event.orgSlug, event.clubId);
+    return this.sendEach('event changed', recipients, (r) => ({
+      to: r.to,
+      ...eventChangedTemplate({ ...event, name: r.name, url }),
+    }));
+  }
+
   /**
    * Sends without making the caller wait or fail: the work the email reports
    * on is already done, so a provider outage is logged instead of undoing it.
@@ -106,6 +147,32 @@ export class EmailService {
     sending.catch((error: unknown) =>
       this.logger.error(`Sending ${kind} email failed`, error instanceof Error ? error.stack : error),
     );
+  }
+
+  // one at a time, paced for the provider's rate limit; one bad address
+  // doesn't stop the rest
+  private async sendEach(
+    kind: string,
+    recipients: EventRecipient[],
+    build: (recipient: EventRecipient) => OutgoingEmail,
+  ): Promise<void> {
+    let failed = 0;
+    for (const [index, recipient] of recipients.entries()) {
+      if (index > 0 && this.bulkPaceMs > 0) await new Promise((resolve) => setTimeout(resolve, this.bulkPaceMs));
+      try {
+        await this.sender.send(build(recipient));
+      } catch (error) {
+        failed++;
+        this.logger.error(`Sending ${kind} email failed`, error instanceof Error ? error.stack : error);
+      }
+    }
+    if (failed > 0) this.logger.warn(`${failed} of ${recipients.length} ${kind} emails failed`);
+  }
+
+  private clubEventsUrl(orgSlug: string, clubId: string): string {
+    const url = new URL(`/o/${orgSlug}`, this.appUrl);
+    url.searchParams.set('club', clubId);
+    return url.toString();
   }
 
   // frontend page + token; the page posts the token back to the API

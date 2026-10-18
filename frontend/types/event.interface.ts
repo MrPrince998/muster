@@ -15,6 +15,11 @@ export interface ClubEvent {
   capacity: number | null;
   visibility: EventVisibility;
   status: EventStatus;
+  // false: registration closed early (the event still runs)
+  registrationOpen: boolean;
+  cancelledAt: string | null;
+  // the organisers' note, sent with the cancellation
+  cancelReason: string | null;
   // active registrations, checked-in ones included
   registeredCount: number;
   attendedCount: number;
@@ -42,3 +47,6 @@ export interface EventInput {
   // create only: publish straight away instead of saving a draft
   publish?: boolean;
 }
+
+/** PATCH: any of the fields, plus opening or closing registration. */
+export type EventChanges = Partial<Omit<EventInput, "publish">> & { registrationOpen?: boolean };

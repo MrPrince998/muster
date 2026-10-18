@@ -1,12 +1,29 @@
 "use client";
 
-import { CalendarDays, Clock, Globe, LoaderCircle, Lock, MapPin, Pencil, QrCode, ScanLine, X } from "lucide-react";
+import {
+  CalendarDays,
+  Clock,
+  DoorClosed,
+  DoorOpen,
+  Globe,
+  LoaderCircle,
+  Lock,
+  MapPin,
+  Pencil,
+  QrCode,
+  ScanLine,
+  X,
+} from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useState, useSyncExternalStore } from "react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
+import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import type { ClubEvent, EventAttendee } from "@/types/event.interface";
+import { eventsKey } from "../../services/event.service";
+import { ConfirmDialog } from "../../shared/confirm-dialog";
 import { TicketDialog } from "../../tickets/ticket-dialog";
 import { formatFullDate, formatTimeRange } from "./format";
 
@@ -24,7 +41,7 @@ function useWide() {
   );
 }
 
-export type PanelAction = "register" | "cancel" | "publish";
+export type PanelAction = "register" | "cancel" | "publish" | "registration";
 
 export interface EventPanelProps {
   event: ClubEvent | null;
@@ -41,6 +58,11 @@ export interface EventPanelProps {
   onCancel: () => void;
   onPublish: () => void;
   onEdit: () => void;
+  // open or close registration
+  onToggleRegistration: () => void;
+  // these confirm first; they resolve to an error message, or null when done
+  onCancelEvent: (reason: string) => Promise<string | null>;
+  onDeleteDraft: () => Promise<string | null>;
   onClose: () => void;
 }
 
@@ -74,6 +96,7 @@ function PanelBody(props: EventPanelProps & { event: ClubEvent }) {
   const { event, clubName, error, onClose } = props;
   const ended = new Date(event.endsAt) <= new Date();
   const draft = event.status === "draft";
+  const cancelled = event.status === "cancelled";
   const full = event.capacity !== null && event.registeredCount >= event.capacity;
   const left = event.capacity === null ? null : Math.max(0, event.capacity - event.registeredCount);
 
@@ -81,7 +104,7 @@ function PanelBody(props: EventPanelProps & { event: ClubEvent }) {
     <div className="flex flex-col gap-6 p-6">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-sm font-semibold text-cobalt">{draft ? `${clubName}, draft` : clubName}</p>
+          <p className="text-sm font-semibold text-cobalt">{draft ? `${clubName}, draft` : cancelled ? `${clubName}, cancelled` : clubName}</p>
           <SheetTitleOrHeading>{event.title}</SheetTitleOrHeading>
         </div>
         <Button variant="ghost" size="icon" onClick={onClose} aria-label="Close event details">
@@ -109,7 +132,8 @@ function PanelBody(props: EventPanelProps & { event: ClubEvent }) {
       {event.description && <p className="text-sm whitespace-pre-line">{event.description}</p>}
 
       {/* how full: the number organisers and members both look for first */}
-      {!draft && (
+      {cancelled && <CancelledNotice event={event} />}
+      {!draft && !cancelled && (
         <section aria-label="Places" className="rounded-xl bg-muted/60 p-4">
           {ended ? (
             <>
@@ -129,7 +153,13 @@ function PanelBody(props: EventPanelProps & { event: ClubEvent }) {
                 </span>
               </p>
               <p className={cn("mt-1 text-sm", full ? "font-semibold text-stamp" : "text-muted-foreground")}>
-                {left === null ? "No limit on places" : full ? "Full. No places left." : `${left} ${left === 1 ? "place" : "places"} left`}
+                {!event.registrationOpen
+                  ? "Registration is closed."
+                  : left === null
+                    ? "No limit on places"
+                    : full
+                      ? "Full. No places left."
+                      : `${left} ${left === 1 ? "place" : "places"} left`}
               </p>
             </>
           )}
@@ -142,14 +172,14 @@ function PanelBody(props: EventPanelProps & { event: ClubEvent }) {
         </p>
       )}
 
-      {props.canScan && !draft && !ended && (
+      {props.canScan && !draft && !cancelled && !ended && (
         <Link href={props.scanHref} className={cn(buttonVariants({ size: "lg" }), "h-11 font-semibold")}>
           <ScanLine aria-hidden />
           Open check-in
         </Link>
       )}
-      {event.canManage && <OrganiserActions {...props} draft={draft} />}
-      {!draft && <MemberActions {...props} ended={ended} full={full} />}
+      {event.canManage && !cancelled && <OrganiserActions {...props} draft={draft} ended={ended} />}
+      {!draft && !cancelled && <MemberActions {...props} ended={ended} full={full} />}
       {props.canViewAttendees && !draft && <WhosGoing {...props} ended={ended} />}
     </div>
   );
@@ -189,12 +219,28 @@ function Detail({
 const Spinner = () => <LoaderCircle className="animate-spin" aria-hidden />;
 
 function OrganiserActions({
+  event,
   canPublish,
   pending,
   onPublish,
   onEdit,
+  onToggleRegistration,
+  onCancelEvent,
+  onDeleteDraft,
   draft,
-}: EventPanelProps & { draft: boolean }) {
+  ended,
+}: EventPanelProps & { event: ClubEvent; draft: boolean; ended: boolean }) {
+  const queryClient = useQueryClient();
+  const [confirming, setConfirming] = useState<"cancel" | "delete" | null>(null);
+  const [reason, setReason] = useState("");
+  const going = event.registeredCount;
+
+  const confirm = (what: "cancel" | "delete") => {
+    // the count in the dialog is who gets emailed: fetch it fresh, in case people registered since
+    if (what === "cancel") void queryClient.invalidateQueries({ queryKey: eventsKey(event.clubId) });
+    setConfirming(what);
+  };
+
   return (
     <div className="flex flex-col gap-2">
       {draft && canPublish && (
@@ -210,7 +256,94 @@ function OrganiserActions({
         <Pencil aria-hidden />
         Edit event
       </Button>
+      {!draft && !ended && (
+        <Button
+          size="lg"
+          variant="outline"
+          className="h-11"
+          onClick={onToggleRegistration}
+          disabled={pending === "registration"}
+        >
+          {pending === "registration" ? <Spinner /> : event.registrationOpen ? <DoorClosed aria-hidden /> : <DoorOpen aria-hidden />}
+          {event.registrationOpen ? "Close registration" : "Open registration"}
+        </Button>
+      )}
+      {(draft || !ended) && (
+        <Button
+          size="lg"
+          variant="ghost"
+          className="h-11 text-destructive hover:bg-destructive/5 hover:text-destructive"
+          onClick={() => confirm(draft ? "delete" : "cancel")}
+        >
+          {draft ? "Delete draft" : "Cancel event"}
+        </Button>
+      )}
+
+      <ConfirmDialog
+        open={confirming === "cancel"}
+        onOpenChange={(open) => {
+          setConfirming(open ? "cancel" : null);
+          if (!open) setReason("");
+        }}
+        title={`Cancel ${event.title}?`}
+        body={
+          going === 0
+            ? "Nobody has registered yet. It stays listed as cancelled."
+            : `${going} ${going === 1 ? "person has" : "people have"} registered. Each gets an email, and their tickets stop working at the door.`
+        }
+        confirmLabel="Cancel event"
+        pendingLabel="Cancelling…"
+        dismissLabel="Keep event"
+        destructive
+        onConfirm={() => onCancelEvent(reason)}
+      >
+        {going > 0 && (
+          <div className="space-y-1.5">
+            <label htmlFor="cancel-reason" className="text-sm font-medium">
+              Note for them <span className="font-normal text-muted-foreground">(optional)</span>
+            </label>
+            <Textarea
+              id="cancel-reason"
+              value={reason}
+              maxLength={500}
+              rows={3}
+              placeholder="The speaker is ill. We'll post a new date soon."
+              onChange={(e) => setReason(e.target.value)}
+            />
+          </div>
+        )}
+      </ConfirmDialog>
+
+      <ConfirmDialog
+        open={confirming === "delete"}
+        onOpenChange={(open) => setConfirming(open ? "delete" : null)}
+        title={`Delete ${event.title}?`}
+        body="The draft is gone for good. Nobody else has seen it."
+        confirmLabel="Delete draft"
+        pendingLabel="Deleting…"
+        dismissLabel="Keep draft"
+        destructive
+        onConfirm={onDeleteDraft}
+      />
     </div>
+  );
+}
+
+/** A cancelled event's stamp, the organisers' note, and what it means for you. */
+function CancelledNotice({ event }: { event: ClubEvent }) {
+  return (
+    <section aria-label="Cancelled" className="rounded-xl bg-destructive/5 p-4">
+      <p className="inline-block -rotate-3 rounded-lg border-[3px] border-stamp px-3 py-1 text-2xl leading-none font-extrabold text-stamp font-stretch-70%">
+        Cancelled
+      </p>
+      {event.cancelledAt && (
+        <p className="mt-3 text-sm text-muted-foreground">on {formatFullDate(event.cancelledAt)}</p>
+      )}
+      {event.cancelReason && <p className="mt-2 text-sm whitespace-pre-line">&ldquo;{event.cancelReason}&rdquo;</p>}
+      {event.youreGoing && (
+        <p className="mt-2 text-sm">You were registered. There&rsquo;s nothing to do: your ticket won&rsquo;t be needed.</p>
+      )}
+    </section>
   );
 }
 
@@ -262,6 +395,9 @@ function MemberActions({
     );
   }
 
+  // the places box above already says registration is closed
+  if (!event.registrationOpen) return null;
+
   return (
     <Button
       size="lg"
@@ -283,7 +419,7 @@ function WhosGoing({ event, attendees, ended }: EventPanelProps & { event: ClubE
   return (
     <section aria-labelledby="whos-going">
       <h3 id="whos-going" className="text-sm font-semibold">
-        {ended ? "Who registered" : "Who's going"}
+        {ended || event.status === "cancelled" ? "Who registered" : "Who's going"}
         <span className="ml-1.5 font-normal text-muted-foreground">{event.registeredCount}</span>
       </h3>
       {attendees.loading ? (

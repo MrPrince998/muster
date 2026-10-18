@@ -6,11 +6,14 @@ import { asApiError } from "@/lib/api/client";
 import type { ClubEvent } from "@/types/event.interface";
 import { useWorkspace } from "../org-shell/workspace-context";
 import {
+  useCancelEvent,
   useCancelRegistration,
   useClubEvents,
+  useDeleteEvent,
   useEventAttendees,
   usePublishEvent,
   useRegister,
+  useUpdateEvent,
 } from "../services/event.service";
 import OrgHomeView, { type EventTab } from "./org-home.view";
 import type { PanelAction } from "./parts/event-panel";
@@ -31,7 +34,14 @@ function actionMessage(code: string): string {
     case "REGISTRATION_NOT_FOUND":
       return "You weren't registered for this event.";
     case "EVENT_NOT_DRAFT":
-      return "This event is already published.";
+      return "This event is already published. Cancel it instead.";
+    case "REGISTRATION_CLOSED":
+      return "Registration for this event has just closed.";
+    case "EVENT_ALREADY_CANCELLED":
+    case "EVENT_CANCELLED":
+      return "This event has been cancelled.";
+    case "EVENT_IS_DRAFT":
+      return "Drafts are deleted, not cancelled.";
     case "MISSING_PERMISSION":
       return "You don't have permission to do that in this club.";
     case "NETWORK_ERROR":
@@ -77,6 +87,19 @@ export default function OrgHomeContainer() {
   const register = useRegister(club?.id ?? "");
   const cancel = useCancelRegistration(club?.id ?? "");
   const publish = usePublishEvent(club?.id ?? "", orgId ?? "");
+  const update = useUpdateEvent(club?.id ?? "", orgId ?? "");
+  const cancelEvent = useCancelEvent(club?.id ?? "", orgId ?? "");
+  const deleteEvent = useDeleteEvent(club?.id ?? "", orgId ?? "");
+
+  // for the confirm dialogs: they show the error themselves, null when it worked
+  const attempt = async (work: () => Promise<unknown>): Promise<string | null> => {
+    try {
+      await work();
+      return null;
+    } catch (error) {
+      return actionMessage(asApiError(error).code);
+    }
+  };
 
   // one action at a time from the panel; its errors show there
   const run = async (action: PanelAction, work: () => Promise<unknown>) => {
@@ -146,6 +169,22 @@ export default function OrgHomeContainer() {
             setTab("upcoming");
           }),
         onEdit: () => setDialog("edit-event"),
+        onToggleRegistration: () =>
+          openEvent &&
+          run("registration", () =>
+            update.mutateAsync({ eventId: openEvent.id, registrationOpen: !openEvent.registrationOpen }),
+          ),
+        onCancelEvent: async (reason) =>
+          openEvent
+            ? attempt(() => cancelEvent.mutateAsync({ eventId: openEvent.id, reason: reason.trim() || undefined }))
+            : null,
+        onDeleteDraft: async () =>
+          openEvent
+            ? attempt(async () => {
+                await deleteEvent.mutateAsync({ eventId: openEvent.id });
+                openEventPanel(null);
+              })
+            : null,
       }}
       dialog={dialog}
       onDialogChange={setDialog}

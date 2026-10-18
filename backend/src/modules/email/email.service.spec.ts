@@ -20,7 +20,7 @@ class RecordingSender extends EmailSender {
 describe('EmailService', () => {
   const setup = () => {
     const sender = new RecordingSender();
-    return { sender, service: new EmailService(sender, 'https://app.example.com') };
+    return { sender, service: new EmailService(sender, 'https://app.example.com', 0) };
   };
 
   it('sends a verification link to the frontend page, token URL-encoded', async () => {
@@ -108,7 +108,7 @@ describe('reserved test domains', () => {
 describe('EmailService.sendTicket', () => {
   it('links straight to this ticket and attaches the QR code', async () => {
     const sender = new RecordingSender();
-    const service = new EmailService(sender, 'https://app.example.com');
+    const service = new EmailService(sender, 'https://app.example.com', 0);
     const qrPng = Buffer.from('png');
     await service.sendTicket({
       to: 'ada@example.com',

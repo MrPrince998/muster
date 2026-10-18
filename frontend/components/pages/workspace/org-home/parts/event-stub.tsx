@@ -30,6 +30,7 @@ export function EventStub({
   // capacity null means no limit: never full, no bar
   const full = event.capacity !== null && event.registeredCount >= event.capacity;
   const draft = event.status === "draft";
+  const cancelled = event.status === "cancelled";
   const filled =
     event.capacity === null ? 0 : Math.min(100, Math.round((event.registeredCount / event.capacity) * 100));
 
@@ -56,7 +57,7 @@ export function EventStub({
         <div
           className={cn(
             "flex flex-col items-center justify-center border-r-2 border-dashed border-border px-2 py-4",
-            past || draft ? "text-muted-foreground" : "text-cobalt",
+            past || draft || cancelled ? "text-muted-foreground" : "text-cobalt",
           )}
         >
           <span className="text-4xl leading-none font-extrabold font-stretch-70%">{day}</span>
@@ -67,20 +68,35 @@ export function EventStub({
         {/* body: what, when, where, and how full */}
         <div className="flex min-w-0 flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="min-w-0">
-            <p className="truncate text-lg leading-tight font-bold font-stretch-80%">{event.title}</p>
+            <p
+              className={cn(
+                "truncate text-lg leading-tight font-bold font-stretch-80%",
+                cancelled && "text-muted-foreground line-through decoration-stamp/60",
+              )}
+            >
+              {event.title}
+            </p>
             <p className="mt-1 truncate text-sm text-muted-foreground">
               {formatTime(event.startsAt)}
               {event.location ? `, ${event.location}` : ""}
             </p>
             <div className="mt-2 flex flex-wrap gap-1.5">
               {draft && <Tag tone="muted">Draft</Tag>}
-              {!draft && event.visibility === "public" && <Tag tone="muted">Open to guests</Tag>}
-              {!past && event.youreGoing && <Tag tone="cobalt">You&rsquo;re going</Tag>}
-              {past && event.youreGoing && <Tag tone="muted">You went</Tag>}
+              {cancelled && <Tag tone="stamp">Cancelled</Tag>}
+              {!draft && !cancelled && !past && !event.registrationOpen && <Tag tone="muted">Registration closed</Tag>}
+              {!draft && !cancelled && event.visibility === "public" && <Tag tone="muted">Open to guests</Tag>}
+              {!cancelled && !past && event.youreGoing && <Tag tone="cobalt">You&rsquo;re going</Tag>}
+              {!cancelled && past && event.youreGoing && <Tag tone="muted">You went</Tag>}
             </div>
           </div>
 
-          <Capacity event={event} past={past} draft={draft} full={full} filled={filled} />
+          {cancelled ? (
+            <p className="shrink-0 text-sm text-muted-foreground sm:text-right">
+              {event.registeredCount > 0 ? `${event.registeredCount} were told` : "Nobody had registered"}
+            </p>
+          ) : (
+            <Capacity event={event} past={past} draft={draft} full={full} filled={filled} />
+          )}
         </div>
       </div>
     </button>
@@ -145,12 +161,16 @@ function Capacity({
   );
 }
 
-function Tag({ tone, children }: { tone: "cobalt" | "muted"; children: React.ReactNode }) {
+function Tag({ tone, children }: { tone: "cobalt" | "muted" | "stamp"; children: React.ReactNode }) {
   return (
     <span
       className={cn(
         "rounded-full px-2 py-0.5 text-xs font-medium",
-        tone === "cobalt" ? "bg-cobalt-50 text-cobalt-800" : "bg-muted text-muted-foreground",
+        tone === "cobalt"
+          ? "bg-cobalt-50 text-cobalt-800"
+          : tone === "stamp"
+            ? "bg-stamp/10 font-semibold text-stamp"
+            : "bg-muted text-muted-foreground",
       )}
     >
       {children}

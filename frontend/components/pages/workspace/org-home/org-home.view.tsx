@@ -37,7 +37,19 @@ interface OrgHomeViewProps {
   onRetryEvents: () => void;
   openEvent: ClubEvent | null;
   onOpenEvent: (id: string | null) => void;
-  panel: Pick<EventPanelProps, "attendees" | "pending" | "error" | "onRegister" | "onCancel" | "onPublish" | "onEdit">;
+  panel: Pick<
+    EventPanelProps,
+    | "attendees"
+    | "pending"
+    | "error"
+    | "onRegister"
+    | "onCancel"
+    | "onPublish"
+    | "onEdit"
+    | "onToggleRegistration"
+    | "onCancelEvent"
+    | "onDeleteDraft"
+  >;
   dialog: Dialog;
   onDialogChange: (dialog: Dialog) => void;
   onEventSaved: (event: ClubEvent) => void;

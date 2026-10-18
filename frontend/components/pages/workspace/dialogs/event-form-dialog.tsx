@@ -119,7 +119,11 @@ export default function EventFormDialog({
               {editing ? "Edit event" : "New event"}
             </DialogTitle>
             <DialogDescription>
-              {editing ? `Changes show for everyone in ${clubName} straight away.` : `For ${clubName}.`}
+              {!editing
+                ? `For ${clubName}.`
+                : event!.status === "published" && event!.registeredCount > 0
+                  ? `Changes show straight away. A new time or place is emailed to the ${event!.registeredCount} ${event!.registeredCount === 1 ? "person" : "people"} registered.`
+                  : `Changes show for everyone in ${clubName} straight away.`}
             </DialogDescription>
           </DialogHeader>
 

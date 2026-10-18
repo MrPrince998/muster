@@ -2,9 +2,9 @@ import { Injectable } from '@nestjs/common';
 import type { EntityManager } from 'typeorm';
 import { HttpError } from '../../common/errors/http-error.js';
 import type { AuthUser } from '../../common/types/auth-user.js';
-import { config } from '../../config/config.js';
 import { TenantService } from '../../database/tenant.service.js';
 import { EmailService } from '../email/email.service.js';
+import { formatWhen } from '../email/format-when.js';
 import { EventService, eventNotFound } from '../event/event.service.js';
 import type { MyRegistrationDto } from '../event/dto/event.dto.js';
 import { EventStatus } from '../event/entities/event.entity.js';
@@ -59,21 +59,6 @@ const toTicket = (row: TicketRow): TicketDto => ({
   checkedInAt: row.checked_in_at,
 });
 
-// "Saturday 24 October 2026, 18:30 to 22:00 (AEDT)", in the configured zone
-function formatWhen(startsAt: Date, endsAt: Date): string {
-  const zone = config.timeZone;
-  const day = new Intl.DateTimeFormat('en-GB', { timeZone: zone, weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
-  const time = new Intl.DateTimeFormat('en-GB', { timeZone: zone, hour: '2-digit', minute: '2-digit' });
-  const zoneName =
-    new Intl.DateTimeFormat('en-GB', { timeZone: zone, timeZoneName: 'short' })
-      .formatToParts(startsAt)
-      .find((part) => part.type === 'timeZoneName')?.value ?? zone;
-  const sameDay = day.format(startsAt) === day.format(endsAt);
-  return sameDay
-    ? `${day.format(startsAt)}, ${time.format(startsAt)} to ${time.format(endsAt)} (${zoneName})`
-    : `${day.format(startsAt)}, ${time.format(startsAt)} to ${day.format(endsAt)}, ${time.format(endsAt)} (${zoneName})`;
-}
-
 @Injectable()
 export class RegistrationService {
   constructor(
@@ -95,8 +80,13 @@ export class RegistrationService {
    */
   async register(access: ClubAccess, eventId: string): Promise<MyRegistrationDto> {
     const { registration, ticket, email } = await this.events.inClub(access, async (m, orgId) => {
-      const events: { status: EventStatus; ends_at: Date; capacity: number | null }[] = await m.query(
-        `SELECT status, ends_at, capacity FROM events WHERE id = $1 AND club_id = $2 FOR UPDATE`,
+      const events: {
+        status: EventStatus;
+        ends_at: Date;
+        capacity: number | null;
+        registration_closed_at: Date | null;
+      }[] = await m.query(
+        `SELECT status, ends_at, capacity, registration_closed_at FROM events WHERE id = $1 AND club_id = $2 FOR UPDATE`,
         [eventId, access.clubId],
       );
       const event = events[0];
@@ -107,6 +97,9 @@ export class RegistrationService {
       }
       if (event.ends_at <= new Date()) {
         throw HttpError.conflict('This event has ended', 'EVENT_ENDED');
+      }
+      if (event.registration_closed_at !== null) {
+        throw HttpError.conflict('Registration for this event is closed', 'REGISTRATION_CLOSED');
       }
 
       const mine: { cancelled_at: Date | null }[] = await m.query(

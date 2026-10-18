@@ -27,6 +27,7 @@ export function ConfirmDialog({
   pendingLabel,
   destructive = false,
   confirmDisabled = false,
+  dismissLabel = "Cancel",
   onConfirm,
   children,
 }: {
@@ -40,6 +41,8 @@ export function ConfirmDialog({
   onConfirm: () => Promise<string | null>;
   // blocks the confirm button, e.g. until the name is typed
   confirmDisabled?: boolean;
+  // the button that backs out; rename it when "Cancel" would be ambiguous
+  dismissLabel?: string;
   // extra content, e.g. a "type the name to confirm" field
   children?: React.ReactNode;
 }) {
@@ -76,7 +79,7 @@ export function ConfirmDialog({
           </p>
         )}
         <AlertDialogFooter>
-          <AlertDialogCancel disabled={pending}>Cancel</AlertDialogCancel>
+          <AlertDialogCancel disabled={pending}>{dismissLabel}</AlertDialogCancel>
           <AlertDialogAction variant={destructive ? "destructive" : "default"} onClick={confirm} disabled={pending || confirmDisabled}>
             {pending && <LoaderCircle className="animate-spin" aria-hidden />}
             {pending ? pendingLabel : confirmLabel}
