@@ -67,6 +67,11 @@ export const config = {
   // the frontend; links in emails point here
   appUrl: process.env.APP_URL ?? "http://localhost:3000",
 
+  // the day-before reminder emails; REMINDERS_ENABLED=false turns them off
+  reminders: {
+    enabled: process.env.REMINDERS_ENABLED !== "false",
+  },
+
   // the time zone event times are written in, in emails (an IANA name like
   // "Australia/Sydney"). There's no per-workspace zone yet.
   timeZone: process.env.APP_TIME_ZONE ?? "UTC",

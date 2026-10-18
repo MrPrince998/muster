@@ -402,7 +402,8 @@ function MemberActions({
     return (
       <div className="flex flex-col gap-2">
         <p className="rounded-xl bg-cobalt-50 p-4 text-sm text-cobalt-800">
-          <span className="font-semibold">You&rsquo;re going.</span> Show your ticket at the door to get in.
+          <span className="font-semibold">You&rsquo;re going.</span> Show your ticket at the door to get in. We&rsquo;ll
+          email you a reminder the day before.
         </p>
         <Button
           size="lg"

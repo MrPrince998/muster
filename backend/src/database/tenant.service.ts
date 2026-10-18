@@ -87,6 +87,18 @@ export class TenantService {
     return rows.map((r) => r.org_id);
   }
 
+  /**
+   * Workspaces with reminders due: events starting within `within` (but more
+   * than `minAhead` away) with places that haven't been reminded. Ids only.
+   */
+  async dueReminderOrganisations(within: string, minAhead: string): Promise<string[]> {
+    const rows: { org_id: string }[] = await this.dataSource.query(
+      `SELECT due_reminder_organisations AS org_id FROM due_reminder_organisations($1::interval, $2::interval)`,
+      [within, minAhead],
+    );
+    return rows.map((r) => r.org_id);
+  }
+
   private async resolve(call: string, arg: string): Promise<string | null> {
     const rows: { org_id: string | null }[] = await this.dataSource.query(
       `SELECT ${call} AS org_id`,

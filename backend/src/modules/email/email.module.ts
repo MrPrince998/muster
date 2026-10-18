@@ -20,6 +20,6 @@ import { APP_URL, BULK_PACE_MS, EmailService } from './email.service.js';
       },
     },
   ],
-  exports: [EmailService],
+  exports: [EmailService, BULK_PACE_MS],
 })
 export class EmailModule {}

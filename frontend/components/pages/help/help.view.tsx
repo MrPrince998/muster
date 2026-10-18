@@ -50,6 +50,10 @@ const SECTIONS: { title: string; answers: Answer[] }[] = [
         a: "Yes, until you've been checked in: open the event and choose Cancel my place, so someone else can have it.",
       },
       {
+        q: "Will I get a reminder?",
+        a: "Yes: an email the day before, with your ticket attached. If you registered within that last day, your ticket email is your reminder.",
+      },
+      {
         q: "What happens if an event is cancelled or moved?",
         a: "Everyone registered gets an email. A cancelled event's tickets stop working at the door; after a move, your ticket still works.",
       },

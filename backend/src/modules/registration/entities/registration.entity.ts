@@ -68,6 +68,10 @@ export class Registration {
   @Column({ name: 'cancelled_at', type: 'timestamptz', nullable: true })
   cancelledAt: Date | null;
 
+  // the day-before reminder went out (claimed atomically, so it goes once)
+  @Column({ name: 'reminder_sent_at', type: 'timestamptz', nullable: true })
+  reminderSentAt: Date | null;
+
   // when they registered; analytics' "registrations over time"
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;

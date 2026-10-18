@@ -9,6 +9,7 @@ import {
 import { guestConfirmTemplate, type GuestConfirmEmailData } from './templates/guest-confirm.js';
 import { joinRequestApprovedTemplate, joinRequestRejectedTemplate } from './templates/join-request.js';
 import { resetPasswordTemplate } from './templates/reset-password.js';
+import { reminderTemplate } from './templates/reminder.js';
 import { ticketTemplate, type TicketEmailData } from './templates/ticket.js';
 import { verifyEmailTemplate } from './templates/verify-email.js';
 
@@ -87,13 +88,26 @@ export class EmailService {
     email: { to: string; qrPng: Buffer; registrationId: string; guestToken?: string } & Omit<TicketEmailData, 'url'>,
   ): Promise<void> {
     const { to, qrPng, registrationId, guestToken, ...data } = email;
-    // straight to this ticket: the tickets page opens the one named in ?ticket=
-    const url = guestToken ? new URL(`/t/${guestToken}`, this.appUrl) : new URL('/tickets', this.appUrl);
-    if (!guestToken) url.searchParams.set('ticket', registrationId);
     return this.sender.send({
       to,
-      ...ticketTemplate({ ...data, url: url.toString() }),
+      ...ticketTemplate({ ...data, url: this.ticketUrl(registrationId, guestToken) }),
       attachments: [{ filename: 'ticket.png', content: qrPng }],
+    });
+  }
+
+  /**
+   * The day-before reminder, with the ticket again. One per registration,
+   * even if a retry sends it twice (the provider drops the repeat).
+   */
+  sendReminder(
+    email: { to: string; qrPng: Buffer; registrationId: string; guestToken?: string } & Omit<TicketEmailData, 'url'>,
+  ): Promise<void> {
+    const { to, qrPng, registrationId, guestToken, ...data } = email;
+    return this.sender.send({
+      to,
+      ...reminderTemplate({ ...data, url: this.ticketUrl(registrationId, guestToken) }),
+      attachments: [{ filename: 'ticket.png', content: qrPng }],
+      idempotencyKey: `event-reminder/${registrationId}`,
     });
   }
 
@@ -182,6 +196,15 @@ export class EmailService {
       }
     }
     if (failed > 0) this.logger.warn(`${failed} of ${recipients.length} ${kind} emails failed`);
+  }
+
+  // straight to one ticket: My tickets opens the one named in ?ticket=; a
+  // guest (who can't sign in) gets the ticket's own page instead
+  private ticketUrl(registrationId: string, guestToken?: string): string {
+    if (guestToken) return new URL(`/t/${guestToken}`, this.appUrl).toString();
+    const url = new URL('/tickets', this.appUrl);
+    url.searchParams.set('ticket', registrationId);
+    return url.toString();
   }
 
   // the club's events with this one open: /o/:slug?club=…&event=…
