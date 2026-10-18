@@ -6,6 +6,7 @@ import {
   type EventCancelledEmailData,
   type EventChangedEmailData,
 } from './templates/event-update.js';
+import { guestConfirmTemplate, type GuestConfirmEmailData } from './templates/guest-confirm.js';
 import { joinRequestApprovedTemplate, joinRequestRejectedTemplate } from './templates/join-request.js';
 import { resetPasswordTemplate } from './templates/reset-password.js';
 import { ticketTemplate, type TicketEmailData } from './templates/ticket.js';
@@ -77,19 +78,33 @@ export class EmailService {
     });
   }
 
-  /** A registration's ticket: the details, a link that opens it in the app, and the QR code as a PNG. */
+  /**
+   * A registration's ticket: the details, a link that opens it, and the QR
+   * code as a PNG. Members' links open it in My tickets; a guest (who can't
+   * sign in) gets `guestToken`, and a link to the ticket's own page instead.
+   */
   sendTicket(
-    email: { to: string; qrPng: Buffer; registrationId: string } & Omit<TicketEmailData, 'url'>,
+    email: { to: string; qrPng: Buffer; registrationId: string; guestToken?: string } & Omit<TicketEmailData, 'url'>,
   ): Promise<void> {
-    const { to, qrPng, registrationId, ...data } = email;
+    const { to, qrPng, registrationId, guestToken, ...data } = email;
     // straight to this ticket: the tickets page opens the one named in ?ticket=
-    const url = new URL('/tickets', this.appUrl);
-    url.searchParams.set('ticket', registrationId);
+    const url = guestToken ? new URL(`/t/${guestToken}`, this.appUrl) : new URL('/tickets', this.appUrl);
+    if (!guestToken) url.searchParams.set('ticket', registrationId);
     return this.sender.send({
       to,
       ...ticketTemplate({ ...data, url: url.toString() }),
       attachments: [{ filename: 'ticket.png', content: qrPng }],
     });
+  }
+
+  /** "Confirm your place": the link that turns a guest's request into a registration. */
+  sendGuestConfirmation(
+    email: { to: string; eventId: string; token: string } & Omit<GuestConfirmEmailData, 'url'>,
+  ): Promise<void> {
+    const { to, eventId, token, ...data } = email;
+    const url = new URL(`/e/${eventId}/confirm`, this.appUrl);
+    url.searchParams.set('token', token);
+    return this.sender.send({ to, ...guestConfirmTemplate({ ...data, url: url.toString() }) });
   }
 
   sendJoinRequestApproved(email: JoinRequestEmail & { orgSlug: string }): Promise<void> {

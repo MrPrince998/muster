@@ -7,11 +7,13 @@ import { Registration } from './entities/registration.entity.js';
 import { RegistrationController } from './registration.controller.js';
 import { RegistrationService } from './registration.service.js';
 import { TicketController } from './ticket.controller.js';
+import { GuestService } from './guest.service.js';
+import { PublicController } from './public.controller.js';
 import { TicketService } from './ticket.service.js';
 
 @Module({
   imports: [TypeOrmModule.forFeature([Registration]), EventModule, PermissionModule, EmailModule],
-  controllers: [RegistrationController, TicketController],
-  providers: [RegistrationService, TicketService],
+  controllers: [RegistrationController, TicketController, PublicController],
+  providers: [RegistrationService, TicketService, GuestService],
 })
 export class RegistrationModule {}

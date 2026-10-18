@@ -2,10 +2,12 @@
 
 import {
   CalendarDays,
+  Check,
   Clock,
   DoorClosed,
   DoorOpen,
   Globe,
+  Link2,
   LoaderCircle,
   Lock,
   MapPin,
@@ -126,6 +128,7 @@ function PanelBody(props: EventPanelProps & { event: ClubEvent }) {
         )}
         <Detail icon={event.visibility === "public" ? Globe : Lock} label="Who can come">
           {event.visibility === "public" ? "Anyone with the link, guests included" : `${clubName} members only`}
+          {event.visibility === "public" && !draft && <CopyPublicLink eventId={event.id} />}
         </Detail>
       </dl>
 
@@ -213,6 +216,36 @@ function Detail({
       <dt className="sr-only">{label}</dt>
       <dd>{children}</dd>
     </div>
+  );
+}
+
+/** The public page's address, for sharing a public event outside the club. */
+function CopyPublicLink({ eventId }: { eventId: string }) {
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(`${window.location.origin}/e/${eventId}`);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // no clipboard access: open the page instead, so the address is one copy away
+      window.open(`/e/${eventId}`, "_blank", "noopener");
+    }
+  };
+  return (
+    <span className="mt-1 flex items-center gap-3">
+      <button
+        type="button"
+        onClick={copy}
+        className="inline-flex items-center gap-1 font-medium text-cobalt underline-offset-4 hover:underline"
+      >
+        {copied ? <Check className="size-3.5" aria-hidden /> : <Link2 className="size-3.5" aria-hidden />}
+        {copied ? "Link copied" : "Copy public link"}
+      </button>
+      <Link href={`/e/${eventId}`} target="_blank" className="text-muted-foreground underline-offset-4 hover:underline">
+        Open page
+      </Link>
+    </span>
   );
 }
 

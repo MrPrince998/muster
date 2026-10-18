@@ -8,6 +8,12 @@ import { config } from '../../config/config.js';
 // slow door still works, and old tickets don't verify forever.
 const GRACE_SECONDS = 24 * 60 * 60;
 
+export interface GuestConfirmation {
+  eventId: string;
+  email: string;
+  name: string;
+}
+
 interface TicketClaims {
   // the registration id: what check-in looks up
   sub: string;
@@ -44,6 +50,32 @@ export class TicketService {
       const claims = await this.jwt.verifyAsync<TicketClaims>(token);
       if (!isUUID(claims.sub) || !isUUID(claims.evt)) return null;
       return { registrationId: claims.sub, eventId: claims.evt };
+    } catch {
+      return null;
+    }
+  }
+
+  // --- a guest's "confirm your place" link ------------------------------------
+  // Same secret, different audience: a confirmation can't pass as a ticket,
+  // nor a ticket as a confirmation. Stateless: nothing is stored until the
+  // link is used, so asking costs nothing but an email.
+  private readonly confirmations = new JwtService({
+    secret: config.ticket.secret,
+    signOptions: { algorithm: 'HS256', audience: 'guest-confirm', expiresIn: '24h' },
+    verifyOptions: { algorithms: ['HS256'], audience: 'guest-confirm' },
+  });
+
+  signGuestConfirmation(claims: GuestConfirmation): Promise<string> {
+    return this.confirmations.signAsync({ evt: claims.eventId, email: claims.email, name: claims.name });
+  }
+
+  /** Who asked for a place at which event, or null if the link is malformed, forged or over a day old. */
+  async verifyGuestConfirmation(token: string): Promise<GuestConfirmation | null> {
+    if (typeof token !== 'string' || token.length > 2000) return null;
+    try {
+      const claims = await this.confirmations.verifyAsync<{ evt: string; email: string; name: string }>(token);
+      if (!isUUID(claims.evt) || typeof claims.email !== 'string' || typeof claims.name !== 'string') return null;
+      return { eventId: claims.evt, email: claims.email, name: claims.name };
     } catch {
       return null;
     }

@@ -78,6 +78,15 @@ export class TenantService {
     }));
   }
 
+  /** Workspaces where the user holds an active ticket, member or not (a guest at a public event). */
+  async userTicketOrganisations(userId: string): Promise<string[]> {
+    const rows: { org_id: string }[] = await this.dataSource.query(
+      `SELECT user_ticket_organisations AS org_id FROM user_ticket_organisations($1)`,
+      [userId],
+    );
+    return rows.map((r) => r.org_id);
+  }
+
   private async resolve(call: string, arg: string): Promise<string | null> {
     const rows: { org_id: string | null }[] = await this.dataSource.query(
       `SELECT ${call} AS org_id`,

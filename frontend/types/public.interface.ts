@@ -1,0 +1,23 @@
+/** GET /public/events/:eventId: a public event, as anyone with the link sees it. */
+export interface PublicEvent {
+  id: string;
+  title: string;
+  description: string | null;
+  location: string | null;
+  startsAt: string;
+  endsAt: string;
+  status: "published" | "cancelled";
+  cancelReason: string | null;
+  ended: boolean;
+  // false: registration closed early (the event still runs)
+  registrationOpen: boolean;
+  // null: no limit
+  placesLeft: number | null;
+  clubName: string;
+  workspaceName: string;
+}
+
+export interface GuestPlaceInput {
+  name: string;
+  email: string;
+}
