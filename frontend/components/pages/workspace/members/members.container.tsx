@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useMemo, useState } from "react";
 import { useMe } from "@/components/pages/auth/services/auth.service";
 import type { OrgMember, OrgRole } from "@/types/organisation.interface";
@@ -30,7 +30,14 @@ export default function MembersContainer() {
   const orgId = organisation.orgId;
   const me = useMe();
   const members = useOrgMembers(orgId);
-  const [query, setQuery] = useState("");
+  // ?q= fills the filter: a person picked in search
+  const qParam = useSearchParams().get("q") ?? "";
+  const [query, setQuery] = useState(qParam);
+  const [shownQ, setShownQ] = useState(qParam);
+  if (qParam !== shownQ) {
+    setShownQ(qParam);
+    setQuery(qParam);
+  }
   // the action waiting for confirmation in the dialog
   const [confirming, setConfirming] = useState<MemberAction | null>(null);
   // clubs you can make invite links for (default club first); the dialog opens on one

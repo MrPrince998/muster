@@ -117,7 +117,7 @@ export class EmailService {
     recipients: EventRecipient[],
     event: Omit<EventCancelledEmailData, 'name' | 'url'> & { orgSlug: string; clubId: string; eventId: string },
   ): Promise<void> {
-    const url = this.clubEventsUrl(event.orgSlug, event.clubId);
+    const url = this.eventUrl(event.orgSlug, event.clubId, event.eventId);
     return this.sendEach('event cancelled', recipients, (r) => ({
       to: r.to,
       ...eventCancelledTemplate({ ...event, name: r.name, url }),
@@ -130,7 +130,7 @@ export class EmailService {
     recipients: EventRecipient[],
     event: Omit<EventChangedEmailData, 'name' | 'url'> & { orgSlug: string; clubId: string; eventId: string },
   ): Promise<void> {
-    const url = this.clubEventsUrl(event.orgSlug, event.clubId);
+    const url = this.eventUrl(event.orgSlug, event.clubId, event.eventId);
     return this.sendEach('event changed', recipients, (r) => ({
       to: r.to,
       ...eventChangedTemplate({ ...event, name: r.name, url }),
@@ -169,9 +169,11 @@ export class EmailService {
     if (failed > 0) this.logger.warn(`${failed} of ${recipients.length} ${kind} emails failed`);
   }
 
-  private clubEventsUrl(orgSlug: string, clubId: string): string {
+  // the club's events with this one open: /o/:slug?club=…&event=…
+  private eventUrl(orgSlug: string, clubId: string, eventId: string): string {
     const url = new URL(`/o/${orgSlug}`, this.appUrl);
     url.searchParams.set('club', clubId);
+    url.searchParams.set('event', eventId);
     return url.toString();
   }
 

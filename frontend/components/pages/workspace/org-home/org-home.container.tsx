@@ -1,7 +1,7 @@
 "use client";
 
-import { useSearchParams } from "next/navigation";
-import { useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useEffect, useState } from "react";
 import { asApiError } from "@/lib/api/client";
 import type { ClubEvent } from "@/types/event.interface";
 import { useWorkspace } from "../org-shell/workspace-context";
@@ -61,7 +61,12 @@ export default function OrgHomeContainer() {
   const orgId = organisation.orgId;
   // the club lives in the URL (?club=), so a reload or a shared link keeps it;
   // without one, the default club (listed first)
-  const clubParam = useSearchParams().get("club");
+  const searchParams = useSearchParams();
+  const clubParam = searchParams.get("club");
+  // ?event= opens that event (from search, or a link in an email)
+  const eventParam = searchParams.get("event");
+  const router = useRouter();
+  const pathname = usePathname();
   const club = clubs.data.find((c) => c.id === clubParam) ?? clubs.data[0] ?? null;
   const has = (permission: string) => !!club?.permissions.includes(permission as never);
   const canSeeDrafts = has("event.manage_own") || has("event.manage_any");
@@ -127,6 +132,31 @@ export default function OrgHomeContainer() {
     setOpenEventId(null);
     setActionError(null);
   }
+
+  // a linked event: open it on whichever tab holds it, once the lists have loaded
+  const [linkedEvent, setLinkedEvent] = useState<string | null>(null);
+  if (!eventParam && linkedEvent !== null) setLinkedEvent(null);
+  if (eventParam && eventParam !== linkedEvent && club?.id === shownClubId) {
+    const holder = (["upcoming", "past", "drafts"] as const).find((list) =>
+      ({ upcoming, past, drafts })[list].data?.some((event) => event.id === eventParam),
+    );
+    const settled = !upcoming.isPending && !past.isPending && (!canSeeDrafts || !drafts.isPending);
+    if (holder || settled) {
+      setLinkedEvent(eventParam);
+      if (holder) {
+        setTab(holder);
+        setOpenEventId(eventParam);
+        setActionError(null);
+      }
+    }
+  }
+  // then drop it from the address, so the same link works again later
+  useEffect(() => {
+    if (!eventParam || linkedEvent !== eventParam) return;
+    const rest = new URLSearchParams(searchParams.toString());
+    rest.delete("event");
+    router.replace(rest.size ? `${pathname}?${rest}` : pathname, { scroll: false });
+  }, [eventParam, linkedEvent, pathname, router, searchParams]);
 
   const lists: Record<EventTab, { data: ClubEvent[]; loading: boolean; failed: boolean }> = {
     upcoming: { data: upcoming.data ?? [], loading: upcoming.isPending, failed: upcoming.isError },

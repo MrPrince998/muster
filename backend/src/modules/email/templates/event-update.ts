@@ -33,7 +33,7 @@ export function eventCancelledTemplate({
       ...(reason ? [`They said: "${reason}"`] : []),
       "You don't need to do anything. Your ticket won't get anyone in now.",
     ],
-    action: { label: `See ${clubName}'s events`, url },
+    action: { label: 'See the event', url },
     footnote: [`You're getting this because you registered for ${eventTitle} in ${APP_NAME}.`],
   });
 }

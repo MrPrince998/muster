@@ -14,16 +14,10 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import React from "react";
 import { HOME, SIGN_IN } from "../pages/auth/shared/session-guards";
+import SearchDialogContainer from "../pages/search/search-dialog.container";
 import { useMe, useSignOut } from "../pages/auth/services/auth.service";
 import { Avatar, AvatarFallback } from "../ui/avatar";
-import { Button } from "../ui/button";
-import {
-  Command,
-  CommandDialog,
-  CommandEmpty,
-  CommandInput,
-  CommandList,
-} from "../ui/command";
+import { buttonVariants } from "../ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -54,6 +48,9 @@ function useModifierKey() {
     () => null,
   );
 }
+
+// Where "Send feedback" emails go; the button is hidden until it's set.
+const FEEDBACK_EMAIL = process.env.NEXT_PUBLIC_FEEDBACK_EMAIL;
 
 /** The app's top bar: home, search, help, and the account menu. */
 const Navbar = () => {
@@ -113,27 +110,20 @@ const Navbar = () => {
           )}
         </button>
 
-        <CommandDialog
-          open={isSearchOpen}
-          onOpenChange={setIsSearchOpen}
-          title="Search"
-          description="Find clubs, events and people"
-        >
-          <Command>
-            <CommandInput placeholder="Search clubs, events and people" />
-            <CommandList>
-              <CommandEmpty>Nothing matches that yet.</CommandEmpty>
-            </CommandList>
-          </Command>
-        </CommandDialog>
+        <SearchDialogContainer open={isSearchOpen} onOpenChange={setIsSearchOpen} />
 
         {/* hidden on phones, where the drawer button needs the room and the
             account menu must stay on screen */}
         <div className="hidden items-center gap-1 sm:flex">
-          <IconButton label="Send feedback">
-            <MessageSquarePlus />
-          </IconButton>
-          <IconButton label="Help">
+          {FEEDBACK_EMAIL && (
+            <IconButton
+              label="Send feedback"
+              href={`mailto:${FEEDBACK_EMAIL}?subject=${encodeURIComponent("Muster feedback")}`}
+            >
+              <MessageSquarePlus />
+            </IconButton>
+          )}
+          <IconButton label="Help" href="/help">
             <CircleHelp />
           </IconButton>
 
@@ -195,15 +185,23 @@ const Navbar = () => {
 /** An icon-only button with its name as a tooltip and for screen readers. */
 function IconButton({
   label,
+  href,
   children,
 }: {
   label: string;
+  href: string;
   children: React.ReactNode;
 }) {
   return (
     <Tooltip>
       <TooltipTrigger
-        render={<Button variant="ghost" size="icon" aria-label={label} />}
+        render={
+          <Link
+            href={href}
+            aria-label={label}
+            className={buttonVariants({ variant: "ghost", size: "icon" })}
+          />
+        }
       >
         {children}
       </TooltipTrigger>
