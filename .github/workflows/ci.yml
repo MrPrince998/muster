@@ -1,6 +1,6 @@
 # Every push and pull request: lint, typecheck, unit and end-to-end tests
-# (against Postgres 13, what development runs, and 17, what production
-# runs), and both production builds.
+# (against Postgres 17, what development and production run), and both
+# production builds.
 name: CI
 
 on:
@@ -14,15 +14,11 @@ concurrency:
 
 jobs:
   backend:
-    name: API (Postgres ${{ matrix.postgres }})
+    name: API
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        postgres: ["13", "17"]
     services:
       postgres:
-        image: postgres:${{ matrix.postgres }}-alpine
+        image: postgres:17-alpine
         env:
           POSTGRES_USER: muster
           POSTGRES_PASSWORD: ci-owner-password

@@ -272,7 +272,7 @@ The tests that matter most are the ones that prove the hard claims:
 - **Tickets:** tampered, expired, and wrong-secret tokens are rejected.
 - **Check-in:** scanning twice, or from two scanners at once, checks the person in exactly once.
 
-CI (`.github/workflows/ci.yml`) runs on every push and pull request: lint, typecheck, unit tests, migrations from an empty database, the end-to-end suite against both Postgres 13 and 17, and both production image builds.
+CI (`.github/workflows/ci.yml`) runs on every push and pull request: lint, typecheck, unit tests, migrations from an empty database, the end-to-end suite against Postgres 17 (what development and production both run), and both production image builds.
 
 ---
 

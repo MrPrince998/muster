@@ -36,13 +36,13 @@ services:
     restart: unless-stopped
 
   db:
-    image: postgres:13
+    image: postgres:17-alpine
     container_name: muster-db
     env_file: ./backend/.env
     ports:
       - "127.0.0.1:5432:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - postgres17_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 10s
@@ -54,4 +54,6 @@ volumes:
   frontend_node_modules:
   frontend_next:
   backend_node_modules:
-  postgres_data:
+  # the Postgres 13 volume (postgres_data) is kept until the move is confirmed;
+  # remove it with: docker volume rm muster_postgres_data
+  postgres17_data:
