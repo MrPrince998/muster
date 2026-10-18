@@ -21,7 +21,6 @@ import { Permission } from '../permission/permissions.js';
 import {
   AcceptInviteResultDto,
   ClubJoinRequestDto,
-  ClubRoleDto,
   CreateInviteDto,
   InviteDto,
   InvitePreviewDto,
@@ -95,14 +94,6 @@ export class ClubInviteController {
   @ApiNotFoundResponse(error('No pending request with that id (JOIN_REQUEST_NOT_FOUND)'))
   reject(@CurrentClubAccess() access: ClubAccess, @Param('requestId', ParseUUIDPipe) requestId: string): Promise<void> {
     return this.invites.reject(access, requestId);
-  }
-
-  /** The club's roles (Owner excluded), each marked if you can give it */
-  @Get('roles')
-  @RequirePermission()
-  @ApiOkResponse({ type: [ClubRoleDto] })
-  roles(@CurrentClubAccess() access: ClubAccess): Promise<ClubRoleDto[]> {
-    return this.invites.roles(access);
   }
 }
 

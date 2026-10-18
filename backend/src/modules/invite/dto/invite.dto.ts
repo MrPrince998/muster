@@ -147,16 +147,3 @@ export class ClubJoinRequestDto {
   createdAt: Date;
 }
 
-export class ClubRoleDto {
-  @ApiProperty({ format: 'uuid' })
-  id: string;
-
-  @ApiProperty()
-  name: string;
-
-  @ApiProperty()
-  position: number;
-
-  @ApiProperty({ description: 'Below your own role, so you can give it (e.g. through an invite link)' })
-  assignable: boolean;
-}

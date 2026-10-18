@@ -1,3 +1,4 @@
+import type { ClubPermission } from "./club.interface";
 export type InviteStatus = "active" | "expired" | "used_up" | "revoked";
 
 /** GET /clubs/:clubId/invites: a link that hasn't been turned off. */
@@ -60,10 +61,14 @@ export interface ClubJoinRequest {
   createdAt: string;
 }
 
-/** GET /clubs/:clubId/roles: a club role, and whether you can give it. */
+/** GET /clubs/:clubId/roles: a club role (Owner not listed), and whether you can manage it. */
 export interface ClubRole {
   id: string;
   name: string;
+  // higher is more senior
   position: number;
+  permissions: ClubPermission[];
+  memberCount: number;
+  // below your own role: you can give, edit, move or delete it
   assignable: boolean;
 }

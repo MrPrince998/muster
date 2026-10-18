@@ -1,8 +1,8 @@
 "use client";
 
-import { CalendarPlus, Users } from "lucide-react";
+import { CalendarPlus, ShieldCheck, Users } from "lucide-react";
 import Link from "next/link";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import type { ClubSummary } from "@/types/club.interface";
@@ -24,6 +24,8 @@ export interface OrgHomePermissions {
   publishEvents: boolean;
   seeDrafts: boolean;
   viewAttendees: boolean;
+  // role.manage or member.remove: the club page has something for you to do
+  manageClub: boolean;
 }
 
 interface OrgHomeViewProps {
@@ -137,16 +139,32 @@ const OrgHomeView = ({
                 {club.description && <p className="mt-2 text-muted-foreground">{club.description}</p>}
                 <p className="mt-2 flex items-center gap-1.5 text-sm text-muted-foreground">
                   <Users className="size-4" aria-hidden />
-                  {club.memberCount} {club.memberCount === 1 ? "member" : "members"}
+                  <Link
+                    href={`/o/${organisation.slug}/clubs/${club.id}`}
+                    className="underline-offset-4 hover:text-foreground hover:underline"
+                  >
+                    {club.memberCount} {club.memberCount === 1 ? "member" : "members"}
+                  </Link>
                   {can.createEvents && ", you can run events here"}
                 </p>
               </div>
-              {can.createEvents && (
-                <Button size="lg" className="h-11 font-semibold" onClick={() => onDialogChange("new-event")}>
-                  <CalendarPlus aria-hidden />
-                  New event
-                </Button>
-              )}
+              <div className="flex flex-wrap gap-2">
+                {can.manageClub && (
+                  <Link
+                    href={`/o/${organisation.slug}/clubs/${club.id}`}
+                    className={cn(buttonVariants({ size: "lg", variant: "outline" }), "h-11")}
+                  >
+                    <ShieldCheck aria-hidden />
+                    Manage club
+                  </Link>
+                )}
+                {can.createEvents && (
+                  <Button size="lg" className="h-11 font-semibold" onClick={() => onDialogChange("new-event")}>
+                    <CalendarPlus aria-hidden />
+                    New event
+                  </Button>
+                )}
+              </div>
             </header>
 
             <Tabs value={tab} onValueChange={(value) => onTabChange(value as EventTab)} className="mt-8">

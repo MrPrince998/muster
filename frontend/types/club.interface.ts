@@ -31,3 +31,21 @@ export interface CreateClubInput {
   name: string;
   description?: string;
 }
+
+/** GET /clubs/:clubId/members: someone in the club, with their roles. */
+export interface ClubMember {
+  userId: string;
+  name: string;
+  joinedAt: string;
+  // holds the Owner role
+  isOwner: boolean;
+  // the roles they hold, most senior first (Owner not included)
+  roleIds: string[];
+  // below you: you may change their roles or remove them
+  manageable: boolean;
+}
+
+export interface RoleInput {
+  name: string;
+  permissions: ClubPermission[];
+}

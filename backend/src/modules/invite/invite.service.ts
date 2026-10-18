@@ -8,7 +8,6 @@ import type { ClubAccess } from '../permission/club-access.js';
 import type {
   AcceptInviteResultDto,
   ClubJoinRequestDto,
-  ClubRoleDto,
   CreateInviteDto,
   InviteDto,
   InvitePreviewDto,
@@ -137,22 +136,6 @@ export class InviteService {
         [inviteId, access.clubId],
       );
       if (rows.length === 0) throw inviteNotFound();
-    });
-  }
-
-  /** The club's roles, each marked if you can give it. Owner is never listed. */
-  roles(access: ClubAccess): Promise<ClubRoleDto[]> {
-    return this.inClub(access, async (m) => {
-      const rows: { id: string; name: string; position: number; is_owner: boolean }[] = await m.query(
-        `SELECT id, name, position, is_owner FROM roles WHERE club_id = $1 AND NOT is_owner ORDER BY position DESC`,
-        [access.clubId],
-      );
-      return rows.map((r) => ({
-        id: r.id,
-        name: r.name,
-        position: r.position,
-        assignable: access.canManageRole({ position: r.position, isOwner: r.is_owner }),
-      }));
     });
   }
 
