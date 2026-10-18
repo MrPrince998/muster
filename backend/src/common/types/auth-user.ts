@@ -5,6 +5,8 @@
  */
 export interface AuthUser {
   id: string;
+  // the session (device) the access token belongs to
+  sessionId: string;
 }
 
 declare global {

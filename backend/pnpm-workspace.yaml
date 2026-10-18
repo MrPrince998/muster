@@ -1,0 +1,4 @@
+allowBuilds:
+  esbuild: true
+  # download analytics from @nestjs/swagger's dependencies; not needed
+  '@scarf/scarf': false

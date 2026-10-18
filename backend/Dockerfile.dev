@@ -4,12 +4,14 @@ WORKDIR /app
 
 RUN corepack enable
 
-COPY package.json ./
-COPY pnpm-lock.yaml ./
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 RUN pnpm install
 
 COPY . .
 
 EXPOSE 5001
 
-CMD ["pnpm", "run", "start:dev"]
+# apply pending migrations (as the owner) before starting the app (as the
+# limited role); a failed migration stops the container instead of starting
+# against an outdated schema
+CMD ["sh", "-c", "pnpm migration:run && pnpm run start:dev"]

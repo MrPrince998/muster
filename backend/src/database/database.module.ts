@@ -1,19 +1,26 @@
-import { Module } from '@nestjs/common';
+import { Global, Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { config } from '../config/config.js';
+import { TenantService } from './tenant.service.js';
 
+// global so every module can inject TenantService without importing this one
+@Global()
 @Module({
   imports: [
     TypeOrmModule.forRoot({
       type: 'postgres',
+      // the limited app role: no DDL, and subject to RLS
       url: config.database.url,
-      // gen_random_uuid() is built into Postgres 13+; avoids needing uuid-ossp
-      uuidExtension: 'pgcrypto',
       // picks up every entity registered via TypeOrmModule.forFeature()
       autoLoadEntities: true,
-      // auto-creates/updates tables from entities; dev only, use migrations in production
-      synchronize: config.env !== 'production',
+      // the schema comes only from migrations (pnpm migration:run), which also
+      // create the RLS policies and database roles that entities cannot express
+      synchronize: false,
+      // the app role cannot create extensions, and none are needed
+      installExtensions: false,
     }),
   ],
+  providers: [TenantService],
+  exports: [TenantService],
 })
 export class DatabaseModule {}

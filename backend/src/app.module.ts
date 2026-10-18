@@ -11,6 +11,7 @@ import { PermissionModule } from './modules/permission/permission.module.js';
 import { EventModule } from './modules/event/event.module.js';
 import { RegistrationModule } from './modules/registration/registration.module.js';
 import { InviteModule } from './modules/invite/invite.module.js';
+import { AuthModule } from './modules/auth/auth.module.js';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { InviteModule } from './modules/invite/invite.module.js';
     InviteModule,
     EventModule,
     RegistrationModule,
+    AuthModule,
   ],
   controllers: [AppController],
   providers: [

@@ -8,6 +8,9 @@ services:
     volumes:
       - ./frontend:/app
       - frontend_node_modules:/app/node_modules
+      # the container's own build cache; sharing frontend/.next with the host
+      # lets two different builds corrupt Turbopack's cache
+      - frontend_next:/app/.next
     environment:
       NEXT_PUBLIC_API_URL: http://localhost:5001
     depends_on:
@@ -49,5 +52,6 @@ services:
 
 volumes:
   frontend_node_modules:
+  frontend_next:
   backend_node_modules:
   postgres_data:
