@@ -13,6 +13,7 @@ import { RegistrationModule } from './modules/registration/registration.module.j
 import { InviteModule } from './modules/invite/invite.module.js';
 import { AuthModule } from './modules/auth/auth.module.js';
 import { SearchModule } from './modules/search/search.module.js';
+import { AnalyticsModule } from './modules/analytics/analytics.module.js';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { SearchModule } from './modules/search/search.module.js';
     RegistrationModule,
     AuthModule,
     SearchModule,
+    AnalyticsModule,
   ],
   controllers: [AppController],
   providers: [

@@ -120,6 +120,7 @@ describe('cross-tenant access through the API', () => {
     ['post', `/clubs/${B.clubId}/invites`, {}],
     ['delete', `/clubs/${B.clubId}/invites/${B.inviteId}`],
     ['get', `/clubs/${B.clubId}/join-requests`],
+    ['get', `/clubs/${B.clubId}/analytics`],
     // a club the attacker runs, with an event (or role) from the other workspace
     ['get', `/clubs/${A.clubId}/events/${B.eventId}`],
     ['patch', `/clubs/${A.clubId}/events/${B.eventId}`, { title: 'Hijacked' }],

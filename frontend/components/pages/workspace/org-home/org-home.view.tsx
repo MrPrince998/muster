@@ -1,6 +1,6 @@
 "use client";
 
-import { CalendarPlus, ShieldCheck, Users } from "lucide-react";
+import { CalendarPlus, ChartColumn, ShieldCheck, Users } from "lucide-react";
 import Link from "next/link";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -26,6 +26,8 @@ export interface OrgHomePermissions {
   viewAttendees: boolean;
   // role.manage or member.remove: the club page has something for you to do
   manageClub: boolean;
+  // analytics.view: the club page's attendance numbers
+  seeAttendance: boolean;
 }
 
 interface OrgHomeViewProps {
@@ -149,6 +151,15 @@ const OrgHomeView = ({
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
+                {can.seeAttendance && (
+                  <Link
+                    href={`/o/${organisation.slug}/clubs/${club.id}?tab=attendance`}
+                    className={cn(buttonVariants({ size: "lg", variant: "outline" }), "h-11")}
+                  >
+                    <ChartColumn aria-hidden />
+                    Attendance
+                  </Link>
+                )}
                 {can.manageClub && (
                   <Link
                     href={`/o/${organisation.slug}/clubs/${club.id}`}

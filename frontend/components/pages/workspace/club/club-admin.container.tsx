@@ -18,7 +18,9 @@ import {
   useTransferClub,
   useUpdateRole,
 } from "../services/club-admin.service";
+import { useClubAttendance } from "../services/analytics.service";
 import { useClubRoles } from "../services/invite.service";
+import { AttendanceTab } from "./parts/attendance-tab";
 import { MembersTab } from "./parts/members-tab";
 import { RolesTab } from "./parts/roles-tab";
 
@@ -72,7 +74,7 @@ export default function ClubAdminContainer() {
   const orgId = organisation.orgId;
   const router = useRouter();
   const pathname = usePathname();
-  const tab = useSearchParams().get("tab") === "roles" ? "roles" : "members";
+  const tabParam = useSearchParams().get("tab");
   const me = useMe();
 
   const members = useClubMembers(club?.id);
@@ -85,6 +87,10 @@ export default function ClubAdminContainer() {
   const updateRole = useUpdateRole(clubId, orgId);
   const moveRole = useMoveRole(clubId, orgId);
   const deleteRole = useDeleteRole(clubId, orgId);
+  const seesAttendance = !!club?.permissions.includes("analytics.view");
+  const attendance = useClubAttendance(club?.id, seesAttendance);
+  // attendance only for those who may see it; anything else lands on members
+  const tab = tabParam === "roles" ? "roles" : tabParam === "attendance" && seesAttendance ? "attendance" : "members";
 
   const back = `/o/${organisation.slug}?club=${clubId}`;
 
@@ -130,7 +136,7 @@ export default function ClubAdminContainer() {
 
       <Tabs
         value={tab}
-        onValueChange={(value) => router.replace(value === "roles" ? `${pathname}?tab=roles` : pathname, { scroll: false })}
+        onValueChange={(value) => router.replace(value === "members" ? pathname : `${pathname}?tab=${value}`, { scroll: false })}
         className="mt-8"
       >
         <TabsList variant="line" className="h-10 gap-4 border-b p-0">
@@ -142,11 +148,24 @@ export default function ClubAdminContainer() {
             Roles
             {roles.data && <span className="text-xs text-muted-foreground tabular-nums">{roles.data.length + 1}</span>}
           </TabsTrigger>
+          {seesAttendance && (
+            <TabsTrigger value="attendance" className="flex-none px-0 text-[15px] data-active:text-cobalt-800">
+              Attendance
+            </TabsTrigger>
+          )}
         </TabsList>
       </Tabs>
 
       <div className="mt-6">
-        {tab === "members" ? (
+        {tab === "attendance" ? (
+          <AttendanceTab
+            data={attendance.data}
+            loading={attendance.isPending}
+            failed={attendance.isError}
+            onRetry={() => attendance.refetch()}
+            eventHref={(eventId) => `/o/${organisation.slug}?club=${clubId}&event=${eventId}`}
+          />
+        ) : tab === "members" ? (
           <MembersTab
             clubName={club.name}
             isDefault={club.isDefault}

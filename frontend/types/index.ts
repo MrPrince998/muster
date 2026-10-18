@@ -7,3 +7,4 @@ export * from "./invite.interface";
 export * from "./ticket.interface";
 export * from "./search.interface";
 export * from "./public.interface";
+export * from "./analytics.interface";

@@ -176,6 +176,7 @@ export default function OrgHomeContainer() {
         viewAttendees: has("registration.view"),
         scanTickets: has("checkin.scan"),
         manageClub: has("role.manage") || has("member.remove"),
+        seeAttendance: has("analytics.view"),
       }}
       tab={tab}
       onTabChange={setTab}
