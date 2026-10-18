@@ -38,7 +38,7 @@ const permissionList = ALL_PERMISSIONS.map((p) => `'${p}'`).join(', ');
 // same club (and workspace) as the membership it is assigned to
 @Unique('roles_id_club_id_org_id_key', ['id', 'clubId', 'orgId'])
 export class Role {
-  @PrimaryGeneratedColumn('uuid')
+  @PrimaryGeneratedColumn('uuid', { primaryKeyConstraintName: 'roles_pkey' })
   id: string;
 
   @Column({ name: 'org_id', type: 'uuid' })

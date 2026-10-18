@@ -40,7 +40,7 @@ import { User } from '../../user/entities/user.entity.js';
 // target for join_requests' foreign key
 @Unique('invites_id_club_id_org_id_key', ['id', 'clubId', 'orgId'])
 export class Invite {
-  @PrimaryGeneratedColumn('uuid')
+  @PrimaryGeneratedColumn('uuid', { primaryKeyConstraintName: 'invites_pkey' })
   id: string;
 
   @Column({ name: 'org_id', type: 'uuid' })

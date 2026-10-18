@@ -36,7 +36,7 @@ import { Organisation } from '../../organisation/entities/organisation.entity.js
 // at most one default club per workspace
 @Index('clubs_one_default', ['orgId'], { unique: true, where: `"is_default"` })
 export class Club {
-  @PrimaryGeneratedColumn('uuid')
+  @PrimaryGeneratedColumn('uuid', { primaryKeyConstraintName: 'clubs_pkey' })
   id: string;
 
   @Column({ name: 'org_id', type: 'uuid' })

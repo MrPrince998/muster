@@ -23,6 +23,8 @@ export const OrgRole = {
   Owner: 'owner',
   // manages the workspace: settings, clubs, members
   Admin: 'admin',
+  // keeps the door: approves join requests and removes members
+  Moderator: 'moderator',
   // belongs to the workspace and can join its clubs
   Member: 'member',
 } as const;
@@ -36,17 +38,17 @@ export type OrgRole = (typeof OrgRole)[keyof typeof OrgRole];
  * and the API addresses a membership as /orgs/:orgId/members/:userId.
  */
 @Entity('org_members')
-@Check('org_members_role', `"role" IN ('owner', 'admin', 'member')`)
+@Check('org_members_role', `"role" IN ('owner', 'admin', 'moderator', 'member')`)
 // at most one owner per workspace, enforced by the database so two concurrent
 // ownership transfers can never leave a workspace with two owners
 @Index('org_members_one_owner', ['orgId'], { unique: true, where: `"role" = 'owner'` })
 export class OrgMember {
-  @PrimaryColumn({ name: 'org_id', type: 'uuid' })
+  @PrimaryColumn({ name: 'org_id', type: 'uuid', primaryKeyConstraintName: 'org_members_pkey' })
   orgId: string;
 
   // the PK starts with org_id, so "which workspaces is this user in" needs its own index
   @Index('org_members_user_id_idx')
-  @PrimaryColumn({ name: 'user_id', type: 'uuid' })
+  @PrimaryColumn({ name: 'user_id', type: 'uuid', primaryKeyConstraintName: 'org_members_pkey' })
   userId: string;
 
   @Column({ type: 'varchar', length: 20, default: OrgRole.Member })

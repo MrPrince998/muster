@@ -26,13 +26,13 @@ import { Role } from './role.entity.js';
 // "who holds this role" and the cascade when a role is deleted
 @Index('member_roles_role_id_idx', ['roleId'])
 export class MemberRole {
-  @PrimaryColumn({ name: 'club_id', type: 'uuid' })
+  @PrimaryColumn({ name: 'club_id', type: 'uuid', primaryKeyConstraintName: 'member_roles_pkey' })
   clubId: string;
 
-  @PrimaryColumn({ name: 'user_id', type: 'uuid' })
+  @PrimaryColumn({ name: 'user_id', type: 'uuid', primaryKeyConstraintName: 'member_roles_pkey' })
   userId: string;
 
-  @PrimaryColumn({ name: 'role_id', type: 'uuid' })
+  @PrimaryColumn({ name: 'role_id', type: 'uuid', primaryKeyConstraintName: 'member_roles_pkey' })
   roleId: string;
 
   @Column({ name: 'org_id', type: 'uuid' })

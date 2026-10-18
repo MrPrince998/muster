@@ -44,7 +44,7 @@ export type JoinRequestStatus = (typeof JoinRequestStatus)[keyof typeof JoinRequ
 // "my requests"
 @Index('join_requests_user_id_idx', ['userId'])
 export class JoinRequest {
-  @PrimaryGeneratedColumn('uuid')
+  @PrimaryGeneratedColumn('uuid', { primaryKeyConstraintName: 'join_requests_pkey' })
   id: string;
 
   @Column({ name: 'org_id', type: 'uuid' })

@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
-import { DataSource, type EntityManager } from 'typeorm';
+import type { EntityManager } from 'typeorm';
+import { TenantService } from '../../database/tenant.service.js';
 import { ClubAccess } from './club-access.js';
 import type { Permission } from './permissions.js';
 
@@ -11,19 +12,31 @@ interface ClubAccessRow {
 
 @Injectable()
 export class PermissionService {
-  constructor(private readonly dataSource: DataSource) {}
+  constructor(private readonly tenant: TenantService) {}
 
   /**
-   * Resolves a user's access in a club in one query. Returns null if they are
-   * not a member of the club.
+   * Resolves a user's access in a club. Returns null if the club does not
+   * exist or they are not a member of it.
    *
-   * Pass the request's transaction manager once withTenant() exists, so the
-   * lookup runs under the tenant's RLS context.
+   * Pass a manager when already inside withTenant() to reuse that transaction;
+   * otherwise the club's org is looked up and a tenant transaction opened.
    */
   async getClubAccess(
     clubId: string,
     userId: string,
-    manager: EntityManager = this.dataSource.manager,
+    manager?: EntityManager,
+  ): Promise<ClubAccess | null> {
+    if (manager) return this.queryClubAccess(manager, clubId, userId);
+
+    const orgId = await this.tenant.orgIdForClub(clubId);
+    if (!orgId) return null;
+    return this.tenant.withTenant(orgId, (m) => this.queryClubAccess(m, clubId, userId));
+  }
+
+  private async queryClubAccess(
+    manager: EntityManager,
+    clubId: string,
+    userId: string,
   ): Promise<ClubAccess | null> {
     // Starts from club_members so a member with no roles still gets a row
     // (empty permissions), while a non-member gets none. unnest flattens every

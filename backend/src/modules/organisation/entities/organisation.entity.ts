@@ -18,7 +18,9 @@ import {
 export const JoinPolicy = {
   // only through an invite link (default)
   Invite: 'invite',
-  // anyone with an account can join
+  // anyone can ask to join; a moderator or above approves or rejects
+  Request: 'request',
+  // anyone with an account can join instantly
   Open: 'open',
 } as const;
 export type JoinPolicy = (typeof JoinPolicy)[keyof typeof JoinPolicy];
@@ -34,9 +36,9 @@ export type JoinPolicy = (typeof JoinPolicy)[keyof typeof JoinPolicy];
 @Entity('organisations')
 // lowercase letters, digits and single hyphens, no leading/trailing hyphen
 @Check('organisations_slug_format', `"slug" ~ '^[a-z0-9]+(-[a-z0-9]+)*$'`)
-@Check('organisations_join_policy', `"join_policy" IN ('invite', 'open')`)
+@Check('organisations_join_policy', `"join_policy" IN ('invite', 'request', 'open')`)
 export class Organisation {
-  @PrimaryGeneratedColumn('uuid')
+  @PrimaryGeneratedColumn('uuid', { primaryKeyConstraintName: 'organisations_pkey' })
   id: string;
 
   @Column({ type: 'varchar', length: 100 })

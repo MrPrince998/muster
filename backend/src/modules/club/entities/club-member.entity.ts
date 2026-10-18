@@ -30,10 +30,10 @@ import { Club } from './club.entity.js';
 // org_members all look up by (org_id, user_id)
 @Index('club_members_org_id_user_id_idx', ['orgId', 'userId'])
 export class ClubMember {
-  @PrimaryColumn({ name: 'club_id', type: 'uuid' })
+  @PrimaryColumn({ name: 'club_id', type: 'uuid', primaryKeyConstraintName: 'club_members_pkey' })
   clubId: string;
 
-  @PrimaryColumn({ name: 'user_id', type: 'uuid' })
+  @PrimaryColumn({ name: 'user_id', type: 'uuid', primaryKeyConstraintName: 'club_members_pkey' })
   userId: string;
 
   @Column({ name: 'org_id', type: 'uuid' })

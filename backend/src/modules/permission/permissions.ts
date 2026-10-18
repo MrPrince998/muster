@@ -22,6 +22,9 @@ export type Permission = (typeof Permission)[keyof typeof Permission];
 
 export const ALL_PERMISSIONS: readonly Permission[] = Object.values(Permission);
 
+// the Owner role always outranks every other role
+export const OWNER_ROLE_POSITION = 100;
+
 /**
  * Roles every new club starts with (README: "Roles and permissions"). Owners
  * can edit or extend them. Position: higher outranks lower.
