@@ -5,6 +5,7 @@ import { TenantService } from '../../database/tenant.service.js';
 import { EmailService, type EventRecipient } from '../email/email.service.js';
 import { formatWhen } from '../email/format-when.js';
 import type { ClubAccess } from '../permission/club-access.js';
+import { WaitlistService } from '../waitlist/waitlist.service.js';
 import { Permission } from '../permission/permissions.js';
 import type {
   CancelEventDto,
@@ -38,6 +39,8 @@ interface EventRow {
   registered_count: number;
   attended_count: number;
   youre_going: boolean;
+  waitlist_count: number;
+  waitlist_position: number | null;
 }
 
 // Every event read goes through this, so counts and "am I going" are always
@@ -52,7 +55,13 @@ const SELECT_EVENTS = `
     (SELECT count(*) FROM registrations r
       WHERE r.event_id = e.id AND r.checked_in_at IS NOT NULL)::int     AS attended_count,
     EXISTS (SELECT 1 FROM registrations r
-      WHERE r.event_id = e.id AND r.user_id = $2 AND r.cancelled_at IS NULL) AS youre_going
+      WHERE r.event_id = e.id AND r.user_id = $2 AND r.cancelled_at IS NULL) AS youre_going,
+    (SELECT count(*) FROM waitlist_entries w
+      WHERE w.event_id = e.id AND w.promoted_at IS NULL)::int           AS waitlist_count,
+    (SELECT (SELECT count(*) FROM waitlist_entries o
+               WHERE o.event_id = w.event_id AND o.promoted_at IS NULL AND o.created_at <= w.created_at)::int
+       FROM waitlist_entries w
+      WHERE w.event_id = e.id AND w.user_id = $2 AND w.promoted_at IS NULL) AS waitlist_position
   FROM events e
   WHERE e.club_id = $1`;
 
@@ -69,6 +78,7 @@ export class EventService {
   constructor(
     private readonly tenant: TenantService,
     private readonly email: EmailService,
+    private readonly waitlist: WaitlistService,
   ) {}
 
   /**
@@ -143,7 +153,7 @@ export class EventService {
    * place on a published event is emailed to everyone registered.
    */
   async update(access: ClubAccess, eventId: string, dto: UpdateEventDto): Promise<EventDto> {
-    const { event, notify } = await this.inClub(access, async (m) => {
+    const { event, notify, orgId, morePlaces } = await this.inClub(access, async (m, orgId) => {
       // locked, so a registration can't slip in between the capacity check and the update
       const event = await this.lockForManage(m, access, eventId);
       if (event.status === EventStatus.Cancelled) {
@@ -211,8 +221,18 @@ export class EventService {
               },
             }
           : null;
-      return { event: await this.findOne(m, access, eventId), notify };
+      // more room (a higher or no limit, or registration open again): the waitlist goes first
+      const morePlaces =
+        (event.capacity !== null && (capacity === null || capacity > event.capacity)) ||
+        (event.registration_closed_at !== null && closedAt === null);
+      return { event: await this.findOne(m, access, eventId), notify, orgId, morePlaces };
     });
+    let result = event;
+    if (morePlaces) {
+      await this.waitlist.promote(orgId, eventId);
+      // places were just handed out: the counts have moved
+      result = await this.inClub(access, (m) => this.findOne(m, access, eventId));
+    }
 
     if (notify && notify.recipients.length > 0) {
       this.email.inBackground(
@@ -229,7 +249,7 @@ export class EventService {
         }),
       );
     }
-    return event;
+    return result;
   }
 
   /**
@@ -256,7 +276,7 @@ export class EventService {
       );
       return {
         event: await this.findOne(m, access, eventId),
-        recipients: await this.recipients(m, eventId),
+        recipients: [...(await this.recipients(m, eventId)), ...(await this.waiting(m, eventId))],
         club: await this.clubDetails(m, access.clubId),
         when: formatWhen(event.starts_at, event.ends_at),
       };
@@ -359,6 +379,16 @@ export class EventService {
     return rows.map((r) => ({ registrationId: r.id, to: r.email, name: r.name }));
   }
 
+  // the people on the waitlist (their entry id keys the email, as a registration's would)
+  private async waiting(m: EntityManager, eventId: string): Promise<EventRecipient[]> {
+    const rows: { id: string; email: string; name: string }[] = await m.query(
+      `SELECT w.id, u.email, u.name FROM waitlist_entries w JOIN users u ON u.id = w.user_id
+       WHERE w.event_id = $1 AND w.promoted_at IS NULL ORDER BY w.created_at`,
+      [eventId],
+    );
+    return rows.map((r) => ({ registrationId: r.id, to: r.email, name: r.name }));
+  }
+
   private async clubDetails(m: EntityManager, clubId: string): Promise<{ name: string; orgSlug: string }> {
     const [row]: { name: string; slug: string }[] = await m.query(
       `SELECT c.name, o.slug FROM clubs c JOIN organisations o ON o.id = c.org_id WHERE c.id = $1`,
@@ -401,6 +431,8 @@ export class EventService {
       registeredCount: row.registered_count ?? 0,
       attendedCount: row.attended_count ?? 0,
       youreGoing: row.youre_going ?? false,
+      waitlistCount: row.waitlist_count ?? 0,
+      yourWaitlistPosition: row.waitlist_position ?? null,
       canManage: canManage(access, row.created_by),
     };
   }

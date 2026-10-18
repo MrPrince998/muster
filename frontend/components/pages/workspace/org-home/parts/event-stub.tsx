@@ -86,6 +86,9 @@ export function EventStub({
               {!draft && !cancelled && !past && !event.registrationOpen && <Tag tone="muted">Registration closed</Tag>}
               {!draft && !cancelled && event.visibility === "public" && <Tag tone="muted">Open to guests</Tag>}
               {!cancelled && !past && event.youreGoing && <Tag tone="cobalt">You&rsquo;re going</Tag>}
+              {!cancelled && !past && event.yourWaitlistPosition !== null && (
+                <Tag tone="muted">Waitlist, number {event.yourWaitlistPosition}</Tag>
+              )}
               {!cancelled && past && event.youreGoing && <Tag tone="muted">You went</Tag>}
             </div>
           </div>
@@ -146,7 +149,12 @@ function Capacity({
     <div className="w-full shrink-0 sm:w-36 sm:text-right">
       <p className="text-sm">
         {full ? (
-          <span className="font-semibold text-stamp">Full</span>
+          <span className="font-semibold text-stamp">
+            Full
+            {event.waitlistCount > 0 && (
+              <span className="font-normal text-muted-foreground">, {event.waitlistCount} waiting</span>
+            )}
+          </span>
         ) : (
           <>
             <span className="font-semibold">{event.registeredCount}</span>

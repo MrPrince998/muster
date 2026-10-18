@@ -10,7 +10,8 @@ import type { MyRegistrationDto } from '../event/dto/event.dto.js';
 import { EventStatus } from '../event/entities/event.entity.js';
 import type { ClubAccess } from '../permission/club-access.js';
 import type { CheckInResultDto, TicketDto, TicketWithCodeDto } from './dto/ticket.dto.js';
-import { TicketService } from './ticket.service.js';
+import { TicketService } from '../ticket/ticket.service.js';
+import { WaitlistService, waitingCount } from '../waitlist/waitlist.service.js';
 
 const ticketNotFound = () => HttpError.notFound("You don't have a ticket for this event", 'TICKET_NOT_FOUND');
 
@@ -116,6 +117,10 @@ export async function takePlace(
       throw HttpError.conflict('This event is full', 'EVENT_FULL');
     }
   }
+  // a place freed while people are waiting is theirs: no jumping the queue
+  if ((await waitingCount(m, place.eventId)) > 0) {
+    throw HttpError.conflict('This event is full', 'EVENT_FULL');
+  }
 
   const [row]: { id: string; event_id: string; created_at: Date }[] = await m.query(
     `INSERT INTO registrations (org_id, event_id, user_id)
@@ -135,6 +140,7 @@ export class RegistrationService {
     private readonly tenant: TenantService,
     private readonly tickets: TicketService,
     private readonly email: EmailService,
+    private readonly waitlist: WaitlistService,
   ) {}
 
   /**
@@ -166,8 +172,8 @@ export class RegistrationService {
   }
 
   /** Gives your place back. Not possible once you've been checked in. */
-  cancel(access: ClubAccess, eventId: string): Promise<void> {
-    return this.events.inClub(access, async (m) => {
+  async cancel(access: ClubAccess, eventId: string): Promise<void> {
+    const orgId = await this.events.inClub(access, async (m, orgId) => {
       const [rows]: [{ checked_in_at: Date | null }[], number] = await m.query(
         `UPDATE registrations r SET cancelled_at = now()
          FROM events e
@@ -176,7 +182,7 @@ export class RegistrationService {
          RETURNING r.id`,
         [eventId, access.userId, access.clubId],
       );
-      if (rows.length > 0) return;
+      if (rows.length > 0) return orgId;
 
       // nothing cancelled: say why
       const existing: { checked_in_at: Date | null }[] = await m.query(
@@ -189,6 +195,8 @@ export class RegistrationService {
       }
       throw HttpError.notFound("You're not registered for this event", 'REGISTRATION_NOT_FOUND');
     });
+    // the freed place goes to whoever has waited longest
+    await this.waitlist.promote(orgId, eventId);
   }
 
   // --- tickets ---------------------------------------------------------------------

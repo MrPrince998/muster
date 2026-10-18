@@ -119,17 +119,15 @@ describe('asking for a place', () => {
       .expect(401);
   });
 
-  it('a full event says so before any email goes out', async () => {
+  it('a full event offers its waitlist instead of a place', async () => {
     await ask(ev.tiny, 'Hal').then((r) => expect(r.status).toBe(202));
     await confirm(ev.tiny, confirmToken(guestEmail('hal'))).expect(200);
-    // the ticket email goes out in the background: let it land before counting
-    await vi.waitFor(() => expect(t.mail.sent.some((e) => e.to === guestEmail('hal') && e.subject.startsWith('Your ticket'))).toBe(true));
-    const sentBefore = t.mail.sent.length;
-    expect((await ask(ev.tiny, 'Ivy')).body.code).toBe('EVENT_FULL');
-    expect(t.mail.sent.length).toBe(sentBefore);
+    await ask(ev.tiny, 'Ivy').then((r) => expect(r.status).toBe(202));
+    const offer = t.mail.sent.filter((e) => e.to === guestEmail('ivy')).at(-1)!;
+    expect(offer.subject).toBe('Join the waitlist: Tiny Talk');
   });
 
-  it('only one of two guests racing for the last place gets it', async () => {
+  it('two guests racing for the last place: one gets it, the other waits first in line', async () => {
     const tiny2 = (
       await t
         .api()
@@ -144,7 +142,11 @@ describe('asking for a place', () => {
       confirm(tiny2, confirmToken(guestEmail('jo'))),
       confirm(tiny2, confirmToken(guestEmail('kim'))),
     ]);
-    expect(results.map((r) => r.status).sort()).toEqual([200, 409]);
+    // both confirmations succeed: one gets the place, the other is first in the queue
+    expect(results.map((r) => r.status)).toEqual([200, 200]);
+    const bodies = results.map((r) => r.body);
+    expect(bodies.filter((b) => b.ticketToken)).toHaveLength(1);
+    expect(bodies.filter((b) => b.waitlistPosition === 1)).toHaveLength(1);
     expect(await placesLeft(tiny2)).toBe(0);
   });
 });

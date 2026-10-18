@@ -140,6 +140,12 @@ export class EventDto {
   @ApiProperty({ description: 'Whether you hold an active registration' })
   youreGoing: boolean;
 
+  @ApiProperty({ description: 'People waiting for a place' })
+  waitlistCount: number;
+
+  @ApiPropertyOptional({ type: Number, nullable: true, description: 'Your place on the waitlist, from 1; null if not waiting' })
+  yourWaitlistPosition: number | null;
+
   @ApiProperty({ description: 'Whether you may edit it (event.manage_any, or event.manage_own as its creator)' })
   canManage: boolean;
 }

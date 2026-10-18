@@ -17,7 +17,9 @@ export class PublicEventDto {
   @ApiProperty({ description: 'Over already' }) ended: boolean;
   @ApiProperty({ description: 'Taking registrations (closing them early keeps the event running)' })
   registrationOpen: boolean;
-  @ApiPropertyOptional({ type: Number, nullable: true, description: 'null: no limit' }) placesLeft: number | null;
+  @ApiPropertyOptional({ type: Number, nullable: true, description: 'null: no limit; 0 while anyone is waiting' })
+  placesLeft: number | null;
+  @ApiProperty({ description: 'People waiting for a place' }) waitlistCount: number;
   @ApiProperty() clubName: string;
   @ApiProperty() workspaceName: string;
 }
@@ -44,7 +46,11 @@ export class ConfirmGuestPlaceDto {
   token: string;
 }
 
+/** Either a ticket, or (the event being full) a place in the queue. */
 export class GuestPlaceResultDto {
-  @ApiProperty({ description: 'The signed ticket; also the key to its page, /t/{ticketToken}' })
-  ticketToken: string;
+  @ApiPropertyOptional({ description: 'The signed ticket; also the key to its page, /t/{ticketToken}' })
+  ticketToken?: string;
+
+  @ApiPropertyOptional({ description: 'Full: their place on the waitlist, from 1' })
+  waitlistPosition?: number;
 }

@@ -23,6 +23,7 @@ const TENANT_TABLES = [
   'org_join_requests',
   'events',
   'registrations',
+  'waitlist_entries',
 ];
 
 const id = () => randomUUID();
@@ -77,6 +78,11 @@ async function seed(t: typeof A, name: string) {
     [t.event, t.org, t.club],
   );
   await owner.query(`INSERT INTO registrations (org_id, event_id, user_id) VALUES ($1, $2, $3)`, [
+    t.org,
+    t.event,
+    t.user,
+  ]);
+  await owner.query(`INSERT INTO waitlist_entries (org_id, event_id, user_id) VALUES ($1, $2, $3)`, [
     t.org,
     t.event,
     t.user,

@@ -9,7 +9,8 @@ import { normalizeEmail } from '../user/entities/user.entity.js';
 import type { GuestPlaceResultDto, PublicEventDto } from './dto/public.dto.js';
 import type { TicketWithCodeDto } from './dto/ticket.dto.js';
 import { takePlace, toTicket, type TicketRow } from './registration.service.js';
-import { TicketService } from './ticket.service.js';
+import { TicketService } from '../ticket/ticket.service.js';
+import { freePlaces, lockEvent, waitingCount, WaitlistService } from '../waitlist/waitlist.service.js';
 
 const ticketNotFound = () =>
   HttpError.notFound('This ticket was cancelled, or the link is wrong', 'TICKET_NOT_FOUND');
@@ -29,6 +30,7 @@ interface PublicEventRow {
   registration_closed_at: Date | null;
   capacity: number | null;
   registered: number;
+  waiting: number;
   club_name: string;
   org_name: string;
 }
@@ -38,6 +40,7 @@ const SELECT_PUBLIC_EVENT = `
   SELECT e.id, e.title, e.description, e.location, e.starts_at, e.ends_at, e.status, e.cancel_reason,
          e.ends_at <= now() AS ended, e.registration_closed_at, e.capacity,
          (SELECT count(*) FROM registrations r WHERE r.event_id = e.id AND r.cancelled_at IS NULL)::int AS registered,
+         (SELECT count(*) FROM waitlist_entries w WHERE w.event_id = e.id AND w.promoted_at IS NULL)::int AS waiting,
          c.name AS club_name, o.name AS org_name
   FROM events e
   JOIN clubs c ON c.id = e.club_id
@@ -71,6 +74,7 @@ export class GuestService {
     private readonly tenant: TenantService,
     private readonly tickets: TicketService,
     private readonly email: EmailService,
+    private readonly waitlist: WaitlistService,
   ) {}
 
   /** A public event's page. Drafts and members-only events are "not found". */
@@ -86,6 +90,8 @@ export class GuestService {
   async requestPlace(eventId: string, guest: { name: string; email: string }): Promise<void> {
     const event = await this.inEvent(eventId, (m) => this.publicEvent(m, eventId));
     assertTakingPlaces(event);
+    // full (or people already waiting): the link joins the waitlist instead
+    const full = (event.capacity !== null && event.registered >= event.capacity) || event.waiting > 0;
     const email = normalizeEmail(guest.email);
     const token = await this.tickets.signGuestConfirmation({ eventId, email, name: guest.name });
     this.email.inBackground(
@@ -98,6 +104,7 @@ export class GuestService {
         eventTitle: event.title,
         clubName: event.club_name,
         when: formatWhen(event.starts_at, event.ends_at),
+        waitlist: full,
       }),
     );
   }
@@ -110,13 +117,28 @@ export class GuestService {
     const claims = await this.tickets.verifyGuestConfirmation(token);
     if (!claims || claims.eventId !== eventId) throw badLink();
 
-    const { ticket, isNew } = await this.inEvent(eventId, async (m, orgId) => {
+    const outcome = await this.inEvent(eventId, async (m, orgId) => {
       const userId = await this.guestUser(m, claims.email, claims.name);
+      // locked here and again in takePlace (same transaction): nothing slips in between
+      const event = await lockEvent(m, eventId);
+      const already: { id: string }[] = await m.query(
+        `SELECT id FROM registrations WHERE event_id = $1 AND user_id = $2 AND cancelled_at IS NULL`,
+        [eventId, userId],
+      );
+      const full =
+        !!event &&
+        already.length === 0 &&
+        ((await freePlaces(m, eventId, event.capacity)) === 0 || (await waitingCount(m, eventId)) > 0);
+      if (full && event.visibility === 'public' && event.status === 'published' && event.ends_at > new Date() && event.registration_closed_at === null) {
+        return { waitlistPosition: await this.waitlist.join(m, { orgId, eventId, userId }) };
+      }
       const place = await takePlace(m, { orgId, eventId, userId, publicOnly: true, alreadyOk: true });
       const [row]: (TicketRow & { email: string })[] = await m.query(SELECT_TICKET, [place.id, eventId]);
       return { ticket: row, isNew: place.isNew };
     });
 
+    if ('waitlistPosition' in outcome) return { waitlistPosition: outcome.waitlistPosition };
+    const { ticket, isNew } = outcome;
     const ticketToken = await this.tickets.sign(ticket.registration_id, eventId, ticket.ends_at);
     if (isNew) this.email.inBackground('ticket', this.emailTicket(ticket, ticketToken));
     return { ticketToken };
@@ -142,6 +164,7 @@ export class GuestService {
   async cancelTicket(token: string): Promise<void> {
     const ids = await this.tickets.verify(token);
     if (!ids) throw ticketNotFound();
+    const orgId = await this.tenant.orgIdForEvent(ids.eventId);
     await this.inEvent(
       ids.eventId,
       async (m) => {
@@ -163,6 +186,8 @@ export class GuestService {
       },
       ticketNotFound,
     );
+    // the freed place goes to whoever has waited longest
+    if (orgId) await this.waitlist.promote(orgId, ids.eventId);
   }
 
   // --- helpers ---------------------------------------------------------------
@@ -222,7 +247,9 @@ function toPublicEvent(row: PublicEventRow): PublicEventDto {
     cancelReason: row.cancel_reason,
     ended: row.ended,
     registrationOpen: row.registration_closed_at === null,
-    placesLeft: row.capacity === null ? null : Math.max(0, row.capacity - row.registered),
+    // while people are waiting, a free place is theirs, not the public's
+    placesLeft: row.capacity === null ? null : row.waiting > 0 ? 0 : Math.max(0, row.capacity - row.registered),
+    waitlistCount: row.waiting,
     clubName: row.club_name,
     workspaceName: row.org_name,
   };
@@ -236,8 +263,5 @@ function assertTakingPlaces(event: PublicEventRow): void {
   if (event.ended) throw HttpError.conflict('This event has ended', 'EVENT_ENDED');
   if (event.registration_closed_at !== null) {
     throw HttpError.conflict('Registration for this event is closed', 'REGISTRATION_CLOSED');
-  }
-  if (event.capacity !== null && event.registered >= event.capacity) {
-    throw HttpError.conflict('This event is full', 'EVENT_FULL');
   }
 }

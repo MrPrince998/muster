@@ -50,6 +50,10 @@ const SECTIONS: { title: string; answers: Answer[] }[] = [
         a: "Yes, until you've been checked in: open the event and choose Cancel my place, so someone else can have it.",
       },
       {
+        q: "The event is full. Can I still go?",
+        a: "Join the waitlist on the event. When someone gives their place back, it goes to whoever has waited longest, and their ticket arrives by email straight away.",
+      },
+      {
         q: "Will I get a reminder?",
         a: "Yes: an email the day before, with your ticket attached. If you registered within that last day, your ticket email is your reminder.",
       },

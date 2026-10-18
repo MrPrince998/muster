@@ -1,6 +1,6 @@
 import { useApiMutation } from "@/lib/api/useApiMutation";
 import { useApiQuery } from "@/lib/api/useApiQuery";
-import type { GuestPlaceInput, PublicEvent, TicketWithCode } from "@/types";
+import type { GuestPlaceInput, GuestPlaceResult, PublicEvent, TicketWithCode } from "@/types";
 
 const eventKey = (eventId: string) => ["public", "events", eventId];
 const ticketKey = (token: string) => ["public", "tickets", token];
@@ -16,9 +16,12 @@ export const useRequestPlace = (eventId: string) =>
     { invalidates: [eventKey(eventId)] },
   );
 
-/** Uses the emailed link: takes the place and returns the ticket's token. INVALID_TOKEN for a bad or old link. */
+/**
+ * Uses the emailed link: takes the place and returns the ticket's token, or
+ * (full) joins the waitlist and returns the position. INVALID_TOKEN for a bad or old link.
+ */
 export const useConfirmPlace = (eventId: string) =>
-  useApiMutation<{ ticketToken: string }, { token: string }>(
+  useApiMutation<GuestPlaceResult, { token: string }>(
     { method: "post", url: `/public/events/${eventId}/places/confirm` },
     { invalidates: [eventKey(eventId)] },
   );

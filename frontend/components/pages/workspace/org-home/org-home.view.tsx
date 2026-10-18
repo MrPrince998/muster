@@ -48,6 +48,8 @@ interface OrgHomeViewProps {
     | "error"
     | "onRegister"
     | "onCancel"
+    | "onJoinWaitlist"
+    | "onLeaveWaitlist"
     | "onPublish"
     | "onEdit"
     | "onToggleRegistration"

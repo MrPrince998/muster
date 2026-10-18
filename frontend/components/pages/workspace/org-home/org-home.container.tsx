@@ -11,6 +11,8 @@ import {
   useClubEvents,
   useDeleteEvent,
   useEventAttendees,
+  useJoinWaitlist,
+  useLeaveWaitlist,
   usePublishEvent,
   useRegister,
   useUpdateEvent,
@@ -35,6 +37,10 @@ function actionMessage(code: string): string {
       return "You weren't registered for this event.";
     case "EVENT_NOT_DRAFT":
       return "This event is already published. Cancel it instead.";
+    case "PLACES_AVAILABLE":
+      return "A place has just opened up: register instead.";
+    case "NOT_WAITLISTED":
+      return "You weren't on the waitlist.";
     case "REGISTRATION_CLOSED":
       return "Registration for this event has just closed.";
     case "EVENT_ALREADY_CANCELLED":
@@ -91,6 +97,8 @@ export default function OrgHomeContainer() {
 
   const register = useRegister(club?.id ?? "");
   const cancel = useCancelRegistration(club?.id ?? "");
+  const joinWaitlist = useJoinWaitlist(club?.id ?? "");
+  const leaveWaitlist = useLeaveWaitlist(club?.id ?? "");
   const publish = usePublishEvent(club?.id ?? "", orgId ?? "");
   const update = useUpdateEvent(club?.id ?? "", orgId ?? "");
   const cancelEvent = useCancelEvent(club?.id ?? "", orgId ?? "");
@@ -194,6 +202,9 @@ export default function OrgHomeContainer() {
         error: actionError,
         onRegister: () => openEvent && run("register", () => register.mutateAsync({ eventId: openEvent.id })),
         onCancel: () => openEvent && run("cancel", () => cancel.mutateAsync({ eventId: openEvent.id })),
+        onJoinWaitlist: () => openEvent && run("waitlist", () => joinWaitlist.mutateAsync({ eventId: openEvent.id })),
+        onLeaveWaitlist: () =>
+          openEvent && run("leave-waitlist", () => leaveWaitlist.mutateAsync({ eventId: openEvent.id })),
         onPublish: () =>
           openEvent &&
           run("publish", async () => {

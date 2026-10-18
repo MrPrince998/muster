@@ -81,6 +81,19 @@ export const useRegister = (clubId: string) =>
     { invalidates: [eventsKey(clubId)] },
   );
 
+/** Joins a full event's waitlist; your position comes back. PLACES_AVAILABLE if you could just register. */
+export const useJoinWaitlist = (clubId: string) =>
+  useApiMutation<{ position: number }, { eventId: string }>(
+    ({ eventId }) => ({ method: "post", url: `/clubs/${clubId}/events/${eventId}/waitlist` }),
+    { invalidates: [eventsKey(clubId)] },
+  );
+
+export const useLeaveWaitlist = (clubId: string) =>
+  useApiMutation<void, { eventId: string }>(
+    ({ eventId }) => ({ method: "delete", url: `/clubs/${clubId}/events/${eventId}/waitlist` }),
+    { invalidates: [eventsKey(clubId)] },
+  );
+
 /** Gives your place back. Fails with ALREADY_CHECKED_IN once you've been scanned in. */
 export const useCancelRegistration = (clubId: string) =>
   useApiMutation<void, { eventId: string }>(

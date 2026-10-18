@@ -5,7 +5,8 @@ import type { EventService } from '../event/event.service.js';
 import { ClubAccess } from '../permission/club-access.js';
 import { Permission } from '../permission/permissions.js';
 import { RegistrationService } from './registration.service.js';
-import type { TicketService } from './ticket.service.js';
+import type { TicketService } from '../ticket/ticket.service.js';
+import type { WaitlistService } from '../waitlist/waitlist.service.js';
 
 const scanner = new ClubAccess('club1', 'u-scanner', false, 20, [Permission.CheckinScan]);
 const counts = [{ registered: 10, attended: 4 }];
@@ -30,6 +31,7 @@ function setup(answers: [fragment: string, answer: unknown][], ticket: { registr
     {} as TenantService,
     tickets as unknown as TicketService,
     {} as EmailService,
+    {} as WaitlistService,
   );
   return { service, ran: (fragment: string) => calls.filter((c) => c.sql.includes(fragment)) };
 }

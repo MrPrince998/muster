@@ -1,6 +1,6 @@
 "use client";
 
-import { CircleAlert, LoaderCircle } from "lucide-react";
+import { CircleAlert, Hourglass, LoaderCircle } from "lucide-react";
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
@@ -31,6 +31,8 @@ export default function ConfirmPlaceContainer() {
   const router = useRouter();
   const confirm = useConfirmPlace(eventId);
   const [failure, setFailure] = useState<string | null>(token ? null : "INVALID_TOKEN");
+  // the event was full: they're in the queue instead
+  const [waiting, setWaiting] = useState<number | null>(null);
   // confirm once per page load, even if React runs the effect twice
   const started = useRef(false);
 
@@ -38,10 +40,31 @@ export default function ConfirmPlaceContainer() {
     if (!token || started.current) return;
     started.current = true;
     confirm.mutateAsync({ token }).then(
-      ({ ticketToken }) => router.replace(`/t/${ticketToken}`),
+      (result) => ("ticketToken" in result ? router.replace(`/t/${result.ticketToken}`) : setWaiting(result.waitlistPosition)),
       (error: unknown) => setFailure(asApiError(error).code),
     );
   }, [token, confirm, router]);
+
+  if (waiting !== null) {
+    return (
+      <div className="mx-auto max-w-md px-5 py-16" role="status">
+        <span className="grid size-12 place-items-center rounded-full bg-cobalt-50 text-cobalt">
+          <Hourglass className="size-6" aria-hidden />
+        </span>
+        <h1 className="mt-4 text-5xl leading-none font-extrabold font-stretch-70%">You&rsquo;re on the waitlist</h1>
+        <p className="mt-3 text-lg">
+          {waiting === 1 ? "You're next in line." : `You're number ${waiting} in line.`}
+        </p>
+        <p className="mt-2 text-muted-foreground">
+          The event is full. If a place opens up, it goes to whoever has waited longest, and your ticket arrives by
+          email. Nothing to do until then.
+        </p>
+        <Link href={`/e/${eventId}`} className={cn(buttonVariants({ size: "lg", variant: "outline" }), "mt-6 h-11")}>
+          Back to the event
+        </Link>
+      </div>
+    );
+  }
 
   if (!failure) {
     return (

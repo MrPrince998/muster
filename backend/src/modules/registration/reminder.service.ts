@@ -3,7 +3,7 @@ import { config } from '../../config/config.js';
 import { TenantService } from '../../database/tenant.service.js';
 import { BULK_PACE_MS, EmailService } from '../email/email.service.js';
 import { formatWhen } from '../email/format-when.js';
-import { TicketService } from './ticket.service.js';
+import { TicketService } from '../ticket/ticket.service.js';
 
 // a reminder is due once the event is this close...
 export const REMINDER_WITHIN = '24 hours';

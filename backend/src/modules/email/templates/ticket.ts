@@ -9,16 +9,22 @@ export interface TicketEmailData {
   where: string | null;
   // the ticket page in the app, which shows the live QR code
   url: string;
+  // the place came off the waitlist: say so, instead of "you're registered"
+  fromWaitlist?: boolean;
 }
 
 /** Sent after registering; the QR code is attached as a PNG. */
-export function ticketTemplate({ name, eventTitle, clubName, when, where, url }: TicketEmailData): RenderedEmail {
-  return renderActionEmail(`Your ticket: ${eventTitle}`, {
-    preheader: `You're going to ${eventTitle}. Your QR ticket is attached and in the app.`,
+export function ticketTemplate({ name, eventTitle, clubName, when, where, url, fromWaitlist }: TicketEmailData): RenderedEmail {
+  return renderActionEmail(fromWaitlist ? `A place opened up: ${eventTitle}` : `Your ticket: ${eventTitle}`, {
+    preheader: fromWaitlist
+      ? `You're off the waitlist for ${eventTitle}. Your QR ticket is attached.`
+      : `You're going to ${eventTitle}. Your QR ticket is attached and in the app.`,
     heading: `You're going to ${eventTitle}`,
     intro: [
       `Hi ${name},`,
-      `You're registered for ${eventTitle} with ${clubName}.`,
+      fromWaitlist
+        ? `A place opened up at ${eventTitle} with ${clubName}, and it's yours: you were next on the waitlist.`
+        : `You're registered for ${eventTitle} with ${clubName}.`,
       `When: ${when}`,
       ...(where ? [`Where: ${where}`] : []),
       'Show the QR code at the door to get in. It is attached to this email, and always in the app.',

@@ -43,7 +43,7 @@ function useWide() {
   );
 }
 
-export type PanelAction = "register" | "cancel" | "publish" | "registration";
+export type PanelAction = "register" | "cancel" | "publish" | "registration" | "waitlist" | "leave-waitlist";
 
 export interface EventPanelProps {
   event: ClubEvent | null;
@@ -58,6 +58,8 @@ export interface EventPanelProps {
   error: string | null;
   onRegister: () => void;
   onCancel: () => void;
+  onJoinWaitlist: () => void;
+  onLeaveWaitlist: () => void;
   onPublish: () => void;
   onEdit: () => void;
   // open or close registration
@@ -161,7 +163,9 @@ function PanelBody(props: EventPanelProps & { event: ClubEvent }) {
                   : left === null
                     ? "No limit on places"
                     : full
-                      ? "Full. No places left."
+                      ? event.waitlistCount > 0
+                        ? `Full. ${event.waitlistCount} waiting for a place.`
+                        : "Full. No places left."
                       : `${left} ${left === 1 ? "place" : "places"} left`}
               </p>
             </>
@@ -385,6 +389,8 @@ function MemberActions({
   pending,
   onRegister,
   onCancel,
+  onJoinWaitlist,
+  onLeaveWaitlist,
   ended,
   full,
 }: EventPanelProps & { event: ClubEvent; ended: boolean; full: boolean }) {
@@ -431,6 +437,47 @@ function MemberActions({
 
   // the places box above already says registration is closed
   if (!event.registrationOpen) return null;
+
+  if (event.yourWaitlistPosition !== null) {
+    return (
+      <div className="flex flex-col gap-2">
+        <p className="rounded-xl bg-cobalt-50 p-4 text-sm text-cobalt-800">
+          <span className="font-semibold">
+            {event.yourWaitlistPosition === 1
+              ? "You're next on the waitlist."
+              : `You're number ${event.yourWaitlistPosition} on the waitlist.`}
+          </span>{" "}
+          If a place opens up, it&rsquo;s yours, and your ticket arrives by email.
+        </p>
+        <Button
+          size="lg"
+          variant="ghost"
+          className="h-11 text-muted-foreground"
+          onClick={onLeaveWaitlist}
+          disabled={pending === "leave-waitlist"}
+        >
+          {pending === "leave-waitlist" && <Spinner />}
+          {pending === "leave-waitlist" ? "Leaving…" : "Leave the waitlist"}
+        </Button>
+      </div>
+    );
+  }
+
+  // full, or people already waiting: the queue is the way in
+  if (full || event.waitlistCount > 0) {
+    return (
+      <Button
+        size="lg"
+        variant={event.canManage ? "outline" : "default"}
+        className="h-11 font-semibold"
+        disabled={pending === "waitlist"}
+        onClick={onJoinWaitlist}
+      >
+        {pending === "waitlist" && <Spinner />}
+        {pending === "waitlist" ? "Joining…" : "Join the waitlist"}
+      </Button>
+    );
+  }
 
   return (
     <Button

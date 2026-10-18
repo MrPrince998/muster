@@ -97,7 +97,13 @@ function Places({ event }: { event: PublicEvent }) {
     <>
       <p className="text-3xl leading-none font-extrabold font-stretch-70%">{headline}</p>
       <p className="mt-1 text-sm text-cobalt-100">
-        {closed || event.placesLeft === 0 ? "No new tickets" : "Free, with a QR ticket for the door"}
+        {closed
+          ? "No new tickets"
+          : event.placesLeft === 0
+            ? event.waitlistCount > 0
+              ? `${event.waitlistCount} waiting. Places go in order.`
+              : "Join the waitlist for the next place"
+            : "Free, with a QR ticket for the door"}
       </p>
     </>
   );
@@ -120,17 +126,14 @@ function Card({ event, form, onSubmit, sentTo, onAskAgain }: PublicEventViewProp
       </div>
     );
   }
-  if (event.ended || !event.registrationOpen || event.placesLeft === 0) {
+  if (event.ended || !event.registrationOpen) {
     return (
       <p className="text-sm text-muted-foreground">
-        {event.ended
-          ? "It's already happened. Keep an eye out for the next one."
-          : event.placesLeft === 0
-            ? "Every place is taken. If someone gives theirs back, it opens up again here."
-            : "The organisers have stopped taking registrations."}
+        {event.ended ? "It's already happened. Keep an eye out for the next one." : "The organisers have stopped taking registrations."}
       </p>
     );
   }
+  const waitlist = event.placesLeft === 0;
   if (sentTo) {
     return (
       <div role="status">
@@ -139,8 +142,11 @@ function Card({ event, form, onSubmit, sentTo, onAskAgain }: PublicEventViewProp
         </span>
         <p className="mt-3 text-xl leading-tight font-extrabold font-stretch-70%">Check your inbox</p>
         <p className="mt-1 text-sm text-muted-foreground">
-          We sent a link to <span className="font-medium break-all text-foreground">{sentTo}</span>. Your place is held
-          once you open it, and your ticket arrives straight after. It works for 24 hours.
+          We sent a link to <span className="font-medium break-all text-foreground">{sentTo}</span>.{" "}
+          {waitlist
+            ? "Open it to join the waitlist; if a place opens up, your ticket arrives by email."
+            : "Your place is held once you open it, and your ticket arrives straight after."}{" "}
+          It works for 24 hours.
         </p>
         <button
           type="button"
@@ -185,10 +191,12 @@ function Card({ event, form, onSubmit, sentTo, onAskAgain }: PublicEventViewProp
       )}
       <Button type="submit" size="lg" className="h-11 w-full text-[15px] font-semibold" disabled={isSubmitting}>
         {isSubmitting && <LoaderCircle className="animate-spin" aria-hidden />}
-        {isSubmitting ? "Sending…" : "Get a ticket"}
+        {isSubmitting ? "Sending…" : waitlist ? "Join the waitlist" : "Get a ticket"}
       </Button>
       <p className="text-xs text-muted-foreground">
-        We&rsquo;ll email you a link to confirm. No account needed.
+        {waitlist
+          ? "It's full right now. If someone gives their place back, it goes to whoever has waited longest."
+          : "We'll email you a link to confirm. No account needed."}
       </p>
     </form>
   );

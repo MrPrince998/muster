@@ -10,11 +10,12 @@ import { TicketController } from './ticket.controller.js';
 import { GuestService } from './guest.service.js';
 import { PublicController } from './public.controller.js';
 import { ReminderService } from './reminder.service.js';
-import { TicketService } from './ticket.service.js';
+import { TicketModule } from '../ticket/ticket.module.js';
+import { WaitlistModule } from '../waitlist/waitlist.module.js';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Registration]), EventModule, PermissionModule, EmailModule],
+  imports: [TypeOrmModule.forFeature([Registration]), EventModule, PermissionModule, EmailModule, TicketModule, WaitlistModule],
   controllers: [RegistrationController, TicketController, PublicController],
-  providers: [RegistrationService, TicketService, GuestService, ReminderService],
+  providers: [RegistrationService, GuestService, ReminderService],
 })
 export class RegistrationModule {}

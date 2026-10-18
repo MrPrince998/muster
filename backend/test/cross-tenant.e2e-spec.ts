@@ -106,6 +106,8 @@ describe('cross-tenant access through the API', () => {
     ['get', `/clubs/${B.clubId}/events/${B.eventId}/my-ticket`],
     ['post', `/clubs/${B.clubId}/events/${B.eventId}/check-in`, { token: B.ticketToken }],
     ['post', `/clubs/${B.clubId}/events/${B.eventId}/check-in/manual`, { userId: guest.id }],
+    ['post', `/clubs/${B.clubId}/events/${B.eventId}/waitlist`],
+    ['delete', `/clubs/${B.clubId}/events/${B.eventId}/waitlist`],
     // its members, roles and invite links
     ['get', `/clubs/${B.clubId}/members`],
     ['put', `/clubs/${B.clubId}/members/${guest.id}/roles`, { roleIds: [B.roleId] }],
@@ -131,6 +133,8 @@ describe('cross-tenant access through the API', () => {
     ['post', `/clubs/${A.clubId}/events/${B.eventId}/my-registration`],
     ['post', `/clubs/${A.clubId}/events/${B.eventId}/check-in`, { token: B.ticketToken }],
     ['post', `/clubs/${A.clubId}/events/${B.eventId}/check-in/manual`, { userId: guest.id }],
+    ['post', `/clubs/${A.clubId}/events/${B.eventId}/waitlist`],
+    ['delete', `/clubs/${A.clubId}/events/${B.eventId}/waitlist`],
     ['patch', `/clubs/${A.clubId}/roles/${B.roleId}`, { name: 'Hijacked' }],
     ['delete', `/clubs/${A.clubId}/roles/${B.roleId}`],
     ['put', `/clubs/${A.clubId}/members/${guest.id}/roles`, { roleIds: [] }],

@@ -24,6 +24,9 @@ export interface ClubEvent {
   registeredCount: number;
   attendedCount: number;
   youreGoing: boolean;
+  // people waiting for a place, and your place among them (from 1; null if not waiting)
+  waitlistCount: number;
+  yourWaitlistPosition: number | null;
   // you may edit it: event.manage_any, or event.manage_own as its creator
   canManage: boolean;
 }
