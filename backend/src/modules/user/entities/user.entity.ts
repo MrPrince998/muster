@@ -14,8 +14,13 @@ import {
 // Emails are compared case-insensitively. Normalising on the way in and in
 // WHERE clauses (TypeORM applies transformers to find conditions too) keeps
 // the unique index meaningful: Foo@X.com and foo@x.com are the same account.
-const normalizeEmail: ValueTransformer = {
-  to: (value?: string | null) => value?.trim().toLowerCase(),
+// Exported for hand-written queries, which transformers do not reach.
+export function normalizeEmail(email: string): string {
+  return email.trim().toLowerCase();
+}
+
+const emailTransformer: ValueTransformer = {
+  to: (value?: string | null) => (value == null ? value : normalizeEmail(value)),
   from: (value: string) => value,
 };
 
@@ -32,11 +37,11 @@ const normalizeEmail: ValueTransformer = {
 export class User {
   // UUIDs, not serial ints: ids appear in URLs and ticket tokens, so they
   // must not be guessable or leak how many users exist.
-  @PrimaryGeneratedColumn('uuid')
+  @PrimaryGeneratedColumn('uuid', { primaryKeyConstraintName: 'users_pkey' })
   id: string;
 
   @Index('users_email_key', { unique: true })
-  @Column({ type: 'varchar', length: 320, transformer: normalizeEmail })
+  @Column({ type: 'varchar', length: 320, transformer: emailTransformer })
   email: string;
 
   @Column({ type: 'varchar', length: 100 })
@@ -65,7 +70,7 @@ export class User {
   // fixes the in-memory entity so responses after save() show the stored value
   @BeforeInsert()
   @BeforeUpdate()
-  normalizeEmail() {
-    this.email = normalizeEmail.to(this.email);
+  normalizeFields() {
+    if (this.email != null) this.email = normalizeEmail(this.email);
   }
 }
