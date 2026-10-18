@@ -6,6 +6,7 @@
   "private": true,
   "license": "UNLICENSED",
   "type": "module",
+  "packageManager": "pnpm@12.11.2",
   "scripts": {
     "build": "nest build",
     "deploy": "nest deploy",
@@ -16,6 +17,7 @@
     "start:prod": "node dist/main",
     "typeorm": "tsx ./node_modules/typeorm/cli.js",
     "migration:run": "pnpm typeorm migration:run -d src/database/data-source.ts",
+    "migration:run:prod": "node ./node_modules/typeorm/cli.js migration:run -d dist/database/data-source.js",
     "migration:revert": "pnpm typeorm migration:revert -d src/database/data-source.ts",
     "migration:show": "pnpm typeorm migration:show -d src/database/data-source.ts",
     "migration:create": "pnpm typeorm migration:create",

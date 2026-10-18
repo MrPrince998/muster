@@ -1,0 +1,28 @@
+# HTTPS for both, with certificates from Let's Encrypt, renewed automatically.
+# Both names must point (DNS A/AAAA records) at this server first.
+
+(security_headers) {
+	header {
+		# HTTPS only, from now on (a year; Caddy already redirects http)
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options nosniff
+		# never framed by another site (clickjacking)
+		X-Frame-Options DENY
+		Referrer-Policy strict-origin-when-cross-origin
+		# the scanner uses the camera, on our own pages only
+		Permissions-Policy "camera=(self), microphone=(), geolocation=()"
+		-Server
+	}
+}
+
+{$APP_DOMAIN} {
+	import security_headers
+	encode zstd gzip
+	reverse_proxy web:3000
+}
+
+{$API_DOMAIN} {
+	import security_headers
+	encode zstd gzip
+	reverse_proxy api:5001
+}

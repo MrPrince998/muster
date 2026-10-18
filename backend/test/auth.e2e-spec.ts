@@ -83,7 +83,7 @@ describe('auth (e2e)', () => {
     await api().get('/').expect(200);
     const res = await api().get('/auth/me').expect(401);
     expect(res.body.code).toBe('UNAUTHENTICATED');
-    await api().get('/user').expect(401);
+    await api().get('/user/00000000-0000-4000-8000-000000000000').expect(401);
   });
 
   describe('sign-up, verification, sign-in', () => {

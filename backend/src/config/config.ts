@@ -13,16 +13,42 @@ function getEnv(key:string):string {
   return value;
 }
 
+const production = process.env.NODE_ENV === "production";
+
+// A secret that signs tokens: in production it must be long and not the
+// example's placeholder, or anyone could forge sign-ins (JWT_SECRET) or
+// tickets (TICKET_SECRET). Generate one with: openssl rand -base64 48
+function getSecret(key: string): string {
+  const value = getEnv(key);
+  if (production && (value.length < 32 || /change-?me/i.test(value))) {
+    throw new Error(`${key} must be at least 32 random characters in production`);
+  }
+  return value;
+}
+
+// How many proxies sit in front of the API (a load balancer, Caddy, ...).
+// Behind one, every request seems to come from the proxy, so rate limits
+// would count all users together; trusting it makes them per client again.
+// Unset or 0: no proxy, trust nothing.
+function trustProxy(): number {
+  const hops = Number(process.env.TRUST_PROXY ?? 0);
+  if (!Number.isInteger(hops) || hops < 0) {
+    throw new Error("TRUST_PROXY must be a whole number of proxies (0 for none)");
+  }
+  return hops;
+}
+
 export const config = {
   env: process.env.NODE_ENV,
   port: Number(process.env.PORT),
+  trustProxy: trustProxy(),
 
   database: {
     url: getEnv("DATABASE_URL"),
   },
 
   jwt: {
-    secret: getEnv("JWT_SECRET"),
+    secret: getSecret("JWT_SECRET"),
     // access token lifetime; short, because refresh tokens renew it
     expiresIn: process.env.JWT_EXPIRES_IN ?? "15m",
   },
@@ -30,7 +56,7 @@ export const config = {
   ticket: {
     // signs the QR tickets; deliberately not JWT_SECRET, so a leaked login
     // secret can't forge tickets (and vice versa)
-    secret: getEnv("TICKET_SECRET"),
+    secret: getSecret("TICKET_SECRET"),
   },
 
   // API docs at /docs; on outside production unless SWAGGER_ENABLED says otherwise
@@ -48,7 +74,7 @@ export const config = {
   email: {
     // unset in development: emails are logged instead of sent
     resendApiKey:
-      process.env.NODE_ENV === "production"
+      production
         ? getEnv("RESEND_API_KEY")
         : process.env.RESEND_API_KEY || undefined,
     // onboarding@resend.dev works without a verified domain, but only

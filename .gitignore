@@ -1,1 +1,4 @@
 .zshrc
+
+# production secrets (compose.prod.yaml); the example is committed
+.env.prod

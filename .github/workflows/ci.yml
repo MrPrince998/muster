@@ -1,0 +1,104 @@
+# Every push and pull request: lint, typecheck, unit and end-to-end tests
+# (against Postgres 13, what development runs, and 17, what production
+# runs), and both production builds.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: API (Postgres ${{ matrix.postgres }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        postgres: ["13", "17"]
+    services:
+      postgres:
+        image: postgres:${{ matrix.postgres }}-alpine
+        env:
+          POSTGRES_USER: muster
+          POSTGRES_PASSWORD: ci-owner-password
+          POSTGRES_DB: muster
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U muster -d muster"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      NODE_ENV: test
+      # the app's limited role; the first migration creates it with this password
+      DATABASE_URL: postgresql://muster_app:ci-app-password@localhost:5432/muster
+      MIGRATION_DATABASE_URL: postgresql://muster:ci-owner-password@localhost:5432/muster
+      JWT_SECRET: ci-only-jwt-secret-not-used-anywhere-else
+      TICKET_SECRET: ci-only-ticket-secret-not-used-anywhere-else
+      APP_URL: http://localhost:3000
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: backend/package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: backend/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - name: Lint
+        run: pnpm lint
+      - name: Typecheck
+        run: pnpm exec tsc --noEmit
+      - name: Unit tests
+        run: pnpm test
+      - name: Migrations (from an empty database)
+        run: pnpm migration:run
+      - name: End-to-end tests (incl. tenant isolation)
+        run: pnpm test:e2e
+      - name: Build
+        run: pnpm build
+
+  frontend:
+    name: Web app
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: frontend/package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - name: Lint
+        run: pnpm lint
+      - name: Typecheck
+        run: pnpm exec tsc --noEmit
+      - name: Build
+        run: pnpm build
+        env:
+          NEXT_PUBLIC_API_URL: http://localhost:5001
+          NEXT_TELEMETRY_DISABLED: 1
+
+  images:
+    name: Production images
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: API image
+        run: docker build -t muster-api backend
+      - name: Web image
+        run: docker build -t muster-web --build-arg NEXT_PUBLIC_API_URL=https://api.example.org frontend

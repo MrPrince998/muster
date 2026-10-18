@@ -1,0 +1,77 @@
+# Self-hosting Muster on one server: Postgres, the API, the web app, and
+# Caddy in front of both (HTTPS certificates, automatically). Usage and the
+# one rule that matters (one site, two subdomains) are in the readme under
+# "Deploying".
+#
+#   cp .env.prod.example .env.prod   # then fill it in
+#   docker compose -f compose.prod.yaml --env-file .env.prod up -d --build
+
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-muster}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  api:
+    build: ./backend
+    environment:
+      NODE_ENV: production
+      PORT: 5001
+      # Caddy is one proxy in front: trust it for the client's address (rate limits)
+      TRUST_PROXY: 1
+      APP_URL: https://${APP_DOMAIN:?set APP_DOMAIN}
+      # the app's limited role; the first migration creates it with this password
+      DATABASE_URL: postgresql://muster_app:${APP_DB_PASSWORD:?set APP_DB_PASSWORD}@db:5432/${POSTGRES_DB:-muster}
+      MIGRATION_DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-muster}
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET}
+      TICKET_SECRET: ${TICKET_SECRET:?set TICKET_SECRET}
+      RESEND_API_KEY: ${RESEND_API_KEY:?set RESEND_API_KEY}
+      EMAIL_FROM: ${EMAIL_FROM:?set EMAIL_FROM}
+      APP_TIME_ZONE: ${APP_TIME_ZONE:-UTC}
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  web:
+    build:
+      context: ./frontend
+      args:
+        NEXT_PUBLIC_API_URL: https://${API_DOMAIN:?set API_DOMAIN}
+        NEXT_PUBLIC_FEEDBACK_EMAIL: ${FEEDBACK_EMAIL:-}
+    depends_on:
+      - api
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2-alpine
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      APP_DOMAIN: ${APP_DOMAIN}
+      API_DOMAIN: ${API_DOMAIN}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - web
+      - api
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  caddy_data:
+  caddy_config:

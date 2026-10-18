@@ -192,7 +192,7 @@ TypeORM provides the connection pool, transactions, entities for simple CRUD, an
 | Backend | Node.js 22, NestJS, TypeScript, class-validator |
 | Database | PostgreSQL with Row-Level Security |
 | Data access | TypeORM (pool, transactions, migrations) + hand-written SQL for RLS, locking, and analytics |
-| Auth | bcrypt password hashing, JWT sessions |
+| Auth | scrypt password hashing, short JWT access tokens, rotating refresh tokens |
 | Tickets | JWT signature, `qrcode` library |
 | Email | Resend (transactional) |
 | Testing | Vitest, Supertest |
@@ -246,14 +246,17 @@ Code throws `HttpError` (for example `HttpError.notFound(..., 'USER_NOT_FOUND')`
 
 ## Security
 
-- Passwords hashed with bcrypt; login errors never reveal whether an email exists.
+- Passwords hashed with scrypt; login errors never reveal whether an email exists.
 - Tenant isolation enforced in the database with forced RLS, not only in application code.
 - Every query uses parameters (no SQL injection); input validated at the edge with DTOs and class-validator.
 - Errors never leak internals: unknown errors return a generic 500 and are logged server-side.
 - Permission checks on every route; role hierarchy prevents privilege escalation.
 - Invite codes come from cryptographically secure random bytes.
 - Tickets are signed with a dedicated secret; tampered, expired, or wrong-event tickets are rejected.
-- Rate limiting on auth routes, security headers (helmet), restricted CORS, request size limits.
+- Rate limiting on auth and invite routes, per client (`TRUST_PROXY` makes that true behind a proxy), restricted CORS, request size limits.
+- Production refuses to start with short or placeholder signing secrets.
+- The refresh token is an `HttpOnly`, `Secure`, `SameSite=Strict` cookie; the access token lives only in memory.
+- Security headers (HSTS, `nosniff`, no framing, a camera-only permissions policy) are set by Caddy in the production setup.
 
 ---
 
@@ -261,12 +264,15 @@ Code throws `HttpError` (for example `HttpError.notFound(..., 'USER_NOT_FOUND')`
 
 The tests that matter most are the ones that prove the hard claims:
 
-- **Tenant isolation:** org A cannot read or write org B's data, even with an unfiltered query.
+- **Tenant isolation, in the database:** org A cannot read or write org B's data, even with an unfiltered query, and the app's role cannot switch RLS off (`test/tenant-isolation.e2e-spec.ts`).
+- **Tenant isolation, through the API:** the owner of one workspace points every route at another workspace's ids (and mixes their own club with the other's events) and gets nowhere, changing nothing (`test/cross-tenant.e2e-spec.ts`).
 - **Permissions:** missing permission returns 403, admins cannot grant a role above their own, the owner cannot be demoted.
 - **Invites:** expired, revoked, and max-use links are rejected; the approval flow works end to end.
 - **Overbooking:** many simultaneous registrations for the last seat produce exactly one success.
 - **Tickets:** tampered, expired, and wrong-secret tokens are rejected.
 - **Check-in:** scanning twice, or from two scanners at once, checks the person in exactly once.
+
+CI (`.github/workflows/ci.yml`) runs on every push and pull request: lint, typecheck, unit tests, migrations from an empty database, the end-to-end suite against both Postgres 13 and 17, and both production image builds.
 
 ---
 
@@ -322,9 +328,44 @@ Generated migrations are a starting point: review them, and add RLS for any new 
 
 Tests: `cd backend && pnpm test` (unit). End-to-end tests, including tenant isolation, need the database: `docker compose exec backend pnpm test:e2e`.
 
-*(planned)* `pnpm seed` (two demo workspaces, clubs, roles, and events). `TICKET_SECRET` and `RESEND_API_KEY` will be added with tickets and email.
+*(planned)* `pnpm seed` (two demo workspaces, clubs, roles, and events).
 
 Notes: Resend only delivers to arbitrary addresses once you verify a sending domain, so use its test mode during development. The camera scanner needs HTTPS (`localhost` is allowed).
+
+---
+
+## Deploying
+
+The production setup runs everything on one server with Docker: Postgres 17, the API, the web app, and [Caddy](https://caddyserver.com) in front, which gets HTTPS certificates by itself.
+
+**The one rule:** the web app and the API must be two subdomains of **one domain**, for example `app.example.org` and `api.example.org`. The sign-in cookie is `SameSite=Strict`, so a browser only sends it within one site; on two unrelated domains (say `*.vercel.app` and `*.onrender.com`) sign-in seems to work, then forgets you on the next page load.
+
+1. Point both names (DNS A or AAAA records) at the server, and open ports 80 and 443.
+2. Configure it:
+   ```bash
+   cp .env.prod.example .env.prod   # fill in every value; generate secrets with: openssl rand -hex 32
+   ```
+   You need a [Resend](https://resend.com) API key and a sending domain verified there: production refuses to start without email.
+3. Start it:
+   ```bash
+   docker compose -f compose.prod.yaml --env-file .env.prod up -d --build
+   ```
+   The API applies pending migrations before it starts (the first run creates the schema and the limited `muster_app` role); if one fails, it stops instead of running on an outdated schema.
+4. Update later with `git pull`, then the same command.
+
+What the production images do differently: the API runs the compiled build as an unprivileged user, with the API docs off; the web app is Next's standalone server. `NEXT_PUBLIC_API_URL` is baked into the web image at build time, so changing the API's address means rebuilding it.
+
+Back up the `postgres_data` volume (for example a nightly `pg_dump`); everything else can be rebuilt.
+
+Production settings beyond development's (all in `.env.prod.example`):
+
+| Variable | What it does |
+|---|---|
+| `JWT_SECRET`, `TICKET_SECRET` | Sign sign-ins and tickets. At least 32 characters each, different from each other; placeholders are refused. |
+| `TRUST_PROXY` | How many proxies are in front of the API (`1` for Caddy). Without it, rate limits would count every user together. |
+| `RESEND_API_KEY`, `EMAIL_FROM` | Required in production. |
+| `APP_TIME_ZONE` | The zone event times are written in, in emails. |
+| `FEEDBACK_EMAIL` | Optional: shows "Send feedback" in the navbar. |
 
 ---
 
