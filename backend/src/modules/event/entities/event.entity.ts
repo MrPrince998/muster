@@ -53,7 +53,7 @@ export type EventStatus = (typeof EventStatus)[keyof typeof EventStatus];
 // really its event's workspace
 @Unique('events_id_org_id_key', ['id', 'orgId'])
 export class Event {
-  @PrimaryGeneratedColumn('uuid')
+  @PrimaryGeneratedColumn('uuid', { primaryKeyConstraintName: 'events_pkey' })
   id: string;
 
   @Column({ name: 'org_id', type: 'uuid' })

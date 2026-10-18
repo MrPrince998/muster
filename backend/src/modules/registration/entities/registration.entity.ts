@@ -42,7 +42,7 @@ import { User } from '../../user/entities/user.entity.js';
 @Index('registrations_event_id_active_idx', ['eventId'], { where: `"cancelled_at" IS NULL` })
 export class Registration {
   // the ticket id inside the signed QR token
-  @PrimaryGeneratedColumn('uuid')
+  @PrimaryGeneratedColumn('uuid', { primaryKeyConstraintName: 'registrations_pkey' })
   id: string;
 
   @Column({ name: 'org_id', type: 'uuid' })
