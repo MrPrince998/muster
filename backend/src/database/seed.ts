@@ -203,6 +203,8 @@ interface EventPlan {
   series?: { id: string; every: 'week' | 'fortnight' | 'month' };
   // a paid event: a ticket's price in cents (in AUD)
   priceCents?: number;
+  // what it asks people taking a place (event/questions.ts)
+  questions?: { id: string; label: string; kind: 'text' | 'choice'; options: string[]; required: boolean }[];
 }
 
 async function makeEvent(m: Tx, orgId: string, clubId: string, by: Person, plan: EventPlan) {
@@ -211,8 +213,8 @@ async function makeEvent(m: Tx, orgId: string, clubId: string, by: Person, plan:
   const [{ id }]: { id: string }[] = await m.query(
     `INSERT INTO events (org_id, club_id, created_by, title, description, location, starts_at, ends_at, capacity,
                          visibility, status, published_at, cancelled_at, cancel_reason, registration_closed_at,
-                         series_id, repeat_every, price_cents, currency)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19) RETURNING id`,
+                         series_id, repeat_every, price_cents, currency, questions)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20) RETURNING id`,
     [
       orgId,
       clubId,
@@ -233,6 +235,7 @@ async function makeEvent(m: Tx, orgId: string, clubId: string, by: Person, plan:
       plan.series?.every ?? null,
       plan.priceCents ?? null,
       plan.priceCents ? 'aud' : null,
+      JSON.stringify(plan.questions ?? []),
     ],
   );
   const over = end.getTime() < Date.now();
@@ -412,6 +415,10 @@ async function riverside(ds: DataSource, people: Awaited<ReturnType<typeof makeP
       capacity: 40,
       visibility: 'public',
       priceCents: 4500,
+      questions: [
+        { id: 'diet', label: 'Dietary needs', kind: 'choice', options: ['None', 'Vegetarian', 'Vegan', 'Gluten free'], required: true },
+        { id: 'note', label: 'Anything the kitchen should know?', kind: 'text', options: [], required: false },
+      ],
       going: [],
     });
     await makeEvent(m, orgId, robotics.id, demo, {

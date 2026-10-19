@@ -1,9 +1,9 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { LoaderCircle } from "lucide-react";
+import { LoaderCircle, Plus, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
-import { useForm, useWatch } from "react-hook-form";
+import { useFieldArray, useForm, useWatch } from "react-hook-form";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -33,6 +33,10 @@ function messageFor(code: string): string {
       return "The event has to end after it starts.";
     case "MISSING_PERMISSION":
       return "You don't have permission to do that in this club.";
+    case "QUESTION_NEEDS_CHOICES":
+      return "A choose-one question needs at least two choices.";
+    case "TOO_MANY_QUESTIONS":
+      return "Up to five questions.";
     case "PAYMENTS_NOT_SET_UP":
       return "This workspace can't take payments yet. Connect Stripe in Settings, or make the event free.";
     case "NETWORK_ERROR":
@@ -52,6 +56,7 @@ const emptyValues: EventFormValues = {
   visibility: "members",
   price: "",
   refundCutoffHours: "48",
+  questions: [],
   repeatEvery: "none",
   repeatCount: "4",
 };
@@ -96,6 +101,8 @@ export default function EventFormDialog({
     formState: { errors, isSubmitting },
   } = form;
   const repeatEvery = useWatch({ control, name: "repeatEvery" });
+  const questions = useFieldArray({ control, name: "questions" });
+  const questionKinds = useWatch({ control, name: "questions" });
   const repeatCount = Number(useWatch({ control, name: "repeatCount" }));
   // editing one of a series: just it, or the rest too
   const inSeries = editing && hasLaterInSeries(event);
@@ -122,6 +129,13 @@ export default function EventFormDialog({
             visibility: event.visibility === "public" ? "public" : "members",
             price: event.price ? (event.price.amountCents / 100).toFixed(2) : "",
             refundCutoffHours: String(event.refundCutoffHours),
+            questions: event.questions.map((q) => ({
+              id: q.id,
+              label: q.label,
+              kind: q.kind,
+              options: q.options.join("\n"),
+              required: q.required,
+            })),
             repeatEvery: "none",
             repeatCount: "4",
           }
@@ -332,6 +346,74 @@ export default function EventFormDialog({
                 </label>
               ))}
             </div>
+          </fieldset>
+
+          <fieldset className="space-y-3">
+            <legend className="text-sm font-medium">Questions for people taking a place</legend>
+            <p className="text-sm text-muted-foreground">
+              Dietary needs, T-shirt sizes: asked when they register. Answers are in the attendee list and spreadsheet.
+            </p>
+            {questions.fields.map((field, index) => {
+              const fieldErrors = errors.questions?.[index];
+              return (
+                <div key={field.id} className="space-y-2 rounded-lg border p-3">
+                  <div className="flex gap-2">
+                    <InputGroup className="h-10 flex-1">
+                      <InputGroupInput
+                        aria-label={`Question ${index + 1}`}
+                        placeholder="Dietary needs"
+                        aria-invalid={!!fieldErrors?.label}
+                        {...register(`questions.${index}.label`)}
+                      />
+                    </InputGroup>
+                    <select
+                      aria-label={`Question ${index + 1} answer`}
+                      className="h-10 rounded-lg border border-input bg-transparent px-2 text-sm"
+                      {...register(`questions.${index}.kind`)}
+                    >
+                      <option value="text">Short answer</option>
+                      <option value="choice">Choose one</option>
+                    </select>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      aria-label={`Remove question ${index + 1}`}
+                      onClick={() => questions.remove(index)}
+                    >
+                      <Trash2 aria-hidden />
+                    </Button>
+                  </div>
+                  <FieldError errors={[fieldErrors?.label]} />
+                  {questionKinds?.[index]?.kind === "choice" && (
+                    <>
+                      <Textarea
+                        aria-label={`Question ${index + 1} choices, one per line`}
+                        rows={3}
+                        placeholder={"None\nVegetarian\nVegan"}
+                        {...register(`questions.${index}.options`)}
+                      />
+                      <FieldError errors={[fieldErrors?.options]} />
+                    </>
+                  )}
+                  <label className="flex items-center gap-2 text-sm">
+                    <input type="checkbox" className="size-4 accent-cobalt" {...register(`questions.${index}.required`)} />
+                    Required
+                  </label>
+                </div>
+              );
+            })}
+            {questions.fields.length < 5 && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => questions.append({ label: "", kind: "text", options: "", required: false })}
+              >
+                <Plus aria-hidden />
+                Add a question
+              </Button>
+            )}
           </fieldset>
 
           <Field data-invalid={!!errors.description}>

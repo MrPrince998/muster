@@ -1,4 +1,4 @@
-import { Controller, Delete, HttpCode, HttpStatus, Param, ParseUUIDPipe, Post } from '@nestjs/common';
+import { Body, Controller, Delete, HttpCode, HttpStatus, Param, ParseUUIDPipe, Post } from '@nestjs/common';
 import { ApiConflictResponse, ApiCreatedResponse, ApiNoContentResponse, ApiNotFoundResponse, ApiProperty, ApiTags } from '@nestjs/swagger';
 import type { EntityManager } from 'typeorm';
 import { ErrorResponseDto } from '../../common/errors/error-response.dto.js';
@@ -7,6 +7,8 @@ import { TenantService } from '../../database/tenant.service.js';
 import type { ClubAccess } from '../permission/club-access.js';
 import { CurrentClubAccess } from '../permission/decorators/current-club-access.decorator.js';
 import { RequirePermission } from '../permission/decorators/require-permission.decorator.js';
+import { AnswersDto } from '../event/dto/event.dto.js';
+import { checkAnswers } from '../event/questions.js';
 import { freePlaces, lockEvent, waitingCount, WaitlistService } from './waitlist.service.js';
 
 const error = (description: string) => ({ description, type: ErrorResponseDto });
@@ -44,6 +46,7 @@ export class WaitlistController {
   join(
     @CurrentClubAccess() access: ClubAccess,
     @Param('eventId', ParseUUIDPipe) eventId: string,
+    @Body() { answers }: AnswersDto,
   ): Promise<WaitlistPositionDto> {
     return this.inClub(access, async (m, orgId) => {
       const event = await lockEvent(m, eventId, access.clubId);
@@ -59,7 +62,8 @@ export class WaitlistController {
       }
       // a place freed at a paid event is bought by whoever's first, not handed down a queue
       if (event.price_cents !== null) throw HttpError.conflict('This event is sold out', 'SOLD_OUT');
-      return { position: await this.waitlist.join(m, { orgId, eventId, userId: access.userId }) };
+      const checked = checkAnswers(event.questions ?? [], answers);
+      return { position: await this.waitlist.join(m, { orgId, eventId, userId: access.userId, answers: checked }) };
     });
   }
 

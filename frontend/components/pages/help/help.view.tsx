@@ -99,6 +99,10 @@ const SECTIONS: { title: string; answers: Answer[] }[] = [
         a: "Yes. A couple of hours after an event ends, everyone who was checked in gets one email asking how it was: a rating out of five and a comment if they like. Open the event under Past to see the average and the comments. Answers never show who gave them.",
       },
       {
+        q: "Can I ask people questions when they register?",
+        a: "Yes, up to five per event: a short answer, or one choice from a list (dietary needs, T-shirt sizes), required or optional. Add them in the event's form. They're asked however someone takes a place, guests included. The event shows a tally of the choices, and the spreadsheet has every answer.",
+      },
+      {
         q: "How do I tell everyone going about a change?",
         a: "Open the event and choose Message everyone going. It emails everyone with a place, guests included, and the waitlist if you tick it. What you've sent is listed there, so nobody says it twice. Up to ten messages a day per event.",
       },

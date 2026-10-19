@@ -44,6 +44,10 @@ export class Checkout {
   @Column({ name: 'registration_id', type: 'uuid', nullable: true })
   registrationId: string | null;
 
+  // their answers to the event's questions, by question id
+  @Column({ type: 'jsonb', default: {} })
+  answers: Record<string, string>;
+
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;
 

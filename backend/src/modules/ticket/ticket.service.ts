@@ -12,6 +12,8 @@ export interface GuestConfirmation {
   eventId: string;
   email: string;
   name: string;
+  // their answers to the event's questions, checked when they asked
+  answers?: Record<string, string>;
 }
 
 interface TicketClaims {
@@ -66,16 +68,24 @@ export class TicketService {
   });
 
   signGuestConfirmation(claims: GuestConfirmation): Promise<string> {
-    return this.confirmations.signAsync({ evt: claims.eventId, email: claims.email, name: claims.name });
+    return this.confirmations.signAsync({
+      evt: claims.eventId,
+      email: claims.email,
+      name: claims.name,
+      ...(claims.answers && Object.keys(claims.answers).length > 0 && { ans: claims.answers }),
+    });
   }
 
   /** Who asked for a place at which event, or null if the link is malformed, forged or over a day old. */
   async verifyGuestConfirmation(token: string): Promise<GuestConfirmation | null> {
-    if (typeof token !== 'string' || token.length > 2000) return null;
+    // answers make it longer: five of them, up to 300 characters each
+    if (typeof token !== 'string' || token.length > 8000) return null;
     try {
-      const claims = await this.confirmations.verifyAsync<{ evt: string; email: string; name: string }>(token);
+      const claims = await this.confirmations.verifyAsync<{ evt: string; email: string; name: string; ans?: Record<string, string> }>(
+        token,
+      );
       if (!isUUID(claims.evt) || typeof claims.email !== 'string' || typeof claims.name !== 'string') return null;
-      return { eventId: claims.evt, email: claims.email, name: claims.name };
+      return { eventId: claims.evt, email: claims.email, name: claims.name, answers: claims.ans ?? {} };
     } catch {
       return null;
     }

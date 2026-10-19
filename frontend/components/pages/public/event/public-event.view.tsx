@@ -6,6 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Field, FieldError, FieldLabel } from "@/components/ui/field";
 import { InputGroup, InputGroupInput } from "@/components/ui/input-group";
 import { formatMoney } from "@/lib/money";
+import type { Answers } from "@/types/event.interface";
+import { QuestionFields } from "../../workspace/shared/question-fields";
 import { cn } from "@/lib/utils";
 import type { PublicEvent } from "@/types";
 import { differsFromDevice, zoneCity, zoneName } from "@/lib/time-zone";
@@ -29,10 +31,12 @@ export interface PublicEventViewProps {
   onAskAgain: () => void;
   // back from Stripe: paid (the ticket is on its way by email) or not
   paymentReturn: "paid" | "cancelled" | null;
+  // answers to the event's questions, kept by the container
+  questions: { answers: Answers; onChange: (answers: Answers) => void; problems: Record<string, string> };
 }
 
 /** A public event: what, when and where, and a ticket-shaped card to get a place. Presentational. */
-export default function PublicEventView({ event, form, onSubmit, sentTo, onAskAgain, paymentReturn }: PublicEventViewProps) {
+export default function PublicEventView({ event, form, onSubmit, sentTo, onAskAgain, paymentReturn, questions }: PublicEventViewProps) {
   return (
     <div className="mx-auto grid w-full max-w-5xl gap-10 px-5 py-10 sm:px-8 lg:grid-cols-[minmax(0,1fr)_22rem] lg:gap-16 lg:py-16">
       <article className="min-w-0">
@@ -94,7 +98,7 @@ export default function PublicEventView({ event, form, onSubmit, sentTo, onAskAg
             </div>
             <div className="mx-5 border-t-2 border-dashed border-zinc-200" />
             <div className="p-6">
-              <Card event={event} form={form} onSubmit={onSubmit} sentTo={sentTo} onAskAgain={onAskAgain} paymentReturn={paymentReturn} />
+              <Card event={event} form={form} onSubmit={onSubmit} sentTo={sentTo} onAskAgain={onAskAgain} paymentReturn={paymentReturn} questions={questions} />
             </div>
           </div>
         </div>
@@ -139,7 +143,7 @@ function Places({ event }: { event: PublicEvent }) {
   );
 }
 
-function Card({ event, form, onSubmit, sentTo, onAskAgain, paymentReturn }: PublicEventViewProps) {
+function Card({ event, form, onSubmit, sentTo, onAskAgain, paymentReturn, questions }: PublicEventViewProps) {
   const {
     register,
     formState: { errors, isSubmitting },
@@ -242,6 +246,15 @@ function Card({ event, form, onSubmit, sentTo, onAskAgain, paymentReturn }: Publ
         </InputGroup>
         <FieldError errors={[errors.email]} />
       </Field>
+      {event.questions.length > 0 && (
+        <QuestionFields
+          questions={event.questions}
+          answers={questions.answers}
+          onChange={questions.onChange}
+          problems={questions.problems}
+          idPrefix="guest-question"
+        />
+      )}
       {errors.root && (
         <p role="alert" className="text-sm text-destructive">
           {errors.root.message}

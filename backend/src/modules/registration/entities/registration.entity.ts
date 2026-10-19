@@ -86,6 +86,10 @@ export class Registration {
   @Column({ name: 'refunded_at', type: 'timestamptz', nullable: true })
   refundedAt: Date | null;
 
+  // their answers to the event's questions, by question id
+  @Column({ type: 'jsonb', default: {} })
+  answers: Record<string, string>;
+
   // asked "how was it?" after the event (claimed atomically, so it's asked once)
   @Column({ name: 'feedback_requested_at', type: 'timestamptz', nullable: true })
   feedbackRequestedAt: Date | null;

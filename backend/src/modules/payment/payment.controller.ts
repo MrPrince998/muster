@@ -1,4 +1,4 @@
-import { Controller, Get, Headers, HttpCode, HttpStatus, Param, ParseUUIDPipe, Post, type RawBodyRequest, Req } from '@nestjs/common';
+import { Body, Controller, Get, Headers, HttpCode, HttpStatus, Param, ParseUUIDPipe, Post, type RawBodyRequest, Req } from '@nestjs/common';
 import { ApiConflictResponse, ApiExcludeEndpoint, ApiOkResponse, ApiProperty, ApiPropertyOptional, ApiTags } from '@nestjs/swagger';
 import type { Request } from 'express';
 import { Public } from '../../common/decorators/public.decorator.js';
@@ -10,6 +10,7 @@ import type { OrgMembership } from '../organisation/org-roles.js';
 import type { ClubAccess } from '../permission/club-access.js';
 import { CurrentClubAccess } from '../permission/decorators/current-club-access.decorator.js';
 import { RequirePermission } from '../permission/decorators/require-permission.decorator.js';
+import { AnswersDto } from '../event/dto/event.dto.js';
 import { PaymentService } from './payment.service.js';
 
 class PaymentStatusDto {
@@ -89,8 +90,12 @@ export class PaymentController {
   @HttpCode(HttpStatus.OK)
   @ApiOkResponse({ type: RedirectDto })
   @ApiConflictResponse(error('Full (EVENT_FULL), free (EVENT_IS_FREE), registered already, not open, or payments not set up'))
-  checkout(@CurrentClubAccess() access: ClubAccess, @Param('eventId', ParseUUIDPipe) eventId: string): Promise<RedirectDto> {
-    return this.payments.memberCheckout(access, eventId);
+  checkout(
+    @CurrentClubAccess() access: ClubAccess,
+    @Param('eventId', ParseUUIDPipe) eventId: string,
+    @Body() { answers }: AnswersDto,
+  ): Promise<RedirectDto> {
+    return this.payments.memberCheckout(access, eventId, answers);
   }
 
   /** Stripe's webhooks: signed, so only Stripe's are acted on */

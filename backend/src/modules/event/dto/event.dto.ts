@@ -5,7 +5,10 @@ import {
   IsDateString,
   IsIn,
   IsInt,
+  ArrayMaxSize,
+  IsArray,
   IsNotEmpty,
+  IsObject,
   IsOptional,
   IsString,
   Max,
@@ -41,6 +44,61 @@ export class SeriesScopeQuery {
   @IsOptional()
   @IsIn(SERIES_SCOPES)
   scope?: SeriesScope;
+}
+
+export class QuestionInputDto {
+  /** Keep a question's id when editing it, so its answers stay with it; leave out for a new one */
+  @IsOptional()
+  @IsString()
+  @MaxLength(20)
+  id?: string;
+
+  /** @example 'Dietary needs' */
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(150)
+  label: string;
+
+  @ApiProperty({ enum: ['text', 'choice'] })
+  @IsIn(['text', 'choice'])
+  kind: 'text' | 'choice';
+
+  /** For a choice question: 2 to 10 choices. @example ['None', 'Vegetarian', 'Vegan'] */
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(10)
+  @IsString({ each: true })
+  @MaxLength(60, { each: true })
+  options?: string[];
+
+  @IsOptional()
+  @IsBoolean()
+  required?: boolean;
+}
+
+export class QuestionDto {
+  @ApiProperty()
+  id: string;
+
+  @ApiProperty()
+  label: string;
+
+  @ApiProperty({ enum: ['text', 'choice'] })
+  kind: 'text' | 'choice';
+
+  @ApiProperty({ type: [String] })
+  options: string[];
+
+  @ApiProperty()
+  required: boolean;
+}
+
+/** Answers to an event's questions, by question id. */
+export class AnswersDto {
+  @ApiPropertyOptional({ type: 'object', additionalProperties: { type: 'string' }, example: { k3Rn8: 'Vegan' } })
+  @IsOptional()
+  @IsObject()
+  answers?: Record<string, string>;
 }
 
 export class RepeatDto {
@@ -112,6 +170,15 @@ export class CreateEventDto {
   @Min(0)
   @Max(720)
   refundCutoffHours?: number;
+
+  /** What to ask people taking a place: up to five questions */
+  @ApiPropertyOptional({ type: [QuestionInputDto] })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(5)
+  @ValidateNested({ each: true })
+  @Type(() => QuestionInputDto)
+  questions?: QuestionInputDto[];
 
   /**
    * Repeat it: the same event every week, fortnight or month, at the same
@@ -254,6 +321,9 @@ export class EventDto {
 
   @ApiPropertyOptional({ type: Number, nullable: true, description: 'Takings, less refunds (only for people who can edit it)' })
   salesCents: number | null;
+
+  @ApiProperty({ type: [QuestionDto], description: 'What people taking a place are asked' })
+  questions: QuestionDto[];
 }
 
 export class SendEventMessageDto {
@@ -310,6 +380,9 @@ export class EventAttendeeDto {
 
   @ApiPropertyOptional({ type: Date, nullable: true })
   checkedInAt: Date | null;
+
+  @ApiProperty({ type: 'object', additionalProperties: { type: 'string' }, description: "Their answers, by question id" })
+  answers: Record<string, string>;
 }
 
 export class MyRegistrationDto {

@@ -20,11 +20,14 @@ export interface PublicEvent {
   timeZone: string;
   // a ticket's price; null: free
   price: { amountCents: number; currency: string } | null;
+  // what people taking a place are asked
+  questions: import("./event.interface").Question[];
 }
 
 export interface GuestPlaceInput {
   name: string;
   email: string;
+  answers?: Record<string, string>;
 }
 
 /** POST .../places/confirm: a ticket, or (the event being full) a place in the queue. */

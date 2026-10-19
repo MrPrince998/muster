@@ -72,6 +72,10 @@ test("a public paid event shows its price, and guests pay after confirming", asy
   await expect(card.getByText("$45.00, with a QR ticket for the door")).toBeVisible();
   await card.getByLabel("Your name").fill("Paula Payer");
   await card.getByLabel("Email").fill("paula.payer@example.test");
+  // the dinner asks about food: required, so it's asked before the link goes
+  await card.getByRole("button", { name: "Buy a ticket for $45.00" }).click();
+  await expect(card.getByText("Choose one")).toBeVisible();
+  await card.getByText("Vegan", { exact: true }).click();
   await card.getByRole("button", { name: "Buy a ticket for $45.00" }).click();
   await expect(card.getByText(/Open it to pay; your place is held while you do/)).toBeVisible();
 

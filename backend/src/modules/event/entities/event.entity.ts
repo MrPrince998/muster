@@ -140,6 +140,10 @@ export class Event {
   @Column({ name: 'refund_cutoff_hours', type: 'integer', default: 48 })
   refundCutoffHours: number;
 
+  // what it asks people taking a place (questions.ts), up to five
+  @Column({ type: 'jsonb', default: [] })
+  questions: unknown[];
+
   // when members who asked for new-event emails were told; null: not yet
   @Column({ name: 'announced_at', type: 'timestamptz', nullable: true })
   announcedAt: Date | null;

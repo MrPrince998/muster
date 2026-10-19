@@ -26,6 +26,23 @@ export const eventFormSchema = z
       .string()
       .trim()
       .refine((value) => /^\d+$/.test(value) && Number(value) <= 720, "Enter whole hours, up to 720"),
+    // what to ask people taking a place; a choice question's options, one per line
+    questions: z
+      .array(
+        z
+          .object({
+            id: z.string().optional(),
+            label: z.string().trim().min(1, "Write the question").max(150, "Use 150 characters or fewer"),
+            kind: z.enum(["text", "choice"]),
+            options: z.string(),
+            required: z.boolean(),
+          })
+          .refine((q) => q.kind === "text" || choiceList(q.options).length >= 2, {
+            path: ["options"],
+            message: "Give at least two choices, one per line",
+          }),
+      )
+      .max(5),
     // new events only: how often it repeats, and how many in all
     repeatEvery: z.enum(["none", "week", "fortnight", "month"]),
     repeatCount: z.string().trim(),
@@ -42,6 +59,11 @@ export const eventFormSchema = z
   });
 
 export type EventFormValues = z.infer<typeof eventFormSchema>;
+
+/** A choice question's options, as typed: one per line (or comma-separated), no blanks or repeats. */
+export function choiceList(text: string): string[] {
+  return [...new Set(text.split(/[\n,]/).map((o) => o.trim()).filter(Boolean))];
+}
 
 /**
  * ISO -> the value a datetime-local input wants, on the clock in `zone` (the
@@ -67,6 +89,13 @@ export function toEventInput(values: EventFormValues, zone?: string) {
     visibility: values.visibility,
     priceCents: values.price === "" ? null : parseMoney(values.price),
     refundCutoffHours: Number(values.refundCutoffHours),
+    questions: values.questions.map((q) => ({
+      ...(q.id && { id: q.id }),
+      label: q.label,
+      kind: q.kind,
+      ...(q.kind === "choice" && { options: choiceList(q.options) }),
+      required: q.required,
+    })),
   };
 }
 

@@ -26,6 +26,10 @@ export class WaitlistEntry {
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;
 
+  // their answers to the event's questions, by question id
+  @Column({ type: 'jsonb', default: {} })
+  answers: Record<string, string>;
+
   @Column({ name: 'promoted_at', type: 'timestamptz', nullable: true })
   promotedAt: Date | null;
 

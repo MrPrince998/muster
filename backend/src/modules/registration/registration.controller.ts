@@ -1,4 +1,4 @@
-import { Controller, Delete, HttpCode, HttpStatus, Param, ParseUUIDPipe, Post } from '@nestjs/common';
+import { Body, Controller, Delete, HttpCode, HttpStatus, Param, ParseUUIDPipe, Post } from '@nestjs/common';
 import {
   ApiConflictResponse,
   ApiCreatedResponse,
@@ -7,7 +7,7 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { ErrorResponseDto } from '../../common/errors/error-response.dto.js';
-import { MyRegistrationDto } from '../event/dto/event.dto.js';
+import { AnswersDto, MyRegistrationDto } from '../event/dto/event.dto.js';
 import type { ClubAccess } from '../permission/club-access.js';
 import { CurrentClubAccess } from '../permission/decorators/current-club-access.decorator.js';
 import { RequirePermission } from '../permission/decorators/require-permission.decorator.js';
@@ -36,8 +36,9 @@ export class RegistrationController {
   register(
     @CurrentClubAccess() access: ClubAccess,
     @Param('eventId', ParseUUIDPipe) eventId: string,
+    @Body() { answers }: AnswersDto,
   ): Promise<MyRegistrationDto> {
-    return this.registrations.register(access, eventId);
+    return this.registrations.register(access, eventId, answers);
   }
 
   /** Cancel your registration and free the place */

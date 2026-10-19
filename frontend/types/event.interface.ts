@@ -53,7 +53,22 @@ export interface ClubEvent {
   yourPayment: (Price & { refundable: boolean }) | null;
   // takings less refunds; only for people who can edit it
   salesCents: number | null;
+  // what people taking a place are asked
+  questions: Question[];
 }
+
+/** A question an event asks the people taking a place. */
+export interface Question {
+  id: string;
+  label: string;
+  kind: "text" | "choice";
+  // the choices, for a choice question
+  options: string[];
+  required: boolean;
+}
+
+/** Answers to an event's questions, by question id. */
+export type Answers = Record<string, string>;
 
 /** A price in the currency's smallest unit: 1500 is $15.00. */
 export interface Price {
@@ -68,6 +83,7 @@ export interface EventAttendee {
   name: string;
   registeredAt: string;
   checkedInAt: string | null;
+  answers: Answers;
 }
 
 export interface EventInput {
@@ -83,6 +99,8 @@ export interface EventInput {
   // a ticket's price in cents; null: free (needs the workspace's Stripe account)
   priceCents?: number | null;
   refundCutoffHours?: number;
+  // a question already asked keeps its id, so its answers stay with it
+  questions?: { id?: string; label: string; kind: "text" | "choice"; options?: string[]; required?: boolean }[];
   // create only: the same event every week, fortnight or month, `count` in all
   repeat?: { every: RepeatEvery; count: number };
 }

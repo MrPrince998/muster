@@ -27,5 +27,5 @@ export const paymentsRedirect = (orgId: string, to: "connect" | "dashboard") =>
   request<{ url: string }>({ method: "post", url: `/orgs/${orgId}/payments/${to}` });
 
 /** Starts buying a place at a paid event: Stripe's checkout page. */
-export const startCheckout = (clubId: string, eventId: string) =>
-  request<{ url: string }>({ method: "post", url: `/clubs/${clubId}/events/${eventId}/checkout` });
+export const startCheckout = (clubId: string, eventId: string, answers?: Record<string, string>) =>
+  request<{ url: string }>({ method: "post", url: `/clubs/${clubId}/events/${eventId}/checkout`, data: { answers } });

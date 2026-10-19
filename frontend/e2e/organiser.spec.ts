@@ -174,3 +174,26 @@ test("message everyone going to an event", async ({ page }) => {
   await expect(dialog.getByText(/^Sent to \d+ people\.$/)).toBeVisible();
   await expect(dialog.getByRole("region", { name: "Sent already" }).getByText("Pizza is here")).toBeVisible();
 });
+
+test("ask a question when people register", async ({ page }) => {
+  await openClub(page, "Film Club");
+  await page.getByRole("button", { name: "New event" }).click();
+  const form = page.getByRole("dialog");
+  await form.getByLabel("Name", { exact: true }).fill("Question Night");
+  await form.locator("#event-starts").fill(localDateTime(26, 18));
+  await form.locator("#event-ends").fill(localDateTime(26, 20));
+  await form.getByRole("button", { name: "Add a question" }).click();
+  await form.getByLabel("Question 1", { exact: true }).fill("Popcorn?");
+  await form.getByLabel("Question 1 answer").selectOption("choice");
+  await form.getByLabel("Question 1 choices, one per line").fill("Salted\nSweet");
+  await form.getByLabel("Required").check();
+  await form.getByRole("button", { name: "Publish" }).click();
+
+  const panel = page.getByRole("complementary", { name: "Question Night" });
+  await panel.getByRole("button", { name: "Register" }).click();
+  const ask = page.getByRole("dialog");
+  await ask.getByText("Sweet", { exact: true }).click();
+  await ask.getByRole("button", { name: "Register" }).click();
+  await expect(panel.getByText("You’re going.")).toBeVisible();
+  await expect(panel.getByRole("region", { name: "Answers" }).getByRole("listitem").filter({ hasText: "Sweet" })).toHaveText(/Sweet\s*1/);
+});

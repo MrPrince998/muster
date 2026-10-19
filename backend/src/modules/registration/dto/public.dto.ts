@@ -1,7 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
-import { IsEmail, IsNotEmpty, IsString, MaxLength } from 'class-validator';
-import { PriceDto } from '../../event/dto/event.dto.js';
+import { IsEmail, IsNotEmpty, IsString, MaxLength, IsObject, IsOptional } from 'class-validator';
+import { PriceDto, QuestionDto } from '../../event/dto/event.dto.js';
 
 const trim = ({ value }: { value: unknown }) => (typeof value === 'string' ? value.trim() : value);
 
@@ -28,6 +28,9 @@ export class PublicEventDto {
 
   @ApiPropertyOptional({ type: PriceDto, nullable: true, description: 'A ticket costs this; null: free' })
   price: PriceDto | null;
+
+  @ApiProperty({ type: [QuestionDto], description: 'What people taking a place are asked' })
+  questions: QuestionDto[];
 }
 
 export class GuestPlaceDto {
@@ -43,6 +46,12 @@ export class GuestPlaceDto {
   @IsEmail()
   @MaxLength(320)
   email: string;
+
+  /** Answers to the event's questions, by question id */
+  @ApiPropertyOptional({ type: 'object', additionalProperties: { type: 'string' } })
+  @IsOptional()
+  @IsObject()
+  answers?: Record<string, string>;
 }
 
 export class ConfirmGuestPlaceDto {

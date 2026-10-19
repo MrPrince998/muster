@@ -1,7 +1,7 @@
 import { request } from "@/lib/api/client";
 import { useApiMutation } from "@/lib/api/useApiMutation";
 import { useApiQuery } from "@/lib/api/useApiQuery";
-import type { ClubEvent, EventAttendee, EventChanges, EventInput, EventScope, SeriesScope } from "@/types/event.interface";
+import type { Answers, ClubEvent, EventAttendee, EventChanges, EventInput, EventScope, SeriesScope } from "@/types/event.interface";
 
 // Everything about a club's events sits under one key, so any change can
 // refresh all three lists (and the counts) at once.
@@ -87,15 +87,15 @@ export const useDeleteEvent = (clubId: string, orgId: string) =>
 
 /** Takes a place. Fails with EVENT_FULL, EVENT_ENDED, EVENT_NOT_OPEN, REGISTRATION_CLOSED or ALREADY_REGISTERED. */
 export const useRegister = (clubId: string) =>
-  useApiMutation<{ id: string }, { eventId: string }>(
-    ({ eventId }) => ({ method: "post", url: `/clubs/${clubId}/events/${eventId}/my-registration` }),
+  useApiMutation<{ id: string }, { eventId: string; answers?: Answers }>(
+    ({ eventId, answers }) => ({ method: "post", url: `/clubs/${clubId}/events/${eventId}/my-registration`, data: { answers } }),
     { invalidates: [eventsKey(clubId)] },
   );
 
 /** Joins a full event's waitlist; your position comes back. PLACES_AVAILABLE if you could just register. */
 export const useJoinWaitlist = (clubId: string) =>
-  useApiMutation<{ position: number }, { eventId: string }>(
-    ({ eventId }) => ({ method: "post", url: `/clubs/${clubId}/events/${eventId}/waitlist` }),
+  useApiMutation<{ position: number }, { eventId: string; answers?: Answers }>(
+    ({ eventId, answers }) => ({ method: "post", url: `/clubs/${clubId}/events/${eventId}/waitlist`, data: { answers } }),
     { invalidates: [eventsKey(clubId)] },
   );
 

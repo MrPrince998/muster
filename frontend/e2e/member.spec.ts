@@ -68,11 +68,21 @@ test("buy a ticket for a paid event, then give it back for a refund", async ({ p
 
   // development's pretend Stripe: checkout is paid at once and comes straight back
   await panel.getByRole("button", { name: "Buy a ticket for $45.00" }).click();
+  // its questions first: the dietary one is required
+  const questions = page.getByRole("dialog");
+  await questions.getByRole("button", { name: "Go to checkout" }).click();
+  await expect(questions.getByText("Choose one")).toBeVisible();
+  await questions.getByText("Vegetarian", { exact: true }).click();
+  await questions.getByLabel(/Anything the kitchen should know/).fill("No coriander, please");
+  await questions.getByRole("button", { name: "Go to checkout" }).click();
   await expect(page).toHaveURL(/paid=1/);
   const back = page.getByRole("complementary", { name: "Robotics Gala Dinner" });
   await expect(back.getByText("You’re going.")).toBeVisible({ timeout: 15_000 });
   // the organiser's takings
   await expect(back.getByText("in ticket sales, less refunds")).toBeVisible();
+  // the organiser's tally of the answers
+  const said = back.getByRole("region", { name: "Answers" });
+  await expect(said.getByRole("listitem").filter({ hasText: "Vegetarian" })).toHaveText(/Vegetarian\s*1/);
 
   await back.getByRole("button", { name: "Cancel my place" }).click();
   const confirm = page.getByRole("alertdialog");

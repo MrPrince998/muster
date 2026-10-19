@@ -4,6 +4,7 @@ import type { EntityManager } from 'typeorm';
 import { HttpError } from '../../common/errors/http-error.js';
 import { fileSlug, toCsv } from '../../common/utils/csv.js';
 import { buildIcs } from '../../common/utils/ics.js';
+import { prepareQuestions, type Question } from './questions.js';
 import { occurrences, shiftLike } from '../../common/utils/recurrence.js';
 import { config } from '../../config/config.js';
 import { TenantService } from '../../database/tenant.service.js';
@@ -65,6 +66,7 @@ interface EventRow {
   your_paid_cents: number | null;
   your_paid_currency: string | null;
   sales_cents: number;
+  questions: Question[];
 }
 
 type ClubDetails = { name: string; orgSlug: string; timeZone: string };
@@ -92,7 +94,7 @@ const SELECT_EVENTS = `
     (SELECT count(*) FROM events s
       WHERE s.series_id = e.series_id AND (s.starts_at, s.id) <= (e.starts_at, e.id))::int AS series_index,
     (SELECT count(*) FROM events s WHERE s.series_id = e.series_id)::int AS series_count,
-    e.price_cents, e.currency, e.refund_cutoff_hours,
+    e.price_cents, e.currency, e.refund_cutoff_hours, e.questions,
     (SELECT count(*) FROM checkouts h
       WHERE h.event_id = e.id AND h.status = 'pending' AND h.expires_at > now())::int AS held_count,
     (SELECT r.amount_paid_cents FROM registrations r
@@ -179,6 +181,7 @@ export class EventService {
 
     return this.inClub(access, async (m, orgId) => {
       const price = await this.payments.priceFor(m, orgId, dto.priceCents ?? null);
+      const questions = prepareQuestions(dto.questions ?? []);
       const dates = dto.repeat
         ? occurrences(startsAt, endsAt, dto.repeat.every, dto.repeat.count, await TenantService.timeZone(m))
         : [{ startsAt, endsAt }];
@@ -189,8 +192,8 @@ export class EventService {
           `INSERT INTO events
              (org_id, club_id, created_by, title, description, location,
               starts_at, ends_at, capacity, visibility, status, published_at, series_id, repeat_every,
-              price_cents, currency, refund_cutoff_hours)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+              price_cents, currency, refund_cutoff_hours, questions)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
            RETURNING id`,
           [
             orgId,
@@ -210,6 +213,7 @@ export class EventService {
             price.priceCents,
             price.currency,
             dto.refundCutoffHours ?? 48,
+            JSON.stringify(questions),
           ],
         );
         ids.push(id);
@@ -344,7 +348,7 @@ export class EventService {
       `UPDATE events SET
          title = $2, description = $3, location = $4,
          starts_at = $5, ends_at = $6, capacity = $7, visibility = $8, registration_closed_at = $9,
-         price_cents = $10, currency = $11, refund_cutoff_hours = $12
+         price_cents = $10, currency = $11, refund_cutoff_hours = $12, questions = $13
        WHERE id = $1`,
       [
         event.id,
@@ -359,6 +363,8 @@ export class EventService {
         price ? price.priceCents : event.price_cents,
         price ? price.currency : event.currency,
         dto.refundCutoffHours ?? event.refund_cutoff_hours,
+        // each event keeps its own ids for questions it already asked
+        JSON.stringify(dto.questions === undefined ? event.questions : prepareQuestions(dto.questions, event.questions)),
       ],
     );
 
@@ -609,9 +615,9 @@ export class EventService {
     return this.inClub(access, async (m) => {
       await this.findOne(m, access, eventId); // 404 if it isn't this club's
       // users is global (no RLS); registrations limits the join to this event
-      const rows: { user_id: string; name: string; created_at: Date; checked_in_at: Date | null }[] =
+      const rows: { user_id: string; name: string; created_at: Date; checked_in_at: Date | null; answers: Record<string, string> }[] =
         await m.query(
-          `SELECT r.user_id, u.name, r.created_at, r.checked_in_at
+          `SELECT r.user_id, u.name, r.created_at, r.checked_in_at, r.answers
            FROM registrations r
            JOIN users u ON u.id = r.user_id
            WHERE r.event_id = $1 AND r.cancelled_at IS NULL
@@ -623,6 +629,7 @@ export class EventService {
         name: r.name,
         registeredAt: r.created_at,
         checkedInAt: r.checked_in_at,
+        answers: r.answers ?? {},
       }));
     });
   }
@@ -663,16 +670,16 @@ export class EventService {
       const zone = await TenantService.timeZone(m);
       const stamp = (at: Date | null) => (at ? wallClock(at, zone) : '');
 
-      const going: { name: string; created_at: Date; checked_in_at: Date | null; outsider: boolean }[] = await m.query(
-        `SELECT u.name, r.created_at, r.checked_in_at,
+      const going: { name: string; created_at: Date; checked_in_at: Date | null; outsider: boolean; answers: Record<string, string> }[] = await m.query(
+        `SELECT u.name, r.created_at, r.checked_in_at, r.answers,
                 NOT EXISTS (SELECT 1 FROM org_members om WHERE om.org_id = r.org_id AND om.user_id = r.user_id) AS outsider
          FROM registrations r JOIN users u ON u.id = r.user_id
          WHERE r.event_id = $1 AND r.cancelled_at IS NULL
          ORDER BY lower(u.name)`,
         [eventId],
       );
-      const waiting: { name: string; created_at: Date; outsider: boolean }[] = await m.query(
-        `SELECT u.name, w.created_at,
+      const waiting: { name: string; created_at: Date; outsider: boolean; answers: Record<string, string> }[] = await m.query(
+        `SELECT u.name, w.created_at, w.answers,
                 NOT EXISTS (SELECT 1 FROM org_members om WHERE om.org_id = w.org_id AND om.user_id = w.user_id) AS outsider
          FROM waitlist_entries w JOIN users u ON u.id = w.user_id
          WHERE w.event_id = $1 AND w.promoted_at IS NULL
@@ -680,16 +687,20 @@ export class EventService {
         [eventId],
       );
 
+      // a column per question the event asks, after the rest
+      const questions = event.questions;
+      const answersOf = (answers: Record<string, string> | null) => questions.map((q) => answers?.[q.id] ?? '');
       const csv = toCsv([
-        ['Name', 'Status', `Registered (${zone})`, `Checked in (${zone})`, 'From outside the workspace'],
+        ['Name', 'Status', `Registered (${zone})`, `Checked in (${zone})`, 'From outside the workspace', ...questions.map((q) => q.label)],
         ...going.map((p) => [
           p.name,
           p.checked_in_at ? 'Checked in' : 'Going',
           stamp(p.created_at),
           stamp(p.checked_in_at),
           p.outsider ? 'Yes' : 'No',
+          ...answersOf(p.answers),
         ]),
-        ...waiting.map((p, i) => [p.name, `Waitlist ${i + 1}`, stamp(p.created_at), '', p.outsider ? 'Yes' : 'No']),
+        ...waiting.map((p, i) => [p.name, `Waitlist ${i + 1}`, stamp(p.created_at), '', p.outsider ? 'Yes' : 'No', ...answersOf(p.answers)]),
       ]);
       // a list of people left the app: worth knowing who took it
       await audit(m, {
@@ -826,6 +837,7 @@ export class EventService {
             }
           : null,
       salesCents: canManage(access, row.created_by) && row.price_cents !== null ? (row.sales_cents ?? 0) : null,
+      questions: row.questions ?? [],
     };
   }
 }

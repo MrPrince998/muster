@@ -26,6 +26,8 @@ function actionMessage(code: string): string {
   switch (code) {
     case "EVENT_FULL":
       return "Someone took the last place just before you. The event is full now.";
+    case "INVALID_ANSWERS":
+      return "Some answers need another look. Try again, answering every required question.";
     case "SOLD_OUT":
       return "Sold out: every ticket has gone.";
     case "PAYMENTS_NOT_SET_UP":
@@ -237,13 +239,15 @@ export default function OrgHomeContainer() {
         attendees: { list: attendees.data ?? [], loading: attendees.isPending && attendees.fetchStatus !== "idle", failed: attendees.isError },
         pending,
         error: actionError,
-        onRegister: () => openEvent && run("register", () => register.mutateAsync({ eventId: openEvent.id })),
+        onRegister: (answers) =>
+          openEvent && run("register", () => register.mutateAsync({ eventId: openEvent.id, answers })),
         onCancel: () => openEvent && run("cancel", () => cancel.mutateAsync({ eventId: openEvent.id })),
-        onJoinWaitlist: () => openEvent && run("waitlist", () => joinWaitlist.mutateAsync({ eventId: openEvent.id })),
-        onBuy: () =>
+        onJoinWaitlist: (answers) =>
+          openEvent && run("waitlist", () => joinWaitlist.mutateAsync({ eventId: openEvent.id, answers })),
+        onBuy: (answers) =>
           openEvent &&
           run("buy", async () => {
-            const { url } = await startCheckout(openEvent.clubId, openEvent.id);
+            const { url } = await startCheckout(openEvent.clubId, openEvent.id, answers);
             window.location.assign(url);
             // stays "going to checkout" while the browser leaves
             await new Promise(() => undefined);

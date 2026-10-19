@@ -32,14 +32,25 @@ import {
 } from "@/components/ui/sheet";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
-import type { ClubEvent, EventAttendee, SeriesScope } from "@/types/event.interface";
+import type {
+  Answers,
+  ClubEvent,
+  EventAttendee,
+  SeriesScope,
+} from "@/types/event.interface";
 import { downloadAttendees, eventsKey } from "../../services/event.service";
 import { ConfirmDialog } from "../../shared/confirm-dialog";
-import { hasLaterInSeries, SeriesScopeChoice, seriesLabel } from "../../shared/series-scope-choice";
+import {
+  hasLaterInSeries,
+  SeriesScopeChoice,
+  seriesLabel,
+} from "../../shared/series-scope-choice";
+import { AnswersDialog } from "../../dialogs/answers-dialog";
 import { MessageDialog } from "../../dialogs/message-dialog";
 import { TicketDialog } from "../../tickets/ticket-dialog";
 import { differsFromDevice, zoneCity, zoneName } from "@/lib/time-zone";
 import { formatMoney } from "@/lib/money";
+import { AnswersSummary } from "./answers-summary";
 import { FeedbackSection } from "./feedback-section";
 import { formatFullDate, formatTimeRange } from "./format";
 
@@ -82,11 +93,12 @@ export interface EventPanelProps {
   attendees: { list: EventAttendee[]; loading: boolean; failed: boolean };
   pending: PanelAction | null;
   error: string | null;
-  onRegister: () => void;
+  // with the answers to the event's questions, when it asks any
+  onRegister: (answers?: Answers) => void;
   onCancel: () => void;
-  onJoinWaitlist: () => void;
+  onJoinWaitlist: (answers?: Answers) => void;
   // a paid event: off to Stripe to buy a place
-  onBuy: () => void;
+  onBuy: (answers?: Answers) => void;
   // back from Stripe: paid (the ticket is on its way) or not
   paymentReturn: "paid" | "cancelled" | null;
   onLeaveWaitlist: () => void;
@@ -139,7 +151,8 @@ function PanelBody(props: EventPanelProps & { event: ClubEvent }) {
   // a place someone is paying for right now is taken until they've paid or their checkout runs out
   const taken = event.registeredCount + event.heldCount;
   const full = event.capacity !== null && taken >= event.capacity;
-  const left = event.capacity === null ? null : Math.max(0, event.capacity - taken);
+  const left =
+    event.capacity === null ? null : Math.max(0, event.capacity - taken);
 
   return (
     <div className="flex flex-col gap-6 p-6">
@@ -255,8 +268,12 @@ function PanelBody(props: EventPanelProps & { event: ClubEvent }) {
               </p>
               {event.salesCents !== null && event.price && (
                 <p className="mt-2 text-sm">
-                  <span className="font-semibold">{formatMoney(event.salesCents, event.price.currency)}</span>{" "}
-                  <span className="text-muted-foreground">in ticket sales, less refunds</span>
+                  <span className="font-semibold">
+                    {formatMoney(event.salesCents, event.price.currency)}
+                  </span>{" "}
+                  <span className="text-muted-foreground">
+                    in ticket sales, less refunds
+                  </span>
                 </p>
               )}
             </>
@@ -293,6 +310,9 @@ function PanelBody(props: EventPanelProps & { event: ClubEvent }) {
       )}
       {props.canViewAttendees && !draft && (
         <WhosGoing {...props} ended={ended} />
+      )}
+      {props.canViewAttendees && !draft && (
+        <AnswersSummary event={event} attendees={props.attendees.list} />
       )}
     </div>
   );
@@ -418,7 +438,9 @@ function OrganiserActions({
           disabled={pending === "publish" || pending === "publish-following"}
         >
           {pending === "publish-following" && <Spinner />}
-          {pending === "publish-following" ? "Publishing…" : "Publish this and following"}
+          {pending === "publish-following"
+            ? "Publishing…"
+            : "Publish this and following"}
         </Button>
       )}
       {draft && canPublish && (
@@ -430,7 +452,11 @@ function OrganiserActions({
           disabled={pending === "publish" || pending === "publish-following"}
         >
           {pending === "publish" && <Spinner />}
-          {pending === "publish" ? "Publishing…" : series ? "Publish only this one" : "Publish event"}
+          {pending === "publish"
+            ? "Publishing…"
+            : series
+              ? "Publish only this one"
+              : "Publish event"}
         </Button>
       )}
       {draft && !canPublish && (
@@ -444,11 +470,21 @@ function OrganiserActions({
       </Button>
       {!draft && going > 0 && (
         <>
-          <Button size="lg" variant="outline" className="h-11" onClick={() => setMessaging(true)}>
+          <Button
+            size="lg"
+            variant="outline"
+            className="h-11"
+            onClick={() => setMessaging(true)}
+          >
             <Mail aria-hidden />
             Message everyone going
           </Button>
-          <MessageDialog event={event} open={messaging} onOpenChange={setMessaging} timeZone={timeZone} />
+          <MessageDialog
+            event={event}
+            open={messaging}
+            onOpenChange={setMessaging}
+            timeZone={timeZone}
+          />
         </>
       )}
       {!draft && !ended && (
@@ -491,8 +527,8 @@ function OrganiserActions({
           scope === "following"
             ? "Everyone registered for any of them gets an email, and their tickets stop working at the door. They stay listed as cancelled."
             : going === 0
-            ? "Nobody has registered yet. It stays listed as cancelled."
-            : `${going} ${going === 1 ? "person has" : "people have"} registered. Each gets an email, and their tickets stop working at the door.`
+              ? "Nobody has registered yet. It stays listed as cancelled."
+              : `${going} ${going === 1 ? "person has" : "people have"} registered. Each gets an email, and their tickets stop working at the door.`
         }
         confirmLabel="Cancel event"
         pendingLabel="Cancelling…"
@@ -500,7 +536,14 @@ function OrganiserActions({
         destructive
         onConfirm={() => onCancelEvent(reason, scope)}
       >
-        {series && <SeriesScopeChoice value={scope} onChange={setScope} verb="cancel" name="cancel-scope" />}
+        {series && (
+          <SeriesScopeChoice
+            value={scope}
+            onChange={setScope}
+            verb="cancel"
+            name="cancel-scope"
+          />
+        )}
         {(going > 0 || scope === "following") && (
           <div className="space-y-1.5">
             <label htmlFor="cancel-reason" className="text-sm font-medium">
@@ -536,7 +579,14 @@ function OrganiserActions({
         destructive
         onConfirm={() => onDeleteDraft(scope)}
       >
-        {series && <SeriesScopeChoice value={scope} onChange={setScope} verb="delete" name="delete-scope" />}
+        {series && (
+          <SeriesScopeChoice
+            value={scope}
+            onChange={setScope}
+            verb="delete"
+            name="delete-scope"
+          />
+        )}
       </ConfirmDialog>
     </div>
   );
@@ -590,6 +640,35 @@ function MemberActions({
   const [showingTicket, setShowingTicket] = useState(false);
   const [givingBack, setGivingBack] = useState(false);
   const paid = event.yourPayment;
+  // the event's questions come first, whichever way they're taking a place
+  const [asking, setAsking] = useState<"register" | "waitlist" | "buy" | null>(
+    null,
+  );
+  const take = (
+    way: "register" | "waitlist" | "buy",
+    act: (answers?: Answers) => void,
+  ) => (event.questions.length > 0 ? setAsking(way) : act());
+  const questions = asking && (
+    <AnswersDialog
+      event={event}
+      open={!!asking}
+      onOpenChange={(open) => !open && setAsking(null)}
+      confirmLabel={
+        asking === "buy"
+          ? "Go to checkout"
+          : asking === "waitlist"
+            ? "Join the waitlist"
+            : "Register"
+      }
+      onConfirm={(answers) =>
+        (asking === "buy"
+          ? onBuy
+          : asking === "waitlist"
+            ? onJoinWaitlist
+            : onRegister)(answers)
+      }
+    />
+  );
 
   if (ended) {
     return (
@@ -645,7 +724,9 @@ function MemberActions({
                 ? `You'll get ${formatMoney(paid.amountCents, paid.currency)} back, to the card you paid with, within a few days.`
                 : `It's less than ${event.refundCutoffHours} hours to the start, so there's no refund. Someone else can buy the place.`
             }
-            confirmLabel={paid.refundable ? "Give it back and refund" : "Give it back"}
+            confirmLabel={
+              paid.refundable ? "Give it back and refund" : "Give it back"
+            }
             pendingLabel="Giving it back…"
             dismissLabel="Keep my ticket"
             destructive
@@ -662,11 +743,17 @@ function MemberActions({
   // back from Stripe, paid: the ticket arrives as soon as Stripe tells us
   if (paymentReturn === "paid") {
     return (
-      <p role="status" className="flex items-start gap-2 rounded-xl bg-cobalt-50 p-4 text-sm text-cobalt-800">
-        <LoaderCircle className="mt-0.5 size-4 shrink-0 animate-spin motion-reduce:animate-none" aria-hidden />
+      <p
+        role="status"
+        className="flex items-start gap-2 rounded-xl bg-cobalt-50 p-4 text-sm text-cobalt-800"
+      >
+        <LoaderCircle
+          className="mt-0.5 size-4 shrink-0 animate-spin motion-reduce:animate-none"
+          aria-hidden
+        />
         <span>
-          <span className="font-semibold">Payment received.</span> Your ticket will appear here in a moment, and it&rsquo;s
-          on its way by email.
+          <span className="font-semibold">Payment received.</span> Your ticket
+          will appear here in a moment, and it&rsquo;s on its way by email.
         </span>
       </p>
     );
@@ -707,7 +794,8 @@ function MemberActions({
       <div className="flex flex-col gap-2">
         {paymentReturn === "cancelled" && (
           <p role="status" className="text-sm text-muted-foreground">
-            Payment cancelled: nothing was charged. Your place is held a little while if you change your mind.
+            Payment cancelled: nothing was charged. Your place is held a little
+            while if you change your mind.
           </p>
         )}
         <Button
@@ -715,7 +803,7 @@ function MemberActions({
           variant={event.canManage ? "outline" : "default"}
           className="h-11 font-semibold"
           disabled={full || pending === "buy"}
-          onClick={onBuy}
+          onClick={() => take("buy", onBuy)}
         >
           {pending === "buy" && <Spinner />}
           {full
@@ -724,7 +812,12 @@ function MemberActions({
               ? "Going to checkout…"
               : `Buy a ticket for ${formatMoney(event.price.amountCents, event.price.currency)}`}
         </Button>
-        {!full && <p className="text-center text-xs text-muted-foreground">Paid securely through Stripe.</p>}
+        {!full && (
+          <p className="text-center text-xs text-muted-foreground">
+            Paid securely through Stripe.
+          </p>
+        )}
+        {questions}
       </div>
     );
   }
@@ -732,34 +825,40 @@ function MemberActions({
   // full, or people already waiting: the queue is the way in
   if (full || event.waitlistCount > 0) {
     return (
-      <Button
-        size="lg"
-        variant={event.canManage ? "outline" : "default"}
-        className="h-11 font-semibold"
-        disabled={pending === "waitlist"}
-        onClick={onJoinWaitlist}
-      >
-        {pending === "waitlist" && <Spinner />}
-        {pending === "waitlist" ? "Joining…" : "Join the waitlist"}
-      </Button>
+      <>
+        <Button
+          size="lg"
+          variant={event.canManage ? "outline" : "default"}
+          className="h-11 font-semibold"
+          disabled={pending === "waitlist"}
+          onClick={() => take("waitlist", onJoinWaitlist)}
+        >
+          {pending === "waitlist" && <Spinner />}
+          {pending === "waitlist" ? "Joining…" : "Join the waitlist"}
+        </Button>
+        {questions}
+      </>
     );
   }
 
   return (
-    <Button
-      size="lg"
-      variant={event.canManage ? "outline" : "default"}
-      className="h-11 font-semibold"
-      disabled={full || pending === "register"}
-      onClick={onRegister}
-    >
-      {pending === "register" && <Spinner />}
-      {full
-        ? "No places left"
-        : pending === "register"
-          ? "Registering…"
-          : "Register"}
-    </Button>
+    <>
+      <Button
+        size="lg"
+        variant={event.canManage ? "outline" : "default"}
+        className="h-11 font-semibold"
+        disabled={full || pending === "register"}
+        onClick={() => take("register", onRegister)}
+      >
+        {pending === "register" && <Spinner />}
+        {full
+          ? "No places left"
+          : pending === "register"
+            ? "Registering…"
+            : "Register"}
+      </Button>
+      {questions}
+    </>
   );
 }
 

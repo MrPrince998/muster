@@ -8,6 +8,7 @@ import { BULK_PACE_MS, EmailService } from '../email/email.service.js';
 import { formatWhen } from '../email/format-when.js';
 import type { OrgMembership } from '../organisation/org-roles.js';
 import type { ClubAccess } from '../permission/club-access.js';
+import { checkAnswers } from '../event/questions.js';
 import { checkPlace } from '../registration/place.js';
 import { TicketService } from '../ticket/ticket.service.js';
 import { PaymentGateway, type PaymentEvent } from './payment-gateway.js';
@@ -158,18 +159,23 @@ export class PaymentService {
    */
   async startCheckout(
     m: EntityManager,
-    place: { orgId: string; eventId: string; userId: string; clubId?: string; publicOnly?: boolean },
+    place: { orgId: string; eventId: string; userId: string; clubId?: string; publicOnly?: boolean; answers?: Record<string, unknown> },
     back: { successUrl: string; cancelUrl: string },
   ): Promise<{ url: string; checkoutId?: string }> {
     const { event, existing } = await checkPlace(m, place);
     if (existing) throw HttpError.conflict("You're already registered", 'ALREADY_REGISTERED');
     if (event.price_cents === null || !event.currency) throw HttpError.conflict('This event is free: register instead', 'EVENT_IS_FREE');
+    const answers = checkAnswers(event.questions ?? [], place.answers);
 
-    const [open]: { url: string | null }[] = await m.query(
-      `SELECT url FROM checkouts WHERE event_id = $1 AND user_id = $2 AND status = 'pending' AND expires_at > now() + interval '2 minutes'`,
+    const [open]: { id: string; url: string | null }[] = await m.query(
+      `SELECT id, url FROM checkouts WHERE event_id = $1 AND user_id = $2 AND status = 'pending' AND expires_at > now() + interval '2 minutes'`,
       [place.eventId, place.userId],
     );
-    if (open?.url) return { url: open.url };
+    if (open?.url) {
+      // the same checkout, with the latest answers
+      await m.query(`UPDATE checkouts SET answers = $2 WHERE id = $1`, [open.id, JSON.stringify(answers)]);
+      return { url: open.url };
+    }
 
     const [details]: { title: string; starts_at: Date; ends_at: Date; club_name: string; email: string; time_zone: string; stripe_account_id: string | null; payments_enabled: boolean }[] =
       await m.query(
@@ -182,9 +188,9 @@ export class PaymentService {
 
     const expiresAt = new Date(Date.now() + HOLD_MINUTES * 60_000);
     const [{ id }]: { id: string }[] = await m.query(
-      `INSERT INTO checkouts (org_id, event_id, user_id, amount_cents, currency, expires_at)
-       VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
-      [place.orgId, place.eventId, place.userId, event.price_cents, event.currency, expiresAt],
+      `INSERT INTO checkouts (org_id, event_id, user_id, amount_cents, currency, expires_at, answers)
+       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
+      [place.orgId, place.eventId, place.userId, event.price_cents, event.currency, expiresAt, JSON.stringify(answers)],
     );
     const session = await this.gateway.createCheckout({
       checkoutId: id,
@@ -205,7 +211,7 @@ export class PaymentService {
   }
 
   /** A member buying a place: Stripe's checkout page, coming back to the event. */
-  async memberCheckout(access: ClubAccess, eventId: string): Promise<{ url: string }> {
+  async memberCheckout(access: ClubAccess, eventId: string, answers?: Record<string, unknown>): Promise<{ url: string }> {
     const orgId = await this.tenant.orgIdForClub(access.clubId);
     if (!orgId) throw HttpError.notFound('Club not found', 'CLUB_NOT_FOUND');
     return this.tenant.withTenant(orgId, async (m) => {
@@ -219,7 +225,7 @@ export class PaymentService {
       };
       return this.startCheckout(
         m,
-        { orgId, eventId, userId: access.userId, clubId: access.clubId },
+        { orgId, eventId, userId: access.userId, clubId: access.clubId, answers },
         { successUrl: back('1'), cancelUrl: back('0') },
       );
     }).then(async ({ url, checkoutId }) => {
@@ -281,8 +287,8 @@ export class PaymentService {
   // Paid: the held place becomes theirs (or, if the event can't have them any more, the money goes back)
   private async completed(event: Extract<PaymentEvent, { type: 'checkout.completed' }>): Promise<void> {
     const outcome = await this.tenant.withTenant(event.orgId, async (m) => {
-      const [checkout]: { event_id: string; user_id: string; amount_cents: number; currency: string; status: string }[] =
-        await m.query(`SELECT event_id, user_id, amount_cents, currency, status FROM checkouts WHERE id = $1 FOR UPDATE`, [
+      const [checkout]: { event_id: string; user_id: string; amount_cents: number; currency: string; status: string; answers: Record<string, string> }[] =
+        await m.query(`SELECT event_id, user_id, amount_cents, currency, status, answers FROM checkouts WHERE id = $1 FOR UPDATE`, [
           event.checkoutId,
         ]);
       // a repeat (or not ours): nothing more to do
@@ -297,12 +303,12 @@ export class PaymentService {
       }
       // the place was held for them (even if the hold just ran out: they paid in Stripe's time)
       const [row]: { id: string }[] = await m.query(
-        `INSERT INTO registrations (org_id, event_id, user_id, amount_paid_cents, currency, payment_intent_id)
-         VALUES ($1, $2, $3, $4, $5, $6)
+        `INSERT INTO registrations (org_id, event_id, user_id, amount_paid_cents, currency, payment_intent_id, answers)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
          ON CONFLICT ON CONSTRAINT registrations_event_id_user_id_key
-         DO UPDATE SET cancelled_at = NULL, amount_paid_cents = $4, currency = $5, payment_intent_id = $6, refunded_at = NULL
+         DO UPDATE SET cancelled_at = NULL, amount_paid_cents = $4, currency = $5, payment_intent_id = $6, refunded_at = NULL, answers = $7
          RETURNING id`,
-        [event.orgId, checkout.event_id, checkout.user_id, checkout.amount_cents, checkout.currency, event.paymentIntentId],
+        [event.orgId, checkout.event_id, checkout.user_id, checkout.amount_cents, checkout.currency, event.paymentIntentId, JSON.stringify(checkout.answers ?? {})],
       );
       await m.query(`UPDATE checkouts SET status = 'paid', registration_id = $2 WHERE id = $1`, [event.checkoutId, row.id]);
       const [ticket]: PaidRow[] = await m.query(`${SELECT_PAID} WHERE r.id = $1`, [row.id]);

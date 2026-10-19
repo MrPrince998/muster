@@ -7,6 +7,8 @@ import { useParams, useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { asApiError } from "@/lib/api/client";
+import type { Answers } from "@/types/event.interface";
+import { answerProblems } from "../../workspace/shared/question-fields";
 import { usePublicEvent, useRequestPlace } from "../services/public.service";
 import { guestPlaceSchema, type GuestPlaceValues } from "../validation/guest-place.schema";
 import PublicEventView from "./public-event.view";
@@ -16,6 +18,8 @@ function placeMessage(code: string): string {
   switch (code) {
     case "EVENT_FULL":
       return "The last place has just gone.";
+    case "INVALID_ANSWERS":
+      return "Some answers need another look.";
     case "SOLD_OUT":
       return "Sold out: the last ticket has just gone.";
     case "REGISTRATION_CLOSED":
@@ -47,9 +51,21 @@ export default function PublicEventContainer() {
     mode: "onTouched",
   });
 
+  // answers to the event's questions, checked with the rest before the link is sent
+  const [answers, setAnswers] = useState<Answers>({});
+  const [answerErrors, setAnswerErrors] = useState<Record<string, string>>({});
+
   const onSubmit = form.handleSubmit(async ({ name, email }) => {
+    const problems = answerProblems(event.data?.questions ?? [], answers);
+    setAnswerErrors(problems);
+    if (Object.keys(problems).length > 0) return;
     try {
-      await request.mutateAsync({ name, email });
+      const given = Object.fromEntries(
+        Object.entries(answers)
+          .map(([id, value]) => [id, value.trim()])
+          .filter(([, value]) => value),
+      );
+      await request.mutateAsync({ name, email, answers: given });
       setSentTo(email);
     } catch (error) {
       form.setError("root", { message: placeMessage(asApiError(error).code) });
@@ -91,6 +107,7 @@ export default function PublicEventContainer() {
       form={form}
       onSubmit={onSubmit}
       sentTo={sentTo}
+      questions={{ answers, onChange: setAnswers, problems: answerErrors }}
       paymentReturn={paid === "1" ? "paid" : paid === "0" ? "cancelled" : null}
       onAskAgain={() => {
         setSentTo(null);

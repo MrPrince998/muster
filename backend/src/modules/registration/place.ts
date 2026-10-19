@@ -2,6 +2,7 @@ import { HttpStatus } from '@nestjs/common';
 import type { EntityManager } from 'typeorm';
 import { HttpError } from '../../common/errors/http-error.js';
 import { EventStatus } from '../event/entities/event.entity.js';
+import { checkAnswers, type Question } from '../event/questions.js';
 import { freePlaces, waitingCount } from '../waitlist/waitlist.service.js';
 
 // (event.service has the same; not imported from there, which would tie this file to its module)
@@ -17,6 +18,8 @@ interface PlaceRequest {
   clubId?: string;
   publicOnly?: boolean;
   alreadyOk?: boolean;
+  // answers to the event's questions, checked against them
+  answers?: Record<string, unknown>;
 }
 
 export interface OpenEvent {
@@ -27,6 +30,7 @@ export interface OpenEvent {
   visibility: string;
   price_cents: number | null;
   currency: string | null;
+  questions: Question[];
 }
 
 /**
@@ -44,7 +48,7 @@ export async function checkPlace(
   place: PlaceRequest,
 ): Promise<{ event: OpenEvent; existing: { id: string; created_at: Date } | null }> {
   const events: OpenEvent[] = await m.query(
-    `SELECT status, ends_at, capacity, registration_closed_at, visibility, price_cents, currency FROM events
+    `SELECT status, ends_at, capacity, registration_closed_at, visibility, price_cents, currency, questions FROM events
      WHERE id = $1 AND ($2::uuid IS NULL OR club_id = $2) FOR UPDATE`,
     [place.eventId, place.clubId ?? null],
   );
@@ -97,14 +101,15 @@ export async function takePlace(
   const { event, existing } = await checkPlace(m, place);
   if (existing) return { id: existing.id, event_id: place.eventId, created_at: existing.created_at, isNew: false };
   if (event.price_cents !== null) throw paymentRequired();
+  const answers = checkAnswers(event.questions ?? [], place.answers);
 
   const [row]: { id: string; event_id: string; created_at: Date }[] = await m.query(
-    `INSERT INTO registrations (org_id, event_id, user_id)
-     VALUES ($1, $2, $3)
+    `INSERT INTO registrations (org_id, event_id, user_id, answers)
+     VALUES ($1, $2, $3, $4)
      ON CONFLICT ON CONSTRAINT registrations_event_id_user_id_key
-     DO UPDATE SET cancelled_at = NULL
+     DO UPDATE SET cancelled_at = NULL, answers = $4
      RETURNING id, event_id, created_at`,
-    [place.orgId, place.eventId, place.userId],
+    [place.orgId, place.eventId, place.userId, JSON.stringify(answers)],
   );
   return { ...row, isNew: true };
 }

@@ -96,9 +96,9 @@ export class RegistrationService {
    * Once committed, the ticket is emailed in the background: a provider
    * outage never undoes a registration (the ticket is in the app anyway).
    */
-  async register(access: ClubAccess, eventId: string): Promise<MyRegistrationDto> {
+  async register(access: ClubAccess, eventId: string, answers?: Record<string, unknown>): Promise<MyRegistrationDto> {
     const { registration, ticket, email } = await this.events.inClub(access, async (m, orgId) => {
-      const row = await takePlace(m, { orgId, eventId, userId: access.userId, clubId: access.clubId });
+      const row = await takePlace(m, { orgId, eventId, userId: access.userId, clubId: access.clubId, answers });
       const [details]: (TicketRow & { email: string })[] = await m.query(
         `${SELECT_TICKETS.replace('u.name AS attendee_name', 'u.name AS attendee_name, u.email')} AND r.id = $2`,
         [access.userId, row.id],
