@@ -58,7 +58,8 @@ test("owners choose the workspace's time zone in Settings", async ({ page }) => 
 
 test("subscribe to a club's events in a calendar app", async ({ page }) => {
   await openClub(page, "Robotics Society");
-  await page.getByRole("button", { name: "Subscribe" }).click();
+  await page.getByRole("button", { name: "Follow" }).click();
+  await page.getByRole("menuitem", { name: "Add to my calendar…" }).click();
   const dialog = page.getByRole("dialog");
   await expect(dialog.getByRole("heading", { name: "Robotics Society in your calendar" })).toBeVisible();
   await expect(dialog.getByRole("link", { name: "Apple or Outlook" })).toHaveAttribute("href", /^webcal:\/\/.+\/feeds\/.+\.ics$/);
@@ -74,11 +75,13 @@ test("subscribe to a club's events in a calendar app", async ({ page }) => {
 
 test("choose new-event emails for a club, and a broken stop link says so", async ({ page }) => {
   await openClub(page, "Robotics Society");
-  await page.getByRole("button", { name: "Email me" }).click();
+  await page.getByRole("button", { name: "Follow" }).click();
   await page.getByRole("menuitemradio", { name: /Weekly digest/ }).click();
-  await expect(page.getByRole("button", { name: "Emails: weekly" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Following" })).toBeVisible();
   await page.reload();
-  await expect(page.getByRole("button", { name: "Emails: weekly" })).toBeVisible();
+  await page.getByRole("button", { name: "Following" }).click();
+  await expect(page.getByRole("menuitemradio", { name: /Weekly digest/ })).toBeChecked();
+  await page.keyboard.press("Escape");
 
   await page.goto("/unsubscribe?token=c.nope");
   await page.getByRole("button", { name: "Stop these emails" }).click();

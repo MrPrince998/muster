@@ -255,6 +255,22 @@ async function makeEvent(m: Tx, orgId: string, clubId: string, by: Person, plan:
       new Date(Date.now() - (5 - i) * DAY),
     ]);
   }
+  if (over && status === 'published') {
+    // everyone who came was asked how it went; about two in three answered, mostly happily
+    // (worked out in SQL from each place's id, so the random draws above stay as they were)
+    await m.query(`UPDATE registrations SET feedback_requested_at = $2 WHERE event_id = $1`, [id, end]);
+    await m.query(
+      `INSERT INTO event_feedback (org_id, event_id, registration_id, rating, comment, created_at, updated_at)
+       SELECT org_id, event_id, id,
+              (ARRAY[5, 4, 5, 3, 4, 5, 2, 4])[1 + abs(hashtext(id::text)) % 8],
+              (ARRAY['Really well run, thank you!', NULL, 'Could have used a bigger room.', NULL, NULL,
+                     'Loved it. More of these please.', NULL, 'Started a bit late.'])[1 + abs(hashtext(id::text || 'c')) % 8],
+              $2, $2
+       FROM registrations
+       WHERE event_id = $1 AND checked_in_at IS NOT NULL AND abs(hashtext(id::text)) % 3 <> 0`,
+      [id, new Date(end.getTime() + 20 * 3_600_000)],
+    );
+  }
   return id;
 }
 

@@ -37,7 +37,7 @@ export default function UnsubscribeContainer() {
         <>
           <h1 className="mt-5 text-5xl leading-none font-extrabold font-stretch-70%">Stopped</h1>
           <p className="mt-3 text-muted-foreground">
-            {state.stopped} won&rsquo;t come any more. You can turn them back on from the club&rsquo;s page, under Email me.
+            {state.stopped} won&rsquo;t come any more. You can turn them back on from the club&rsquo;s page, under Follow.
           </p>
         </>
       ) : state.status === "failed" || !token ? (
@@ -48,7 +48,7 @@ export default function UnsubscribeContainer() {
             <Link href="/login" className="font-semibold text-cobalt underline-offset-4 hover:underline">
               sign in
             </Link>{" "}
-            and change it on the club&rsquo;s page, under Email me.
+            and change it on the club&rsquo;s page, under Follow.
           </p>
         </>
       ) : (

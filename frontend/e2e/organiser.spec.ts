@@ -117,3 +117,16 @@ test("download the attendee list as a spreadsheet", async ({ page }) => {
   expect(rows.filter((r) => /,Waitlist \d,/.test(r))).toHaveLength(3);
   expect(text).not.toMatch(/@muster\.test/);
 });
+
+test("past events show how the people who came rated them, without names", async ({ page }) => {
+  await openClub(page, "Robotics Society");
+  await page.getByRole("tab", { name: /^Past/ }).click();
+  await page.getByRole("button", { pressed: false }).filter({ hasText: / came/ }).first().click();
+  const feedback = page.getByRole("region", { name: "Feedback" });
+  await expect(feedback.getByText(/^from \d+ of \d+ asked$/)).toBeVisible();
+  await expect(feedback.getByRole("definition").first()).toBeAttached();
+
+  // the link from the email, broken: it says so
+  await page.goto("/feedback?token=nope");
+  await expect(page.getByRole("heading", { name: "This link doesn't work" })).toBeVisible();
+});

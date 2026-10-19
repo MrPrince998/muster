@@ -36,6 +36,7 @@ import { ConfirmDialog } from "../../shared/confirm-dialog";
 import { hasLaterInSeries, SeriesScopeChoice, seriesLabel } from "../../shared/series-scope-choice";
 import { TicketDialog } from "../../tickets/ticket-dialog";
 import { differsFromDevice, zoneCity, zoneName } from "@/lib/time-zone";
+import { FeedbackSection } from "./feedback-section";
 import { formatFullDate, formatTimeRange } from "./format";
 
 // The panel is a column beside the events from xl up, a sheet below that.
@@ -68,6 +69,8 @@ export interface EventPanelProps {
   clubName: string;
   canPublish: boolean;
   canViewAttendees: boolean;
+  // analytics.view: how past events were rated
+  canSeeFeedback: boolean;
   // checkin.scan in this club, and where the scanner for this event lives
   canScan: boolean;
   scanHref: string;
@@ -261,6 +264,9 @@ function PanelBody(props: EventPanelProps & { event: ClubEvent }) {
       )}
       {!draft && !cancelled && (
         <MemberActions {...props} ended={ended} full={full} />
+      )}
+      {props.canSeeFeedback && ended && !cancelled && (
+        <FeedbackSection clubId={event.clubId} eventId={event.id} />
       )}
       {props.canViewAttendees && !draft && (
         <WhosGoing {...props} ended={ended} />

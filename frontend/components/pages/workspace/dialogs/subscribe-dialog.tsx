@@ -1,6 +1,6 @@
 "use client";
 
-import { CalendarSync, Check, Copy, LoaderCircle } from "lucide-react";
+import { Check, Copy, LoaderCircle } from "lucide-react";
 import { useState } from "react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -9,12 +9,20 @@ import { cn } from "@/lib/utils";
 import { clubFeedLinks, useCalendarFeedToken, useResetCalendarFeed } from "../services/feed.service";
 
 /**
- * "Subscribe": the club's events in your own calendar, kept up to date by
- * the calendar app (new events appear, moved ones move, cancelled ones are
- * struck out). A button and its dialog.
+ * The club's events in your own calendar, kept up to date by the calendar
+ * app (new events appear, moved ones move, cancelled ones are struck out).
  */
-export function SubscribeButton({ clubId, clubName }: { clubId: string; clubName: string }) {
-  const [open, setOpen] = useState(false);
+export function SubscribeDialog({
+  clubId,
+  clubName,
+  open,
+  onOpenChange: setOpen,
+}: {
+  clubId: string;
+  clubName: string;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
   const [copied, setCopied] = useState(false);
   const [confirmingReset, setConfirmingReset] = useState(false);
   const feed = useCalendarFeedToken(open);
@@ -34,10 +42,6 @@ export function SubscribeButton({ clubId, clubName }: { clubId: string; clubName
 
   return (
     <>
-      <Button size="lg" variant="outline" className="h-11" onClick={() => setOpen(true)}>
-        <CalendarSync aria-hidden />
-        Subscribe
-      </Button>
       <Dialog
         open={open}
         onOpenChange={(next) => {

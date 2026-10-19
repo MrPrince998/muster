@@ -72,6 +72,10 @@ export class Registration {
   @Column({ name: 'reminder_sent_at', type: 'timestamptz', nullable: true })
   reminderSentAt: Date | null;
 
+  // asked "how was it?" after the event (claimed atomically, so it's asked once)
+  @Column({ name: 'feedback_requested_at', type: 'timestamptz', nullable: true })
+  feedbackRequestedAt: Date | null;
+
   // when they registered; analytics' "registrations over time"
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;

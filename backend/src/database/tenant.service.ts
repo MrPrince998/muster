@@ -111,6 +111,15 @@ export class TenantService {
     return rows.map((r) => r.org_id);
   }
 
+  /** Workspaces with events that ended in the window and people not yet asked how it was. */
+  async dueFeedbackOrganisations(after: string, within: string): Promise<string[]> {
+    const rows: { org_id: string }[] = await this.dataSource.query(
+      `SELECT due_feedback_organisations AS org_id FROM due_feedback_organisations($1::interval, $2::interval)`,
+      [after, within],
+    );
+    return rows.map((r) => r.org_id);
+  }
+
   /** Workspaces with published events nobody has announced yet. */
   async dueAnnouncementOrganisations(): Promise<string[]> {
     const rows: { org_id: string }[] = await this.dataSource.query(

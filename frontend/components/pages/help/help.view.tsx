@@ -63,11 +63,11 @@ const SECTIONS: { title: string; answers: Answer[] }[] = [
       },
       {
         q: "Can I get an email when a club adds an event?",
-        a: "Yes. On the club's page, open Email me and choose an email for each new event, or a weekly digest every Monday of the next two weeks. It's off until you choose. Every one of these emails has a link to stop them, no sign-in needed.",
+        a: "Yes. On the club's page, open Follow and choose an email for each new event, or a weekly digest every Monday of the next two weeks. It's off until you choose. Every one of these emails has a link to stop them, no sign-in needed.",
       },
       {
         q: "Can I see all of a club's events in my calendar?",
-        a: "Yes. On the club's page, choose Subscribe and add it to Apple Calendar, Outlook or Google Calendar. New events then appear by themselves, and changes and cancellations follow. The link is private to you; if it gets out, reset it from the same place.",
+        a: "Yes. On the club's page, open Follow, choose Add to my calendar and add it to Apple Calendar, Outlook or Google Calendar. New events then appear by themselves, and changes and cancellations follow. The link is private to you; if it gets out, reset it from the same place.",
       },
       {
         q: "Can I add an event to my calendar?",
@@ -89,6 +89,10 @@ const SECTIONS: { title: string; answers: Answer[] }[] = [
       {
         q: "Can an event repeat?",
         a: "Yes. In New event, choose Repeats (every week, fortnight or month) and how many times. Each one is its own event, with its own places and tickets. When you edit, cancel, publish or delete one, you can choose just that one or it and every later one.",
+      },
+      {
+        q: "Can I find out what people thought of an event?",
+        a: "Yes. A couple of hours after an event ends, everyone who was checked in gets one email asking how it was: a rating out of five and a comment if they like. Open the event under Past to see the average and the comments. Answers never show who gave them.",
       },
       {
         q: "How do I stop registrations without cancelling?",

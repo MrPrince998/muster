@@ -15,6 +15,7 @@ import { ticketTemplate, type TicketEmailData } from './templates/ticket.js';
 import { verifyEmailTemplate } from './templates/verify-email.js';
 import { newEventTemplate, type NewEventEmailData } from './templates/new-event.js';
 import { digestTemplate, type DigestEmailData } from './templates/digest.js';
+import { feedbackRequestTemplate, type FeedbackRequestEmailData } from './templates/feedback-request.js';
 
 export const APP_URL = Symbol('APP_URL');
 // the gap between emails in a bulk send: Resend accepts a few requests a second
@@ -210,6 +211,11 @@ export class EmailService {
   /** The weekly digest of what's coming up. */
   sendDigest(to: string, data: DigestEmailData, key: string): Promise<void> {
     return this.sender.send({ to, ...digestTemplate(data), idempotencyKey: key, headers: unsubscribe(data.stopUrl) });
+  }
+
+  /** "How was it?", to someone who came. */
+  sendFeedbackRequest(to: string, data: FeedbackRequestEmailData, key: string): Promise<void> {
+    return this.sender.send({ to, ...feedbackRequestTemplate(data), idempotencyKey: key });
   }
 
   inBackground(kind: string, sending: Promise<void>): void {

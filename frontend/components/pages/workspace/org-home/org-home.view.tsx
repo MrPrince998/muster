@@ -9,8 +9,7 @@ import type { ClubSummary } from "@/types/club.interface";
 import type { ClubEvent } from "@/types/event.interface";
 import type { MyOrganisation } from "@/types/organisation.interface";
 import EventFormDialog from "../dialogs/event-form-dialog";
-import { SubscribeButton } from "../dialogs/subscribe-dialog";
-import { EventEmailsMenu } from "./parts/event-emails-menu";
+import { FollowMenu } from "./parts/follow-menu";
 import { useWorkspace } from "../org-shell/workspace-context";
 import { EventPanel, type EventPanelProps } from "./parts/event-panel";
 import { EventStub } from "./parts/event-stub";
@@ -158,8 +157,7 @@ const OrgHomeView = ({
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
-                <SubscribeButton clubId={club.id} clubName={club.name} />
-                <EventEmailsMenu clubId={club.id} />
+                <FollowMenu clubId={club.id} clubName={club.name} />
                 {can.seeAttendance && (
                   <Link
                     href={`/o/${organisation.slug}/clubs/${club.id}?tab=attendance`}
@@ -244,6 +242,7 @@ const OrgHomeView = ({
           clubName={club.name}
           canPublish={can.publishEvents}
           canViewAttendees={can.viewAttendees}
+          canSeeFeedback={can.seeAttendance}
           canScan={can.scanTickets}
           scanHref={openEvent ? `/o/${organisation.slug}/check-in/${club.id}/${openEvent.id}` : ""}
           onClose={() => onOpenEvent(null)}

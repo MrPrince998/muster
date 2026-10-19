@@ -16,6 +16,7 @@ import { SearchModule } from './modules/search/search.module.js';
 import { AnalyticsModule } from './modules/analytics/analytics.module.js';
 import { FeedModule } from './modules/feed/feed.module.js';
 import { NotificationModule } from './modules/notification/notification.module.js';
+import { FeedbackModule } from './modules/feedback/feedback.module.js';
 
 @Module({
   imports: [
@@ -32,6 +33,7 @@ import { NotificationModule } from './modules/notification/notification.module.j
     AnalyticsModule,
     FeedModule,
     NotificationModule,
+    FeedbackModule,
   ],
   controllers: [AppController],
   providers: [

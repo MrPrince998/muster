@@ -131,6 +131,8 @@ describe('cross-tenant access through the API', () => {
     ['get', `/clubs/${B.clubId}/join-requests`],
     ['get', `/clubs/${B.clubId}/analytics`],
     ['get', `/clubs/${B.clubId}/event-emails`],
+    ['get', `/clubs/${B.clubId}/events/${B.eventId}/feedback`],
+    ['get', `/clubs/${A.clubId}/events/${B.eventId}/feedback`],
     ['put', `/clubs/${B.clubId}/event-emails`, { eventEmails: 'instant' }],
     // a club the attacker runs, with an event (or role) from the other workspace
     ['get', `/clubs/${A.clubId}/events/${B.eventId}`],
