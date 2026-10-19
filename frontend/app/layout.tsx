@@ -13,7 +13,8 @@ const archivo = Archivo({
 
 export const metadata: Metadata = {
   title: { default: "Muster", template: "%s | Muster" },
-  description: "Run club and community events: invites, signed QR tickets and check-in.",
+  description:
+    "Run club and community events: invites, signed QR tickets and check-in.",
 };
 
 // The app is designed light only. Saying so stops browsers (Chrome's auto
