@@ -3,7 +3,7 @@ import { test as base, expect, type Locator, type Page } from "@playwright/test"
 /** The seeded demo account (backend src/database/seed.ts). */
 export const DEMO = { email: "demo@muster.test", password: "muster-demo-2026", name: "Sam Rivera" };
 export const RIVERSIDE = "riverside-uni";
-const API = process.env.API_URL ?? "http://localhost:5001";
+const API = process.env.API_URL!;
 
 /**
  * Signs in through the API with the browser's own cookie jar, so the page

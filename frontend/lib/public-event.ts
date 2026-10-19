@@ -3,7 +3,7 @@ import type { PublicEvent } from "@/types";
 
 // The API from the web server: inside Docker that's another container
 // (INTERNAL_API_URL), not the address the browser uses.
-const API = process.env.INTERNAL_API_URL ?? process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:5001";
+const API = process.env.INTERNAL_API_URL ?? process.env.NEXT_PUBLIC_API_URL!;
 
 /**
  * A public event, read on the server for link previews (metadata and the

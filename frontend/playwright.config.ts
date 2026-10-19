@@ -25,7 +25,7 @@ export default defineConfig({
   reporter: ci ? [["github"], ["html", { open: "never" }]] : [["list"]],
   globalSetup: "./e2e/global-setup.ts",
   use: {
-    baseURL: process.env.BASE_URL ?? "http://localhost:3000",
+    baseURL: process.env.BASE_URL,
     // locally, the Chrome already installed; in CI, Playwright's own Chromium
     channel: ci ? undefined : "chrome",
     viewport: { width: 1440, height: 900 },

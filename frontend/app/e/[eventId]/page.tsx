@@ -6,7 +6,7 @@ import PublicEventContainer from "@/components/pages/public/event/public-event.c
 import { formatWhen, getPublicEvent, placesLine } from "@/lib/public-event";
 
 // where the share links point; absolute URLs for the previews
-const SITE = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
+const SITE = process.env.NEXT_PUBLIC_SITE_URL!;
 
 /**
  * Link previews: shared in WhatsApp, Slack or iMessage, a public event shows

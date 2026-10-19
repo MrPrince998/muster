@@ -10,7 +10,7 @@ import {
 } from "@/lib/auth/access-token";
 
 const apiConfig = {
-  baseURL: process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:5001",
+  baseURL: process.env.NEXT_PUBLIC_API_URL!,
   // sends and receives the httpOnly refresh token cookie, which the browser
   // keeps; page scripts never see it
   withCredentials: true,
