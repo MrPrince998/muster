@@ -326,7 +326,14 @@ Generated migrations are a starting point: review them, and add RLS for any new 
 
 Tests: `cd backend && pnpm test` (unit). End-to-end tests, including tenant isolation, need the database: `docker compose exec backend pnpm test:e2e`.
 
-*(planned)* `pnpm seed` (two demo workspaces, clubs, roles, and events).
+Demo data, so there's something to look at:
+
+```bash
+docker compose exec backend pnpm seed           # creates it (once)
+docker compose exec backend pnpm seed --reset   # deletes the demo data, and only that, then recreates it
+```
+
+Then sign in as `demo@muster.test` / `muster-demo-2026`. You own *Riverside University* (four clubs where you're owner, admin and plain member, months of past events with attendance, upcoming events in every state: public, full with a waitlist, cancelled, draft, registration closed, plus tickets and join requests waiting) and are a member of *Northside Makers*. Every demo address is on the reserved `.test` domain, so nothing is ever emailed; it refuses to run in production. Event times follow `APP_TIME_ZONE`.
 
 Notes: Resend only delivers to arbitrary addresses once you verify a sending domain, so use its test mode during development. The camera scanner needs HTTPS (`localhost` is allowed).
 

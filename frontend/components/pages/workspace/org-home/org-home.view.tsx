@@ -143,13 +143,16 @@ const OrgHomeView = ({
                 {club.description && <p className="mt-2 text-muted-foreground">{club.description}</p>}
                 <p className="mt-2 flex items-center gap-1.5 text-sm text-muted-foreground">
                   <Users className="size-4" aria-hidden />
-                  <Link
-                    href={`/o/${organisation.slug}/clubs/${club.id}`}
-                    className="underline-offset-4 hover:text-foreground hover:underline"
-                  >
-                    {club.memberCount} {club.memberCount === 1 ? "member" : "members"}
-                  </Link>
-                  {can.createEvents && ", you can run events here"}
+                  {/* one item in the flex row, so no gap opens before the comma */}
+                  <span>
+                    <Link
+                      href={`/o/${organisation.slug}/clubs/${club.id}`}
+                      className="underline-offset-4 hover:text-foreground hover:underline"
+                    >
+                      {club.memberCount} {club.memberCount === 1 ? "member" : "members"}
+                    </Link>
+                    {can.createEvents && ", you can run events here"}
+                  </span>
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
