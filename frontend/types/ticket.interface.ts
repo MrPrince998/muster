@@ -38,3 +38,33 @@ export interface CheckInResult {
   attendedCount: number;
   registeredCount: number;
 }
+
+/** GET .../check-in/roster: one ticket on the door's list. */
+export interface DoorTicket {
+  registrationId: string;
+  userId: string;
+  name: string;
+  checkedInAt: string | null;
+  // they gave their place back
+  cancelled: boolean;
+}
+
+/** The door's list, kept on the scanner for checking tickets with no connection. */
+export interface DoorRoster {
+  eventId: string;
+  generatedAt: string;
+  tickets: DoorTicket[];
+}
+
+/** POST .../check-in/sync: what happened to each check-in made offline. */
+export interface SyncResult {
+  results: {
+    registrationId: string;
+    outcome: "checked_in" | "already_checked_in" | "cancelled" | "invalid";
+    attendeeName?: string;
+    checkedInAt?: string;
+    checkedInByName?: string | null;
+  }[];
+  attendedCount: number;
+  registeredCount: number;
+}

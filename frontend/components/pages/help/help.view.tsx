@@ -94,6 +94,10 @@ const SECTIONS: { title: string; answers: Answer[] }[] = [
         q: "How does check-in work?",
         a: "On the day, open the event and choose Open check-in, then scan each ticket's QR code. A ticket works once; a copy is turned away.",
       },
+      {
+        q: "What if the door has no signal?",
+        a: "Open check-in once while you have a connection: your phone keeps the door list. If the connection drops, keep scanning or checking people in by name; the phone checks tickets itself and sends them as soon as it's back online. If one of those tickets had already been used at another door, you'll be told.",
+      },
     ],
   },
   {

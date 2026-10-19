@@ -9,7 +9,14 @@ import { EventService, eventNotFound } from '../event/event.service.js';
 import type { MyRegistrationDto } from '../event/dto/event.dto.js';
 import { EventStatus } from '../event/entities/event.entity.js';
 import type { ClubAccess } from '../permission/club-access.js';
-import type { CheckInResultDto, TicketDto, TicketWithCodeDto } from './dto/ticket.dto.js';
+import type {
+  CheckInResultDto,
+  DoorRosterDto,
+  OfflineCheckInDto,
+  SyncResultDto,
+  TicketDto,
+  TicketWithCodeDto,
+} from './dto/ticket.dto.js';
 import { TicketService } from '../ticket/ticket.service.js';
 import { WaitlistService, waitingCount } from '../waitlist/waitlist.service.js';
 
@@ -267,6 +274,58 @@ export class RegistrationService {
     });
   }
 
+  /**
+   * The door's list, for a scanner to keep going with no connection: every
+   * ticket's registration id, whose it is, and whether it's used or given
+   * back. Offline, the scanner can't check a code's signature (the secret
+   * never leaves the server), so it relies on the registration id inside:
+   * random, and only on that person's ticket. The sync then decides, as a
+   * scan would.
+   */
+  roster(access: ClubAccess, eventId: string): Promise<DoorRosterDto> {
+    return this.events.inClub(access, async (m) => {
+      await this.assertCheckInOpen(m, access, eventId);
+      const rows: { id: string; user_id: string; name: string; checked_in_at: Date | null; cancelled: boolean }[] =
+        await m.query(
+          `SELECT r.id, r.user_id, u.name, r.checked_in_at, (r.cancelled_at IS NOT NULL) AS cancelled
+           FROM registrations r JOIN users u ON u.id = r.user_id
+           WHERE r.event_id = $1
+           ORDER BY lower(u.name)`,
+          [eventId],
+        );
+      return {
+        eventId,
+        generatedAt: new Date(),
+        tickets: rows.map((r) => ({
+          registrationId: r.id,
+          userId: r.user_id,
+          name: r.name,
+          checkedInAt: r.checked_in_at,
+          cancelled: r.cancelled,
+        })),
+      };
+    });
+  }
+
+  /**
+   * What a scanner let in while offline, sent once it's back. Each goes
+   * through the same atomic check-in as a scan, at the time the door saw
+   * it; a ticket another door used first comes back already_checked_in, so
+   * the scanner can say so.
+   */
+  syncCheckIns(access: ClubAccess, eventId: string, checkIns: OfflineCheckInDto[]): Promise<SyncResultDto> {
+    return this.events.inClub(access, async (m) => {
+      await this.assertCheckInOpen(m, access, eventId);
+      const results: SyncResultDto['results'] = [];
+      for (const { registrationId, at } of checkIns) {
+        const { outcome, ...rest } = await this.admitOne(m, access, eventId, 'r.id = $1', registrationId, new Date(at));
+        // a registration id can't belong to another event here: the lookup is by this event
+        results.push({ registrationId, outcome: outcome === 'wrong_event' ? 'invalid' : outcome, ...rest });
+      }
+      return { results, ...(await this.counts(m, eventId)) };
+    });
+  }
+
   // --- helpers ---------------------------------------------------------------------------
 
   // The atomic check-in, then, if it changed nothing, why not.
@@ -277,20 +336,28 @@ export class RegistrationService {
     match: 'r.id = $1' | 'r.user_id = $1',
     value: string,
   ): Promise<CheckInResultDto> {
+    return this.result(m, eventId, await this.admitOne(m, access, eventId, match, value));
+  }
+
+  // One check-in, without the counts. `at` (a scanner's offline time) never lies in the future.
+  private async admitOne(
+    m: EntityManager,
+    access: ClubAccess,
+    eventId: string,
+    match: 'r.id = $1' | 'r.user_id = $1',
+    value: string,
+    at?: Date,
+  ): Promise<Omit<CheckInResultDto, 'attendedCount' | 'registeredCount'>> {
     const [admitted]: [{ attendee_name: string; checked_in_at: Date }[], number] = await m.query(
-      `UPDATE registrations r SET checked_in_at = now(), checked_in_by = $3
+      `UPDATE registrations r SET checked_in_at = LEAST(COALESCE($4::timestamptz, now()), now()), checked_in_by = $3
        FROM users u
        WHERE ${match} AND r.event_id = $2 AND r.checked_in_at IS NULL AND r.cancelled_at IS NULL
          AND u.id = r.user_id
        RETURNING u.name AS attendee_name, r.checked_in_at`,
-      [value, eventId, access.userId],
+      [value, eventId, access.userId, at ?? null],
     );
     if (admitted[0]) {
-      return this.result(m, eventId, {
-        outcome: 'checked_in',
-        attendeeName: admitted[0].attendee_name,
-        checkedInAt: admitted[0].checked_in_at,
-      });
+      return { outcome: 'checked_in', attendeeName: admitted[0].attendee_name, checkedInAt: admitted[0].checked_in_at };
     }
 
     const rows: {
@@ -308,16 +375,16 @@ export class RegistrationService {
     );
     const row = rows[0];
     // gone: a deleted registration, or one in another workspace (RLS hides it)
-    if (!row) return this.result(m, eventId, { outcome: 'invalid' });
+    if (!row) return { outcome: 'invalid' };
     if (row.checked_in_at) {
-      return this.result(m, eventId, {
+      return {
         outcome: 'already_checked_in',
         attendeeName: row.attendee_name,
         checkedInAt: row.checked_in_at,
         checkedInByName: row.scanner_name,
-      });
+      };
     }
-    return this.result(m, eventId, { outcome: 'cancelled', attendeeName: row.attendee_name });
+    return { outcome: 'cancelled', attendeeName: row.attendee_name };
   }
 
   // Check-in is for this club's published events; anything else is a 404/409.
@@ -338,13 +405,17 @@ export class RegistrationService {
     eventId: string,
     result: Omit<CheckInResultDto, 'attendedCount' | 'registeredCount'>,
   ): Promise<CheckInResultDto> {
+    return { ...result, ...(await this.counts(m, eventId)) };
+  }
+
+  private async counts(m: EntityManager, eventId: string): Promise<{ attendedCount: number; registeredCount: number }> {
     const [counts]: { registered: number; attended: number }[] = await m.query(
       `SELECT count(*) FILTER (WHERE cancelled_at IS NULL)::int AS registered,
               count(*) FILTER (WHERE checked_in_at IS NOT NULL)::int AS attended
        FROM registrations WHERE event_id = $1`,
       [eventId],
     );
-    return { ...result, attendedCount: counts.attended, registeredCount: counts.registered };
+    return { attendedCount: counts.attended, registeredCount: counts.registered };
   }
 
   private async withCode(row: TicketRow): Promise<TicketWithCodeDto> {

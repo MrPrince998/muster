@@ -70,6 +70,32 @@ test("check someone in at the door by name", async ({ page }) => {
   await expect(page.getByText(/^In at \d{2}:\d{2}$/)).toBeVisible();
 });
 
+test("the door keeps going with no connection, and catches up once it's back", async ({ page, context }) => {
+  await openClub(page, "Robotics Society");
+  const panel = await openEvent(page, "Build Night");
+  // the door's list comes down as check-in opens
+  const roster = page.waitForResponse((res) => res.url().includes("/check-in/roster") && res.ok());
+  await panel.getByRole("link", { name: "Open check-in" }).click();
+  await expect(page.getByRole("region", { name: "Check-in for Build Night" })).toBeVisible();
+  await roster;
+  await expect(page.getByText(/^of 11 in/)).toBeVisible();
+
+  await context.setOffline(true);
+  await page.getByRole("tab", { name: "Find by name" }).click();
+  await page.getByRole("button", { name: "Check in" }).first().click();
+  await expect(page.getByText("Let them in")).toBeVisible();
+  await expect(page.getByText(/Saved on this phone/)).toBeVisible();
+  await expect(page.getByText("No connection.")).toBeVisible();
+  await expect(page.getByText(/1 check-in is waiting to be sent/)).toBeVisible();
+  await expect(page.getByText(/^In at \d{2}:\d{2}$/)).toHaveCount(1);
+
+  // back online: it's sent by itself
+  await context.setOffline(false);
+  await expect(page.getByText(/waiting to be sent/)).toHaveCount(0, { timeout: 15_000 });
+  await expect(page.getByText("No connection.")).toHaveCount(0);
+  await expect(page.locator("header").getByText("1", { exact: true })).toBeVisible();
+});
+
 test("attendance numbers for the club", async ({ page }) => {
   await openClub(page, "Robotics Society");
   await page.getByRole("link", { name: "Attendance" }).click();

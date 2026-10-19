@@ -23,6 +23,7 @@ const B = {
   roleId: '',
   inviteId: '',
   ticketToken: '',
+  registrationId: '',
 };
 
 const ok = (status: number) => status >= 200 && status < 300;
@@ -70,7 +71,9 @@ beforeAll(async () => {
   B.roleId = (await t.api().get(`/clubs/${B.clubId}/roles`).set('Authorization', victim.auth).expect(200)).body.at(-1).id;
   B.inviteId = (await t.api().post(`/clubs/${B.clubId}/invites`).set('Authorization', victim.auth).send({}).expect(201)).body.id;
   await t.api().post(`/orgs/by-slug/${B.slug}/join`).set('Authorization', guest.auth).expect(201);
-  await t.api().post(`/clubs/${B.clubId}/events/${B.eventId}/my-registration`).set('Authorization', guest.auth).expect(201);
+  B.registrationId = (
+    await t.api().post(`/clubs/${B.clubId}/events/${B.eventId}/my-registration`).set('Authorization', guest.auth).expect(201)
+  ).body.id;
   B.ticketToken = (
     await t.api().get(`/clubs/${B.clubId}/events/${B.eventId}/my-ticket`).set('Authorization', guest.auth).expect(200)
   ).body.token;
@@ -108,6 +111,8 @@ describe('cross-tenant access through the API', () => {
     ['get', `/clubs/${B.clubId}/events/${B.eventId}/my-ticket`],
     ['post', `/clubs/${B.clubId}/events/${B.eventId}/check-in`, { token: B.ticketToken }],
     ['post', `/clubs/${B.clubId}/events/${B.eventId}/check-in/manual`, { userId: guest.id }],
+    ['get', `/clubs/${B.clubId}/events/${B.eventId}/check-in/roster`],
+    ['post', `/clubs/${B.clubId}/events/${B.eventId}/check-in/sync`, { checkIns: [{ registrationId: B.registrationId, at: new Date().toISOString() }] }],
     ['post', `/clubs/${B.clubId}/events/${B.eventId}/waitlist`],
     ['delete', `/clubs/${B.clubId}/events/${B.eventId}/waitlist`],
     // its members, roles and invite links
@@ -137,6 +142,8 @@ describe('cross-tenant access through the API', () => {
     ['post', `/clubs/${A.clubId}/events/${B.eventId}/my-registration`],
     ['post', `/clubs/${A.clubId}/events/${B.eventId}/check-in`, { token: B.ticketToken }],
     ['post', `/clubs/${A.clubId}/events/${B.eventId}/check-in/manual`, { userId: guest.id }],
+    ['get', `/clubs/${A.clubId}/events/${B.eventId}/check-in/roster`],
+    ['post', `/clubs/${A.clubId}/events/${B.eventId}/check-in/sync`, { checkIns: [{ registrationId: B.registrationId, at: new Date().toISOString() }] }],
     ['post', `/clubs/${A.clubId}/events/${B.eventId}/waitlist`],
     ['delete', `/clubs/${A.clubId}/events/${B.eventId}/waitlist`],
     ['patch', `/clubs/${A.clubId}/roles/${B.roleId}`, { name: 'Hijacked' }],

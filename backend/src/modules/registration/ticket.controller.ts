@@ -7,7 +7,16 @@ import type { ClubAccess } from '../permission/club-access.js';
 import { CurrentClubAccess } from '../permission/decorators/current-club-access.decorator.js';
 import { RequirePermission } from '../permission/decorators/require-permission.decorator.js';
 import { Permission } from '../permission/permissions.js';
-import { CheckInDto, CheckInResultDto, ManualCheckInDto, TicketDto, TicketWithCodeDto } from './dto/ticket.dto.js';
+import {
+  CheckInDto,
+  CheckInResultDto,
+  DoorRosterDto,
+  ManualCheckInDto,
+  OfflineCheckInsDto,
+  SyncResultDto,
+  TicketDto,
+  TicketWithCodeDto,
+} from './dto/ticket.dto.js';
 import { RegistrationService } from './registration.service.js';
 
 const error = (description: string) => ({ description, type: ErrorResponseDto });
@@ -70,5 +79,44 @@ export class TicketController {
     @Body() { userId }: ManualCheckInDto,
   ): Promise<CheckInResultDto> {
     return this.registrations.manualCheckIn(access, eventId, userId);
+  }
+
+  /**
+   * The door's list, for checking tickets with no connection
+   *
+   * @remarks Every ticket's registration id, name, and whether it's used or
+   * given back. A scanner keeps it, checks codes against it while offline,
+   * and sends what it let in to the sync route once it's back.
+   */
+  @Get('clubs/:clubId/events/:eventId/check-in/roster')
+  @RequirePermission(Permission.CheckinScan)
+  @ApiOkResponse({ type: DoorRosterDto })
+  @ApiNotFoundResponse(error('No such event in this club (EVENT_NOT_FOUND)'))
+  @ApiConflictResponse(error('The event was cancelled (EVENT_CANCELLED)'))
+  roster(
+    @CurrentClubAccess() access: ClubAccess,
+    @Param('eventId', ParseUUIDPipe) eventId: string,
+  ): Promise<DoorRosterDto> {
+    return this.registrations.roster(access, eventId);
+  }
+
+  /**
+   * Send the check-ins a scanner made offline
+   *
+   * @remarks Each is checked in as a scan would be, at the time the door
+   * saw it. A ticket someone else used first comes back already_checked_in.
+   */
+  @Post('clubs/:clubId/events/:eventId/check-in/sync')
+  @RequirePermission(Permission.CheckinScan)
+  @HttpCode(HttpStatus.OK)
+  @ApiOkResponse({ type: SyncResultDto })
+  @ApiNotFoundResponse(error('No such event in this club (EVENT_NOT_FOUND)'))
+  @ApiConflictResponse(error('The event was cancelled (EVENT_CANCELLED)'))
+  sync(
+    @CurrentClubAccess() access: ClubAccess,
+    @Param('eventId', ParseUUIDPipe) eventId: string,
+    @Body() { checkIns }: OfflineCheckInsDto,
+  ): Promise<SyncResultDto> {
+    return this.registrations.syncCheckIns(access, eventId, checkIns);
   }
 }

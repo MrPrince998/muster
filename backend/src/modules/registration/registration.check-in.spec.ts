@@ -57,7 +57,7 @@ describe('RegistrationService.checkIn', () => {
     const update = ran('UPDATE registrations r SET checked_in_at')[0];
     // the single conditional update that makes double entry impossible
     expect(update.sql).toContain('r.checked_in_at IS NULL AND r.cancelled_at IS NULL');
-    expect(update.params).toEqual(['reg1', 'ev1', 'u-scanner']);
+    expect(update.params).toEqual(['reg1', 'ev1', 'u-scanner', null]);
   });
 
   it('says when and by whom an already-used ticket got in', async () => {
@@ -137,6 +137,6 @@ describe('RegistrationService.manualCheckIn', () => {
     await expect(service.manualCheckIn(scanner, 'ev1', 'u-ada')).resolves.toMatchObject({ outcome: 'checked_in' });
     const update = ran('UPDATE registrations r SET checked_in_at')[0];
     expect(update.sql).toContain('r.user_id = $1');
-    expect(update.params).toEqual(['u-ada', 'ev1', 'u-scanner']);
+    expect(update.params).toEqual(['u-ada', 'ev1', 'u-scanner', null]);
   });
 });

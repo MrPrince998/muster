@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, LoaderCircle, SearchIcon, ShieldAlert, TriangleAlert, X } from "lucide-react";
+import { Check, CloudOff, LoaderCircle, RefreshCw, SearchIcon, ShieldAlert, TriangleAlert, X } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
@@ -8,11 +8,12 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import type { ClubEvent, EventAttendee } from "@/types/event.interface";
 import type { CheckInResult } from "@/types/ticket.interface";
+import type { DoorConflict } from "./use-offline-door";
 import { formatTime, formatTimeRange } from "../org-home/parts/format";
 import { CameraScanner } from "./parts/camera-scanner";
 
 /** What the door is showing: a scan's outcome, or why nothing happened. */
-export type DoorResult = (CheckInResult | { failure: string }) & { at: number };
+export type DoorResult = ((CheckInResult & { offline?: boolean }) | { failure: string }) & { at: number };
 
 interface CheckInViewProps {
   clubLoading: boolean;
@@ -32,6 +33,8 @@ interface CheckInViewProps {
   attendeesLoading: boolean;
   manualPending: string | null;
   onManual: (userId: string) => void;
+  // working without a connection: what's waiting to be sent, and what the server turned down
+  door: { offline: boolean; pending: number; conflicts: DoorConflict[]; onDismiss: () => void };
 }
 
 /** The door: scan tickets, or find people by name. Built for a phone held at arm's length. Presentational. */
@@ -97,6 +100,7 @@ const CheckInView = (props: CheckInViewProps) => {
       <div className="mt-4 space-y-4">
         {mode === "scan" ? <CameraScanner onCode={props.onCode} /> : <NameSearch {...props} />}
         <ResultCard result={props.result} timeZone={props.timeZone} />
+        <DoorStatus {...props.door} timeZone={props.timeZone} />
       </div>
     </section>
   );
@@ -121,7 +125,12 @@ function ResultCard({ result, timeZone }: { result: DoorResult | null; timeZone?
     }
     switch (result.outcome) {
       case "checked_in":
-        return { tone: "go", icon: Check, title: "Let them in", detail: result.attendeeName ?? "" };
+        return {
+          tone: "go",
+          icon: Check,
+          title: "Let them in",
+          detail: result.offline ? `${result.attendeeName ?? ""}. Saved on this phone; it's sent when you're back online.` : (result.attendeeName ?? ""),
+        };
       case "already_checked_in":
         return {
           tone: "warn",
@@ -166,6 +175,62 @@ function ResultCard({ result, timeZone }: { result: DoorResult | null; timeZone?
         {view.detail && <p className="mt-1.5 text-[15px] font-medium">{view.detail}</p>}
       </div>
     </div>
+  );
+}
+
+/** No connection: the door keeps going on this phone. Then what got sent, and anything it turned down. */
+function DoorStatus({
+  offline,
+  pending,
+  conflicts,
+  onDismiss,
+  timeZone,
+}: CheckInViewProps["door"] & { timeZone?: string }) {
+  return (
+    <>
+      {(offline || pending > 0) && (
+        <div role="status" className="flex items-start gap-3 rounded-2xl bg-muted p-4 text-sm">
+          {offline ? (
+            <CloudOff className="mt-0.5 size-5 shrink-0" aria-hidden />
+          ) : (
+            <RefreshCw className="mt-0.5 size-5 shrink-0 animate-spin motion-reduce:animate-none" aria-hidden />
+          )}
+          <p>
+            {offline ? (
+              <>
+                <span className="font-semibold">No connection.</span> Keep scanning: tickets are checked against the door list on
+                this phone.
+              </>
+            ) : (
+              <span className="font-semibold">Back online, sending…</span>
+            )}
+            {pending > 0 && ` ${pending} ${pending === 1 ? "check-in is" : "check-ins are"} waiting to be sent.`}
+          </p>
+        </div>
+      )}
+      {conflicts.length > 0 && (
+        <div role="alert" className="rounded-2xl border-2 border-amber-500 p-4 text-sm">
+          <p className="font-semibold">
+            {conflicts.length === 1 ? "One ticket" : `${conflicts.length} tickets`} let in offline shouldn&rsquo;t have got in
+          </p>
+          <ul className="mt-2 space-y-1">
+            {conflicts.map((c) => (
+              <li key={c.registrationId}>
+                <span className="font-medium">{c.name}</span>:{" "}
+                {c.outcome === "already_checked_in"
+                  ? `already checked in${c.checkedInAt ? ` at ${formatTime(c.checkedInAt, timeZone)}` : ""}${c.checkedInByName ? ` by ${c.checkedInByName}` : ""}`
+                  : c.outcome === "cancelled"
+                    ? "had given their place back"
+                    : "not a ticket for this event"}
+              </li>
+            ))}
+          </ul>
+          <Button size="sm" variant="outline" className="mt-3" onClick={onDismiss}>
+            Got it
+          </Button>
+        </div>
+      )}
+    </>
   );
 }
 
