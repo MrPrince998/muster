@@ -55,3 +55,19 @@ test("owners choose the workspace's time zone in Settings", async ({ page }) => 
   await expect(section.getByRole("combobox", { name: "Time zone" })).toBeVisible();
   await expect(section.getByRole("button", { name: "Save time zone" })).toBeDisabled();
 });
+
+test("subscribe to a club's events in a calendar app", async ({ page }) => {
+  await openClub(page, "Robotics Society");
+  await page.getByRole("button", { name: "Subscribe" }).click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByRole("heading", { name: "Robotics Society in your calendar" })).toBeVisible();
+  await expect(dialog.getByRole("link", { name: "Apple or Outlook" })).toHaveAttribute("href", /^webcal:\/\/.+\/feeds\/.+\.ics$/);
+
+  // what a calendar app fetches: no session, the link is enough
+  const link = await dialog.getByLabel(/copy the link/).inputValue();
+  const feed = await page.context().request.get(link, { headers: { cookie: "" } });
+  expect(feed.headers()["content-type"]).toBe("text/calendar; charset=utf-8");
+  const ics = await feed.text();
+  expect(ics).toContain("X-WR-CALNAME:Robotics Society\\, Riverside University");
+  expect(ics).toContain("SUMMARY:Build Night");
+});

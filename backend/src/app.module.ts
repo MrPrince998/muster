@@ -14,6 +14,7 @@ import { InviteModule } from './modules/invite/invite.module.js';
 import { AuthModule } from './modules/auth/auth.module.js';
 import { SearchModule } from './modules/search/search.module.js';
 import { AnalyticsModule } from './modules/analytics/analytics.module.js';
+import { FeedModule } from './modules/feed/feed.module.js';
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { AnalyticsModule } from './modules/analytics/analytics.module.js';
     AuthModule,
     SearchModule,
     AnalyticsModule,
+    FeedModule,
   ],
   controllers: [AppController],
   providers: [

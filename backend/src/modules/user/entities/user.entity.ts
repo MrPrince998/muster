@@ -62,6 +62,11 @@ export class User {
   @Column({ name: 'last_login_at', type: 'timestamptz', nullable: true })
   lastLoginAt: Date | null;
 
+  // part of their calendar feed links; bumping it turns every old link off
+  @Exclude()
+  @Column({ name: 'calendar_feed_version', type: 'integer', default: 0, select: false })
+  calendarFeedVersion: number;
+
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;
 

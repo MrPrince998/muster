@@ -1,4 +1,4 @@
-import { buildIcs } from './ics.js';
+import { buildCalendar, buildIcs } from './ics.js';
 
 const event = {
   eventId: '11111111-1111-4111-8111-111111111111',
@@ -53,5 +53,20 @@ describe('calendar files', () => {
     expect(newer).toContain('STATUS:CANCELLED');
     const sequence = (ics: string) => Number(/SEQUENCE:(\d+)/.exec(ics)![1]);
     expect(sequence(newer)).toBeGreaterThan(sequence(older));
+  });
+
+  it('writes a feed: several events, a name, and how often to look again', () => {
+    const feed = buildCalendar(
+      [
+        { ...event, eventId: 'a' },
+        { ...event, eventId: 'b', cancelled: true },
+      ],
+      { name: 'Robotics Society, Riverside' },
+    );
+    expect(feed.match(/BEGIN:VEVENT/g)).toHaveLength(2);
+    expect(feed).toContain('X-WR-CALNAME:Robotics Society\\, Riverside\r\n');
+    expect(feed).toContain('REFRESH-INTERVAL;VALUE=DURATION:PT1H');
+    expect(feed).toContain('UID:b@muster\r\n');
+    expect(feed.indexOf('STATUS:CANCELLED')).toBeGreaterThan(feed.indexOf('UID:b@muster'));
   });
 });

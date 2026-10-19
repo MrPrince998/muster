@@ -51,27 +51,46 @@ function fold(line: string): string {
   return parts.join('\r\n ');
 }
 
+/** One event as a calendar file: "Add to calendar". */
 export function buildIcs(event: CalendarEvent): string {
+  return buildCalendar([event]);
+}
+
+/**
+ * Several events as one calendar: a feed a calendar app subscribes to and
+ * re-reads now and then. Each event keeps its own UID, so a change replaces
+ * it and a cancellation strikes it out.
+ */
+export function buildCalendar(events: CalendarEvent[], feed?: { name: string; refreshHours?: number }): string {
+  const stamp = utc(new Date());
   const lines = [
     'BEGIN:VCALENDAR',
     'VERSION:2.0',
     'PRODID:-//Muster//Events//EN',
     'CALSCALE:GREGORIAN',
     'METHOD:PUBLISH',
-    'BEGIN:VEVENT',
-    `UID:${event.eventId}@muster`,
-    `DTSTAMP:${utc(new Date())}`,
-    `SEQUENCE:${Math.floor((event.updatedAt ?? new Date(0)).getTime() / 1000)}`,
-    `DTSTART:${utc(event.startsAt)}`,
-    `DTEND:${utc(event.endsAt)}`,
-    `SUMMARY:${escapeText(event.title)}`,
-    ...(event.location ? [`LOCATION:${escapeText(event.location)}`] : []),
-    ...(event.description
-      ? [`DESCRIPTION:${escapeText(event.description)}`]
+    ...(feed
+      ? [
+          `X-WR-CALNAME:${escapeText(feed.name)}`,
+          // how often to look again (Apple and Outlook read these; Google picks its own pace)
+          `REFRESH-INTERVAL;VALUE=DURATION:PT${feed.refreshHours ?? 1}H`,
+          `X-PUBLISHED-TTL:PT${feed.refreshHours ?? 1}H`,
+        ]
       : []),
-    ...(event.url ? [`URL:${event.url}`] : []),
-    `STATUS:${event.cancelled ? 'CANCELLED' : 'CONFIRMED'}`,
-    'END:VEVENT',
+    ...events.flatMap((event) => [
+      'BEGIN:VEVENT',
+      `UID:${event.eventId}@muster`,
+      `DTSTAMP:${stamp}`,
+      `SEQUENCE:${Math.floor((event.updatedAt ?? new Date(0)).getTime() / 1000)}`,
+      `DTSTART:${utc(event.startsAt)}`,
+      `DTEND:${utc(event.endsAt)}`,
+      `SUMMARY:${escapeText(event.title)}`,
+      ...(event.location ? [`LOCATION:${escapeText(event.location)}`] : []),
+      ...(event.description ? [`DESCRIPTION:${escapeText(event.description)}`] : []),
+      ...(event.url ? [`URL:${event.url}`] : []),
+      `STATUS:${event.cancelled ? 'CANCELLED' : 'CONFIRMED'}`,
+      'END:VEVENT',
+    ]),
     'END:VCALENDAR',
   ];
   return lines.map(fold).join('\r\n') + '\r\n';
