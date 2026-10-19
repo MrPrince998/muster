@@ -33,6 +33,8 @@ import { SessionService } from './session.service.js';
     ThrottlerModule.forRoot({
       throttlers: [{ name: 'default', ttl: 60_000, limit: 30 }],
       errorMessage: 'Too many attempts. Try again in a minute.',
+      // browser tests only (refused in production by config)
+      skipIf: () => config.throttleDisabled,
     }),
   ],
   controllers: [AuthController],

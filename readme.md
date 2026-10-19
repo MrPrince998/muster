@@ -270,7 +270,14 @@ The tests that matter most are the ones that prove the hard claims:
 - **Tickets:** tampered, expired, and wrong-secret tokens are rejected.
 - **Check-in:** scanning twice, or from two scanners at once, checks the person in exactly once.
 
-CI (`.github/workflows/ci.yml`) runs on every push and pull request: lint, typecheck, unit tests, migrations from an empty database, the end-to-end suite against Postgres 17 (what development and production both run), and both production image builds.
+**Browser journeys** (`frontend/e2e`, Playwright): signing in and out, registering and the ticket's QR code, the waitlist, creating and cancelling an event, checking someone in at the door, attendance, search, the account page, and a stranger on a public event page. They run against the whole stack with the demo data reset first:
+
+```bash
+THROTTLE_DISABLED=true docker compose up -d backend   # tests sign in faster than any person
+cd frontend && pnpm test:e2e                           # uses your installed Chrome
+```
+
+CI (`.github/workflows/ci.yml`) runs on every push and pull request: lint, typecheck, unit tests, migrations from an empty database, the end-to-end suite against Postgres 17 (what development and production both run), the browser journeys against the production builds, and both production image builds.
 
 ---
 

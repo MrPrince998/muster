@@ -1,0 +1,51 @@
+import { expect, localDateTime, openClub, openEvent, test } from "./helpers";
+
+// An organiser's side: making an event, calling one off, and the door.
+
+test("create and publish an event, then cancel it with a note", async ({ page }) => {
+  await openClub(page, "Robotics Society");
+  await page.getByRole("button", { name: "New event" }).click();
+  const form = page.getByRole("dialog");
+  await form.getByLabel("Name", { exact: true }).fill("Browser Test Night");
+  await form.locator("#event-starts").fill(localDateTime(20, 18));
+  await form.locator("#event-ends").fill(localDateTime(20, 21));
+  await form.locator("#event-location").fill("Engineering Hall B");
+  await form.locator("#event-capacity").fill("30");
+  await form.getByRole("button", { name: "Publish" }).click();
+
+  const panel = page.getByRole("complementary", { name: "Browser Test Night" });
+  await expect(panel).toBeVisible();
+  await expect(panel.getByText("0 of 30")).toBeVisible();
+  await expect(page.getByRole("button").filter({ hasText: "Browser Test Night" })).toBeVisible();
+
+  await panel.getByRole("button", { name: "Cancel event" }).click();
+  const confirm = page.getByRole("alertdialog");
+  await expect(confirm.getByText("Nobody has registered yet.")).toBeVisible();
+  await confirm.getByRole("button", { name: "Cancel event" }).click();
+  await expect(panel.getByText("Cancelled", { exact: true })).toBeVisible();
+  await expect(panel.getByRole("button", { name: "Edit event" })).toHaveCount(0);
+});
+
+test("check someone in at the door by name", async ({ page }) => {
+  await openClub(page, "Robotics Society");
+  const panel = await openEvent(page, "Robot Wars Viewing");
+  await panel.getByRole("link", { name: "Open check-in" }).click();
+  await expect(page.getByRole("region", { name: "Check-in for Robot Wars Viewing" })).toBeVisible();
+
+  await page.getByRole("tab", { name: "Find by name" }).click();
+  // Sam (the demo user) holds a place here
+  await page.getByLabel("Search attendees").fill("Sam");
+  await page.getByRole("button", { name: "Check in" }).first().click();
+  // the door's answer, and the count moves
+  await expect(page.getByText("Let them in")).toBeVisible();
+  await expect(page.getByText(/^of \d+ in/)).toBeVisible();
+  await expect(page.getByText(/^In at \d{2}:\d{2}$/)).toBeVisible();
+});
+
+test("attendance numbers for the club", async ({ page }) => {
+  await openClub(page, "Robotics Society");
+  await page.getByRole("link", { name: "Attendance" }).click();
+  await expect(page.getByText(/^\d+% came$/)).toBeVisible();
+  await expect(page.getByRole("heading", { name: "The last 12 months" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Event by event" })).toBeVisible();
+});

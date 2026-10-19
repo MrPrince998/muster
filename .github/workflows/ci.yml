@@ -1,6 +1,6 @@
 # Every push and pull request: lint, typecheck, unit and end-to-end tests
-# (against Postgres 17, what development and production run), and both
-# production builds.
+# (against Postgres 17, what development and production run), the main
+# journeys in a real browser, and both production builds.
 name: CI
 
 on:
@@ -90,6 +90,83 @@ jobs:
         env:
           NEXT_PUBLIC_API_URL: http://localhost:5001
           NEXT_TELEMETRY_DISABLED: 1
+
+  browser:
+    name: Browser journeys
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: muster
+          POSTGRES_PASSWORD: ci-owner-password
+          POSTGRES_DB: muster
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U muster -d muster"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgresql://muster_app:ci-app-password@localhost:5432/muster
+      MIGRATION_DATABASE_URL: postgresql://muster:ci-owner-password@localhost:5432/muster
+      JWT_SECRET: ci-only-jwt-secret-not-used-anywhere-else
+      TICKET_SECRET: ci-only-ticket-secret-not-used-anywhere-else
+      APP_URL: http://localhost:3000
+      NEXT_PUBLIC_API_URL: http://localhost:5001
+      NEXT_TELEMETRY_DISABLED: 1
+      # the journeys reset the demo data first (frontend/e2e/global-setup.ts)
+      # in backend/, through corepack: the backend's own pnpm (the journeys run under the frontend's)
+      SEED_COMMAND: cd backend && corepack pnpm seed --reset
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      # each app pins its own pnpm (packageManager); corepack honours both
+      - run: corepack enable
+      - name: Start the API (production build)
+        working-directory: backend
+        env:
+          PORT: 5001
+          # sign-ins and reloads at machine speed; refused in production
+          THROTTLE_DISABLED: "true"
+          REMINDERS_ENABLED: "false"
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm migration:run
+          pnpm build
+          nohup node dist/main.js > ../api.log 2>&1 &
+      - name: Start the web app (production build, as the image runs it)
+        working-directory: frontend
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
+          cp -r .next/static .next/standalone/.next/static
+          cp -r public .next/standalone/public
+          PORT=3000 HOSTNAME=127.0.0.1 nohup node .next/standalone/server.js > ../web.log 2>&1 &
+      - name: Wait for both
+        run: |
+          for i in $(seq 1 60); do
+            curl -sf http://localhost:5001/ >/dev/null && curl -sf http://localhost:3000/login >/dev/null && exit 0
+            sleep 2
+          done
+          echo "--- api.log"; cat api.log; echo "--- web.log"; cat web.log; exit 1
+      - name: Install Chromium
+        working-directory: frontend
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Journeys
+        working-directory: frontend
+        run: pnpm test:e2e
+      - name: Keep the evidence
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-journeys
+          path: |
+            frontend/playwright-report
+            frontend/test-results
+            api.log
+            web.log
+          retention-days: 7
 
   images:
     name: Production images

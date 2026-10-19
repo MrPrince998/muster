@@ -30,6 +30,14 @@ function getSecret(key: string): string {
 // Behind one, every request seems to come from the proxy, so rate limits
 // would count all users together; trusting it makes them per client again.
 // Unset or 0: no proxy, trust nothing.
+// Rate limits off: only for automated browser tests, which sign in and
+// reload far faster than a person. Never in production.
+function throttleDisabled(): boolean {
+  const off = process.env.THROTTLE_DISABLED === "true";
+  if (off && production) throw new Error("THROTTLE_DISABLED can't be used in production");
+  return off;
+}
+
 function trustProxy(): number {
   const hops = Number(process.env.TRUST_PROXY ?? 0);
   if (!Number.isInteger(hops) || hops < 0) {
@@ -42,6 +50,7 @@ export const config = {
   env: process.env.NODE_ENV,
   port: Number(process.env.PORT),
   trustProxy: trustProxy(),
+  throttleDisabled: throttleDisabled(),
 
   database: {
     url: getEnv("DATABASE_URL"),

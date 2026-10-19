@@ -30,6 +30,9 @@ services:
     environment:
       PORT: 5001
       NODE_ENV: development
+      # browser tests sign in and reload faster than any person:
+      # THROTTLE_DISABLED=true docker compose up -d backend
+      THROTTLE_DISABLED: ${THROTTLE_DISABLED:-false}
     depends_on:
       db:
         condition: service_healthy
