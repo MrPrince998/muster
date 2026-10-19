@@ -71,3 +71,16 @@ test("subscribe to a club's events in a calendar app", async ({ page }) => {
   expect(ics).toContain("X-WR-CALNAME:Robotics Society\\, Riverside University");
   expect(ics).toContain("SUMMARY:Build Night");
 });
+
+test("choose new-event emails for a club, and a broken stop link says so", async ({ page }) => {
+  await openClub(page, "Robotics Society");
+  await page.getByRole("button", { name: "Email me" }).click();
+  await page.getByRole("menuitemradio", { name: /Weekly digest/ }).click();
+  await expect(page.getByRole("button", { name: "Emails: weekly" })).toBeVisible();
+  await page.reload();
+  await expect(page.getByRole("button", { name: "Emails: weekly" })).toBeVisible();
+
+  await page.goto("/unsubscribe?token=c.nope");
+  await page.getByRole("button", { name: "Stop these emails" }).click();
+  await expect(page.getByRole("heading", { name: "This link doesn’t work" })).toBeVisible();
+});

@@ -62,6 +62,10 @@ const SECTIONS: { title: string; answers: Answer[] }[] = [
         a: "Yes: an email the day before, with your ticket attached. If you registered within that last day, your ticket email is your reminder.",
       },
       {
+        q: "Can I get an email when a club adds an event?",
+        a: "Yes. On the club's page, open Email me and choose an email for each new event, or a weekly digest every Monday of the next two weeks. It's off until you choose. Every one of these emails has a link to stop them, no sign-in needed.",
+      },
+      {
         q: "Can I see all of a club's events in my calendar?",
         a: "Yes. On the club's page, choose Subscribe and add it to Apple Calendar, Outlook or Google Calendar. New events then appear by themselves, and changes and cancellations follow. The link is private to you; if it gets out, reset it from the same place.",
       },

@@ -111,6 +111,23 @@ export class TenantService {
     return rows.map((r) => r.org_id);
   }
 
+  /** Workspaces with published events nobody has announced yet. */
+  async dueAnnouncementOrganisations(): Promise<string[]> {
+    const rows: { org_id: string }[] = await this.dataSource.query(
+      `SELECT due_announcement_organisations AS org_id FROM due_announcement_organisations()`,
+    );
+    return rows.map((r) => r.org_id);
+  }
+
+  /** Workspaces where it's Monday morning and someone's weekly digest is due (any day, for tests). */
+  async dueDigestOrganisations(anyDay: boolean): Promise<string[]> {
+    const rows: { org_id: string }[] = await this.dataSource.query(
+      `SELECT due_digest_organisations AS org_id FROM due_digest_organisations($1)`,
+      [anyDay],
+    );
+    return rows.map((r) => r.org_id);
+  }
+
   private async resolve(call: string, arg: string): Promise<string | null> {
     const rows: { org_id: string | null }[] = await this.dataSource.query(
       `SELECT ${call} AS org_id`,

@@ -1,4 +1,5 @@
 import {
+  Check,
   Column,
   CreateDateColumn,
   Entity,
@@ -29,6 +30,7 @@ import { Club } from './club.entity.js';
 // "my clubs in this workspace", RLS's org_id filter, and the cascade from
 // org_members all look up by (org_id, user_id)
 @Index('club_members_org_id_user_id_idx', ['orgId', 'userId'])
+@Check('club_members_event_emails_check', `"event_emails" IN ('off', 'instant', 'weekly')`)
 export class ClubMember {
   @PrimaryColumn({ name: 'club_id', type: 'uuid', primaryKeyConstraintName: 'club_members_pkey' })
   clubId: string;
@@ -41,6 +43,10 @@ export class ClubMember {
 
   @CreateDateColumn({ name: 'joined_at', type: 'timestamptz' })
   joinedAt: Date;
+
+  // new-event emails from this club: none, one per event as it's published, or a weekly digest
+  @Column({ name: 'event_emails', type: 'varchar', length: 10, default: 'off' })
+  eventEmails: 'off' | 'instant' | 'weekly';
 
   @ManyToOne(() => Club, { onDelete: 'CASCADE' })
   @JoinColumn([

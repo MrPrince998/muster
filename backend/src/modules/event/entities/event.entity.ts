@@ -67,6 +67,8 @@ export type RepeatEvery = (typeof REPEAT_EVERY)[number];
 // trigram search on titles (migration 1760000000005; TypeORM can't express the operator class)
 @Index('events_title_trgm_idx', { synchronize: false })
 // the reminder sweep: published events by start (migration 1760000000007)
+// published events not yet announced: what the announcement sweep looks for
+@Index('events_unannounced_idx', ['orgId'], { where: `"status" = 'published' AND "announced_at" IS NULL` })
 @Index('events_starts_at_published_idx', ['startsAt'], { where: `"status" = 'published'` })
 export class Event {
   @PrimaryGeneratedColumn('uuid', { primaryKeyConstraintName: 'events_pkey' })
@@ -123,6 +125,10 @@ export class Event {
   // the organiser's note to the people registered, shown with the cancellation
   @Column({ name: 'cancel_reason', type: 'varchar', length: 500, nullable: true })
   cancelReason: string | null;
+
+  // when members who asked for new-event emails were told; null: not yet
+  @Column({ name: 'announced_at', type: 'timestamptz', nullable: true })
+  announcedAt: Date | null;
 
   // the events made together from one "repeats weekly, 8 times"; null for a one-off
   @Column({ name: 'series_id', type: 'uuid', nullable: true })

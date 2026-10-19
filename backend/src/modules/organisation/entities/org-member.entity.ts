@@ -54,6 +54,10 @@ export class OrgMember {
   @Column({ type: 'varchar', length: 20, default: OrgRole.Member })
   role: OrgRole;
 
+  // the last weekly digest of new events sent to them from this workspace
+  @Column({ name: 'digest_sent_at', type: 'timestamptz', nullable: true })
+  digestSentAt: Date | null;
+
   @CreateDateColumn({ name: 'joined_at', type: 'timestamptz' })
   joinedAt: Date;
 

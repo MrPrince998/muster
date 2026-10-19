@@ -15,6 +15,7 @@ import { AuthModule } from './modules/auth/auth.module.js';
 import { SearchModule } from './modules/search/search.module.js';
 import { AnalyticsModule } from './modules/analytics/analytics.module.js';
 import { FeedModule } from './modules/feed/feed.module.js';
+import { NotificationModule } from './modules/notification/notification.module.js';
 
 @Module({
   imports: [
@@ -30,6 +31,7 @@ import { FeedModule } from './modules/feed/feed.module.js';
     SearchModule,
     AnalyticsModule,
     FeedModule,
+    NotificationModule,
   ],
   controllers: [AppController],
   providers: [

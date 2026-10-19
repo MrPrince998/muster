@@ -10,6 +10,8 @@ export interface OutgoingEmail {
   idempotencyKey?: string;
   // files sent with it, e.g. the ticket's QR code as a PNG
   attachments?: { filename: string; content: Buffer }[];
+  // extra headers, e.g. List-Unsubscribe on emails people chose to get
+  headers?: Record<string, string>;
 }
 
 export class EmailDeliveryError extends Error {
@@ -35,10 +37,10 @@ export class ResendEmailSender extends EmailSender {
     super();
   }
 
-  async send({ to, subject, html, text, idempotencyKey, attachments }: OutgoingEmail): Promise<void> {
+  async send({ to, subject, html, text, idempotencyKey, attachments, headers }: OutgoingEmail): Promise<void> {
     // the SDK reports failures in `error` instead of throwing
     const { error } = await this.resend.emails.send(
-      { from: this.from, to: [to], subject, html, text, ...(attachments?.length && { attachments }) },
+      { from: this.from, to: [to], subject, html, text, ...(attachments?.length && { attachments }), ...(headers && { headers }) },
       idempotencyKey ? { idempotencyKey } : undefined,
     );
     if (error) {

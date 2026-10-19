@@ -13,6 +13,8 @@ import { resetPasswordTemplate } from './templates/reset-password.js';
 import { reminderTemplate } from './templates/reminder.js';
 import { ticketTemplate, type TicketEmailData } from './templates/ticket.js';
 import { verifyEmailTemplate } from './templates/verify-email.js';
+import { newEventTemplate, type NewEventEmailData } from './templates/new-event.js';
+import { digestTemplate, type DigestEmailData } from './templates/digest.js';
 
 export const APP_URL = Symbol('APP_URL');
 // the gap between emails in a bulk send: Resend accepts a few requests a second
@@ -197,6 +199,19 @@ export class EmailService {
    * Not awaiting also keeps response times the same whether or not an email
    * goes out, which matters where that would reveal whether an account exists.
    */
+  /**
+   * A new event, to someone who asked to hear straight away. Carries
+   * List-Unsubscribe, so mail apps offer their own one-click "stop".
+   */
+  sendNewEvent(to: string, data: NewEventEmailData, key: string): Promise<void> {
+    return this.sender.send({ to, ...newEventTemplate(data), idempotencyKey: key, headers: unsubscribe(data.stopUrl) });
+  }
+
+  /** The weekly digest of what's coming up. */
+  sendDigest(to: string, data: DigestEmailData, key: string): Promise<void> {
+    return this.sender.send({ to, ...digestTemplate(data), idempotencyKey: key, headers: unsubscribe(data.stopUrl) });
+  }
+
   inBackground(kind: string, sending: Promise<void>): void {
     sending.catch((error: unknown) =>
       this.logger.error(`Sending ${kind} email failed`, error instanceof Error ? error.stack : error),
@@ -260,4 +275,12 @@ export class EmailService {
     for (const [key, value] of Object.entries(extra ?? {})) url.searchParams.set(key, value);
     return url.toString();
   }
+}
+
+// RFC 8058: a mail app can turn these off with one POST. The link people
+// click opens a page that asks first (so a link scanner can't); the
+// header's address beside it acts straight away.
+function unsubscribe(stopUrl: string): Record<string, string> {
+  const oneClick = stopUrl.replace('/unsubscribe?', '/unsubscribe/one-click?');
+  return { 'List-Unsubscribe': `<${oneClick}>`, 'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click' };
 }

@@ -10,6 +10,7 @@ import type { ClubEvent } from "@/types/event.interface";
 import type { MyOrganisation } from "@/types/organisation.interface";
 import EventFormDialog from "../dialogs/event-form-dialog";
 import { SubscribeButton } from "../dialogs/subscribe-dialog";
+import { EventEmailsMenu } from "./parts/event-emails-menu";
 import { useWorkspace } from "../org-shell/workspace-context";
 import { EventPanel, type EventPanelProps } from "./parts/event-panel";
 import { EventStub } from "./parts/event-stub";
@@ -158,6 +159,7 @@ const OrgHomeView = ({
               </div>
               <div className="flex flex-wrap gap-2">
                 <SubscribeButton clubId={club.id} clubName={club.name} />
+                <EventEmailsMenu clubId={club.id} />
                 {can.seeAttendance && (
                   <Link
                     href={`/o/${organisation.slug}/clubs/${club.id}?tab=attendance`}
