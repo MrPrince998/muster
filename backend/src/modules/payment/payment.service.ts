@@ -160,7 +160,7 @@ export class PaymentService {
     m: EntityManager,
     place: { orgId: string; eventId: string; userId: string; clubId?: string; publicOnly?: boolean },
     back: { successUrl: string; cancelUrl: string },
-  ): Promise<{ url: string }> {
+  ): Promise<{ url: string; checkoutId?: string }> {
     const { event, existing } = await checkPlace(m, place);
     if (existing) throw HttpError.conflict("You're already registered", 'ALREADY_REGISTERED');
     if (event.price_cents === null || !event.currency) throw HttpError.conflict('This event is free: register instead', 'EVENT_IS_FREE');
@@ -201,7 +201,7 @@ export class PaymentService {
       expiresAt,
     });
     await m.query(`UPDATE checkouts SET session_id = $2, url = $3 WHERE id = $1`, [id, session.sessionId, session.url]);
-    return { url: session.url };
+    return { url: session.url, checkoutId: id };
   }
 
   /** A member buying a place: Stripe's checkout page, coming back to the event. */
@@ -222,6 +222,25 @@ export class PaymentService {
         { orgId, eventId, userId: access.userId, clubId: access.clubId },
         { successUrl: back('1'), cancelUrl: back('0') },
       );
+    }).then(async ({ url, checkoutId }) => {
+      await this.afterCheckout(orgId, checkoutId);
+      return { url };
+    });
+  }
+
+  /**
+   * Call once a new checkout is committed. Development's pretend Stripe
+   * (PAYMENTS_FAKE) pays it then and there, through the same path a real
+   * webhook takes; with real Stripe, this does nothing.
+   */
+  async afterCheckout(orgId: string | undefined, checkoutId: string | undefined): Promise<void> {
+    if (!this.gateway.paysAtOnce || !orgId || !checkoutId) return;
+    await this.completed({
+      type: 'checkout.completed',
+      orgId,
+      checkoutId,
+      sessionId: `cs_test_${checkoutId}`,
+      paymentIntentId: `pi_fake_${checkoutId}`,
     });
   }
 

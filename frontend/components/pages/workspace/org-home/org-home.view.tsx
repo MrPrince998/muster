@@ -51,6 +51,8 @@ interface OrgHomeViewProps {
     | "onCancel"
     | "onJoinWaitlist"
     | "onLeaveWaitlist"
+    | "onBuy"
+    | "paymentReturn"
     | "onPublish"
     | "onEdit"
     | "onToggleRegistration"

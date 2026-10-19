@@ -14,7 +14,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Field, FieldDescription, FieldError, FieldLabel } from "@/components/ui/field";
-import { InputGroup, InputGroupInput } from "@/components/ui/input-group";
+import { InputGroup, InputGroupAddon, InputGroupInput, InputGroupText } from "@/components/ui/input-group";
 import { Textarea } from "@/components/ui/textarea";
 import { asApiError } from "@/lib/api/client";
 import { cn } from "@/lib/utils";
@@ -22,6 +22,7 @@ import type { ClubEvent, SeriesScope } from "@/types/event.interface";
 import { useCreateEvent, useUpdateEvent } from "../services/event.service";
 import { differsFromDevice, zoneCity } from "@/lib/time-zone";
 import { hasLaterInSeries, SeriesScopeChoice } from "../shared/series-scope-choice";
+import { usePaymentStatus } from "../services/payment.service";
 import { eventFormSchema, type EventFormValues, toEventInput, toLocalInput } from "../validation/event.schema";
 
 function messageFor(code: string): string {
@@ -32,6 +33,8 @@ function messageFor(code: string): string {
       return "The event has to end after it starts.";
     case "MISSING_PERMISSION":
       return "You don't have permission to do that in this club.";
+    case "PAYMENTS_NOT_SET_UP":
+      return "This workspace can't take payments yet. Connect Stripe in Settings, or make the event free.";
     case "NETWORK_ERROR":
       return "Can't reach Muster. Check your connection, then try again.";
     default:
@@ -47,6 +50,8 @@ const emptyValues: EventFormValues = {
   endsAt: "",
   capacity: "",
   visibility: "members",
+  price: "",
+  refundCutoffHours: "48",
   repeatEvery: "none",
   repeatCount: "4",
 };
@@ -78,6 +83,10 @@ export default function EventFormDialog({
   timeZone?: string;
 }) {
   const editing = !!event;
+  // prices only once the workspace's Stripe account can take payments (or the event already has one)
+  const payments = usePaymentStatus(orgId);
+  const canPrice = !!payments.data?.ready || !!event?.price;
+  const currency = (event?.price?.currency ?? payments.data?.currency ?? "").toUpperCase();
   const createEvent = useCreateEvent(clubId, orgId);
   const updateEvent = useUpdateEvent(clubId, orgId);
   const form = useForm<EventFormValues>({ resolver: zodResolver(eventFormSchema), defaultValues: emptyValues });
@@ -111,6 +120,8 @@ export default function EventFormDialog({
             endsAt: toLocalInput(event.endsAt, timeZone),
             capacity: event.capacity === null ? "" : String(event.capacity),
             visibility: event.visibility === "public" ? "public" : "members",
+            price: event.price ? (event.price.amountCents / 100).toFixed(2) : "",
+            refundCutoffHours: String(event.refundCutoffHours),
             repeatEvery: "none",
             repeatCount: "4",
           }
@@ -250,6 +261,52 @@ export default function EventFormDialog({
               <FieldDescription>Leave empty for no limit. Registration closes once it&rsquo;s full.</FieldDescription>
             )}
           </Field>
+
+          {canPrice && (
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field data-invalid={!!errors.price}>
+                <FieldLabel htmlFor="event-price">Ticket price</FieldLabel>
+                <InputGroup className="h-11">
+                  <InputGroupInput
+                    id="event-price"
+                    inputMode="decimal"
+                    placeholder="Free"
+                    aria-invalid={!!errors.price}
+                    {...register("price")}
+                  />
+                  {currency && (
+                    <InputGroupAddon align="inline-end">
+                      <InputGroupText>{currency}</InputGroupText>
+                    </InputGroupAddon>
+                  )}
+                </InputGroup>
+                {errors.price ? (
+                  <FieldError errors={[errors.price]} />
+                ) : (
+                  <FieldDescription>Leave empty for a free event. Paid through Stripe.</FieldDescription>
+                )}
+              </Field>
+              <Field data-invalid={!!errors.refundCutoffHours}>
+                <FieldLabel htmlFor="event-refund">Refunds until</FieldLabel>
+                <InputGroup className="h-11">
+                  <InputGroupInput
+                    id="event-refund"
+                    inputMode="numeric"
+                    aria-invalid={!!errors.refundCutoffHours}
+                    {...register("refundCutoffHours")}
+                  />
+                  <InputGroupAddon align="inline-end">
+                    <InputGroupText>hours before</InputGroupText>
+                  </InputGroupAddon>
+                </InputGroup>
+                {errors.refundCutoffHours ? (
+                  <FieldError errors={[errors.refundCutoffHours]} />
+                ) : (
+                  <FieldDescription>A ticket given back before then is refunded in full.</FieldDescription>
+                )}
+              </Field>
+            </div>
+          )}
 
           <fieldset className="space-y-2">
             <legend className="text-sm font-medium">Who can come</legend>

@@ -144,3 +144,21 @@ test("the activity page says who changed what", async ({ page }) => {
   await expect(today.getByRole("listitem").nth(0)).toHaveText(/Sam Rivera reopened registration for “Soldering Workshop”/);
   await expect(today.getByRole("listitem").nth(1)).toHaveText(/Sam Rivera closed registration for “Soldering Workshop”/);
 });
+
+test("price an event, with the workspace's Stripe account ready", async ({ page }) => {
+  await page.goto("/o/riverside-uni/settings");
+  await expect(page.getByText("Ready to sell tickets in AUD")).toBeVisible();
+
+  await openClub(page, "Robotics Society");
+  await page.getByRole("button", { name: "New event" }).click();
+  const form = page.getByRole("dialog");
+  await form.getByLabel("Name", { exact: true }).fill("Paid Workshop");
+  await form.locator("#event-starts").fill(localDateTime(30, 10));
+  await form.locator("#event-ends").fill(localDateTime(30, 12));
+  await form.getByLabel("Ticket price").fill("12.50");
+  await form.getByRole("button", { name: "Publish" }).click();
+
+  const panel = page.getByRole("complementary", { name: "Paid Workshop" });
+  await expect(panel.getByRole("definition").filter({ hasText: /^\$12\.50Refunded/ })).toBeVisible();
+  await expect(page.getByRole("button").filter({ hasText: "Paid Workshop" }).getByText("$12.50")).toBeVisible();
+});

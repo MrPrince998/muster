@@ -44,6 +44,8 @@ const unavailable = () =>
 export abstract class PaymentGateway {
   // whether this Muster takes payments at all
   abstract readonly enabled: boolean;
+  // development only: checkout is skipped and every payment succeeds at once
+  readonly paysAtOnce: boolean = false;
   abstract createAccount(account: { orgId: string; name: string; email: string }): Promise<string>;
   abstract onboardingLink(accountId: string, returnUrl: string, refreshUrl: string): Promise<string>;
   abstract account(accountId: string): Promise<AccountStatus>;
@@ -209,6 +211,13 @@ export class DisabledGateway extends PaymentGateway {
  */
 export class FakeGateway extends PaymentGateway {
   readonly enabled = true;
+  // PAYMENTS_FAKE: no checkout page, straight back to the event, paid
+  override readonly paysAtOnce: boolean;
+
+  constructor({ paysAtOnce = false } = {}) {
+    super();
+    this.paysAtOnce = paysAtOnce;
+  }
   readonly refunds = new Map<string, string>();
   readonly checkouts: CheckoutRequest[] = [];
   chargesEnabled = true;
@@ -217,17 +226,20 @@ export class FakeGateway extends PaymentGateway {
     return Promise.resolve(`acct_${randomUUID().replace(/-/g, '').slice(0, 16)}`);
   }
   onboardingLink(accountId: string, returnUrl: string): Promise<string> {
+    // nothing to sign up for: straight back
+    if (this.paysAtOnce) return Promise.resolve(returnUrl);
     return Promise.resolve(`https://connect.stripe.test/${accountId}?return=${encodeURIComponent(returnUrl)}`);
   }
   account(): Promise<AccountStatus> {
     return Promise.resolve({ chargesEnabled: this.chargesEnabled, detailsSubmitted: true, currency: 'aud' });
   }
   dashboardLink(accountId: string): Promise<string> {
-    return Promise.resolve(`https://dashboard.stripe.test/${accountId}`);
+    return Promise.resolve(this.paysAtOnce ? 'https://dashboard.stripe.com/test' : `https://dashboard.stripe.test/${accountId}`);
   }
   createCheckout(request: CheckoutRequest): Promise<{ sessionId: string; url: string }> {
     this.checkouts.push(request);
     const sessionId = `cs_test_${request.checkoutId}`;
+    if (this.paysAtOnce) return Promise.resolve({ sessionId, url: request.successUrl });
     return Promise.resolve({ sessionId, url: `https://checkout.stripe.test/${sessionId}` });
   }
   refund(paymentIntentId: string, idempotencyKey: string): Promise<void> {

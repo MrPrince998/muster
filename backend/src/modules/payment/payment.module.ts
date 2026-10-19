@@ -5,7 +5,7 @@ import { EmailModule } from '../email/email.module.js';
 import { OrganisationModule } from '../organisation/organisation.module.js';
 import { PermissionModule } from '../permission/permission.module.js';
 import { TicketModule } from '../ticket/ticket.module.js';
-import { DisabledGateway, PaymentGateway, StripeGateway } from './payment-gateway.js';
+import { DisabledGateway, FakeGateway, PaymentGateway, StripeGateway } from './payment-gateway.js';
 import { PaymentController } from './payment.controller.js';
 import { PaymentService } from './payment.service.js';
 
@@ -18,7 +18,11 @@ import { PaymentService } from './payment.service.js';
     {
       provide: PaymentGateway,
       useFactory: (): PaymentGateway => {
-        const { stripeSecretKey, stripeWebhookSecret } = config.payments;
+        const { stripeSecretKey, stripeWebhookSecret, fake } = config.payments;
+        if (fake) {
+          new Logger('Payments').warn('PAYMENTS_FAKE: a pretend Stripe, every checkout paid at once');
+          return new FakeGateway({ paysAtOnce: true });
+        }
         if (!stripeSecretKey) {
           new Logger('Payments').warn('STRIPE_SECRET_KEY is not set: payments are off, events are free');
           return new DisabledGateway();

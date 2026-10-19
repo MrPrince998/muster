@@ -3,6 +3,7 @@
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { asApiError } from "@/lib/api/client";
+import { startCheckout } from "../services/payment.service";
 import type { ClubEvent } from "@/types/event.interface";
 import { useWorkspace } from "../org-shell/workspace-context";
 import {
@@ -25,6 +26,12 @@ function actionMessage(code: string): string {
   switch (code) {
     case "EVENT_FULL":
       return "Someone took the last place just before you. The event is full now.";
+    case "SOLD_OUT":
+      return "Sold out: every ticket has gone.";
+    case "PAYMENTS_NOT_SET_UP":
+      return "Tickets aren't on sale right now: the organisers can't take payments.";
+    case "PAYMENTS_UNAVAILABLE":
+      return "Payments aren't available right now. Try again later.";
     case "EVENT_ENDED":
       return "This event has already ended.";
     case "EVENT_NOT_OPEN":
@@ -71,6 +78,8 @@ export default function OrgHomeContainer() {
   const clubParam = searchParams.get("club");
   // ?event= opens that event (from search, or a link in an email)
   const eventParam = searchParams.get("event");
+  // back from Stripe's checkout: ?paid=1 (paid) or ?paid=0 (gave up)
+  const paidParam = searchParams.get("paid");
   const router = useRouter();
   const pathname = usePathname();
   const club = clubs.data.find((c) => c.id === clubParam) ?? clubs.data[0] ?? null;
@@ -158,13 +167,41 @@ export default function OrgHomeContainer() {
       }
     }
   }
+  // the event a Stripe return was for: the linked one, remembered once the link is dropped
+  const [paidEventId, setPaidEventId] = useState<string | null>(null);
+  if (paidParam && eventParam && paidEventId !== eventParam) setPaidEventId(eventParam);
+  // paid: Stripe tells the API in a moment; look again until the ticket's there (up to a minute)
+  const awaitingTicket = paidParam === "1" && !!paidEventId && !!upcoming.data &&
+    !upcoming.data.find((e) => e.id === paidEventId)?.youreGoing;
+  useEffect(() => {
+    if (!awaitingTicket) return;
+    const started = Date.now();
+    const timer = setInterval(() => {
+      if (Date.now() - started > 60_000) clearInterval(timer);
+      void upcoming.refetch();
+    }, 2000);
+    return () => clearInterval(timer);
+  }, [awaitingTicket, upcoming]);
+
+  // the ticket's here: the Stripe return has done its job, so it leaves the address
+  // (giving the ticket back later shows the event as it is, not "payment received")
+  const ticketArrived = !!paidParam && !!paidEventId && !!upcoming.data?.find((e) => e.id === paidEventId)?.youreGoing;
+  useEffect(() => {
+    // while the event link is still there, the effect below drops both at once
+    if (!ticketArrived || eventParam) return;
+    const rest = new URLSearchParams(searchParams.toString());
+    rest.delete("paid");
+    router.replace(rest.size ? `${pathname}?${rest}` : pathname, { scroll: false });
+  }, [ticketArrived, eventParam, pathname, router, searchParams]);
+
   // then drop it from the address, so the same link works again later
   useEffect(() => {
     if (!eventParam || linkedEvent !== eventParam) return;
     const rest = new URLSearchParams(searchParams.toString());
     rest.delete("event");
+    if (ticketArrived) rest.delete("paid");
     router.replace(rest.size ? `${pathname}?${rest}` : pathname, { scroll: false });
-  }, [eventParam, linkedEvent, pathname, router, searchParams]);
+  }, [eventParam, linkedEvent, pathname, router, searchParams, ticketArrived]);
 
   const lists: Record<EventTab, { data: ClubEvent[]; loading: boolean; failed: boolean }> = {
     upcoming: { data: upcoming.data ?? [], loading: upcoming.isPending, failed: upcoming.isError },
@@ -203,6 +240,20 @@ export default function OrgHomeContainer() {
         onRegister: () => openEvent && run("register", () => register.mutateAsync({ eventId: openEvent.id })),
         onCancel: () => openEvent && run("cancel", () => cancel.mutateAsync({ eventId: openEvent.id })),
         onJoinWaitlist: () => openEvent && run("waitlist", () => joinWaitlist.mutateAsync({ eventId: openEvent.id })),
+        onBuy: () =>
+          openEvent &&
+          run("buy", async () => {
+            const { url } = await startCheckout(openEvent.clubId, openEvent.id);
+            window.location.assign(url);
+            // stays "going to checkout" while the browser leaves
+            await new Promise(() => undefined);
+          }),
+        paymentReturn:
+          openEvent && paidParam && openEvent.id === paidEventId && !openEvent.youreGoing
+            ? paidParam === "1"
+              ? "paid"
+              : "cancelled"
+            : null,
         onLeaveWaitlist: () =>
           openEvent && run("leave-waitlist", () => leaveWaitlist.mutateAsync({ eventId: openEvent.id })),
         onPublish: (scope) =>

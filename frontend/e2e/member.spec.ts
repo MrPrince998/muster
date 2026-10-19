@@ -60,3 +60,23 @@ test("my tickets lists the seeded ones and opens a QR code", async ({ page }) =>
   await page.getByText("Studio Ghibli Night").click();
   await expect(page.getByRole("dialog").getByRole("img", { name: /QR code/ })).toBeVisible();
 });
+
+test("buy a ticket for a paid event, then give it back for a refund", async ({ page }) => {
+  await openClub(page, "Robotics Society");
+  const panel = await openEvent(page, "Robotics Gala Dinner");
+  await expect(panel.getByText("Refunded if given back 48 hours or more before it starts")).toBeVisible();
+
+  // development's pretend Stripe: checkout is paid at once and comes straight back
+  await panel.getByRole("button", { name: "Buy a ticket for $45.00" }).click();
+  await expect(page).toHaveURL(/paid=1/);
+  const back = page.getByRole("complementary", { name: "Robotics Gala Dinner" });
+  await expect(back.getByText("You’re going.")).toBeVisible({ timeout: 15_000 });
+  // the organiser's takings
+  await expect(back.getByText("in ticket sales, less refunds")).toBeVisible();
+
+  await back.getByRole("button", { name: "Cancel my place" }).click();
+  const confirm = page.getByRole("alertdialog");
+  await expect(confirm.getByText(/You'll get \$45\.00 back/)).toBeVisible();
+  await confirm.getByRole("button", { name: "Give it back and refund" }).click();
+  await expect(back.getByRole("button", { name: "Buy a ticket for $45.00" })).toBeVisible();
+});

@@ -50,6 +50,10 @@ const SECTIONS: { title: string; answers: Answer[] }[] = [
         a: "Open your ticket and choose Save ticket image. The picture has the QR code on it and works like the ticket, so keep it in your photos and show it at the door. The QR code attached to your ticket email works offline too.",
       },
       {
+        q: "How do paid tickets work?",
+        a: "A workspace's owner or an admin connects its Stripe account in Settings; ticket money goes straight to that account. Then any event can have a price. Buying holds your place while you pay, and your ticket arrives as soon as the payment goes through. Give a ticket back before the event's refund cut-off (48 hours by default) and you get the money back; if the organisers cancel, everyone is refunded.",
+      },
+      {
         q: "Can I give my place back?",
         a: "Yes, until you've been checked in: open the event and choose Cancel my place, so someone else can have it.",
       },

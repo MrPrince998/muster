@@ -3,7 +3,7 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { LoaderCircle } from "lucide-react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { asApiError } from "@/lib/api/client";
@@ -16,6 +16,8 @@ function placeMessage(code: string): string {
   switch (code) {
     case "EVENT_FULL":
       return "The last place has just gone.";
+    case "SOLD_OUT":
+      return "Sold out: the last ticket has just gone.";
     case "REGISTRATION_CLOSED":
       return "Registration has just closed.";
     case "EVENT_ENDED":
@@ -37,6 +39,8 @@ export default function PublicEventContainer() {
   const event = usePublicEvent(eventId);
   const request = useRequestPlace(eventId);
   const [sentTo, setSentTo] = useState<string | null>(null);
+  // back from Stripe's checkout: ?paid=1 or ?paid=0
+  const paid = useSearchParams().get("paid");
   const form = useForm<GuestPlaceValues>({
     resolver: zodResolver(guestPlaceSchema),
     defaultValues: { name: "", email: "" },
@@ -87,6 +91,7 @@ export default function PublicEventContainer() {
       form={form}
       onSubmit={onSubmit}
       sentTo={sentTo}
+      paymentReturn={paid === "1" ? "paid" : paid === "0" ? "cancelled" : null}
       onAskAgain={() => {
         setSentTo(null);
         form.reset({ name: form.getValues("name"), email: "" });

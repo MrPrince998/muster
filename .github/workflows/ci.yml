@@ -138,6 +138,8 @@ jobs:
           # sign-ins and reloads at machine speed; refused in production
           THROTTLE_DISABLED: "true"
           REMINDERS_ENABLED: "false"
+          # a pretend Stripe: the journeys buy tickets without Stripe; refused in production
+          PAYMENTS_FAKE: "true"
         run: |
           pnpm install --frozen-lockfile
           pnpm migration:run

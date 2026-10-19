@@ -15,6 +15,7 @@ import {
   Pencil,
   QrCode,
   Repeat,
+  Ticket,
   ScanLine,
   X,
 } from "lucide-react";
@@ -36,6 +37,7 @@ import { ConfirmDialog } from "../../shared/confirm-dialog";
 import { hasLaterInSeries, SeriesScopeChoice, seriesLabel } from "../../shared/series-scope-choice";
 import { TicketDialog } from "../../tickets/ticket-dialog";
 import { differsFromDevice, zoneCity, zoneName } from "@/lib/time-zone";
+import { formatMoney } from "@/lib/money";
 import { FeedbackSection } from "./feedback-section";
 import { formatFullDate, formatTimeRange } from "./format";
 
@@ -57,6 +59,7 @@ export type PanelAction =
   | "register"
   | "cancel"
   | "publish"
+  | "buy"
   | "publish-following"
   | "registration"
   | "waitlist"
@@ -80,6 +83,10 @@ export interface EventPanelProps {
   onRegister: () => void;
   onCancel: () => void;
   onJoinWaitlist: () => void;
+  // a paid event: off to Stripe to buy a place
+  onBuy: () => void;
+  // back from Stripe: paid (the ticket is on its way) or not
+  paymentReturn: "paid" | "cancelled" | null;
   onLeaveWaitlist: () => void;
   // with "following", the later drafts of its series too
   onPublish: (scope?: SeriesScope) => void;
@@ -127,12 +134,10 @@ function PanelBody(props: EventPanelProps & { event: ClubEvent }) {
   const ended = new Date(event.endsAt) <= new Date();
   const draft = event.status === "draft";
   const cancelled = event.status === "cancelled";
-  const full =
-    event.capacity !== null && event.registeredCount >= event.capacity;
-  const left =
-    event.capacity === null
-      ? null
-      : Math.max(0, event.capacity - event.registeredCount);
+  // a place someone is paying for right now is taken until they've paid or their checkout runs out
+  const taken = event.registeredCount + event.heldCount;
+  const full = event.capacity !== null && taken >= event.capacity;
+  const left = event.capacity === null ? null : Math.max(0, event.capacity - taken);
 
   return (
     <div className="flex flex-col gap-6 p-6">
@@ -173,6 +178,16 @@ function PanelBody(props: EventPanelProps & { event: ClubEvent }) {
         {event.location && (
           <Detail icon={MapPin} label="Place">
             {event.location}
+          </Detail>
+        )}
+        {event.price && (
+          <Detail icon={Ticket} label="Ticket">
+            {formatMoney(event.price.amountCents, event.price.currency)}
+            <span className="block text-xs text-muted-foreground">
+              {event.refundCutoffHours === 0
+                ? "Refunded if given back before it starts"
+                : `Refunded if given back ${event.refundCutoffHours} hours or more before it starts`}
+            </span>
           </Detail>
         )}
         {event.series && (
@@ -236,6 +251,12 @@ function PanelBody(props: EventPanelProps & { event: ClubEvent }) {
                         : "Full. No places left."
                       : `${left} ${left === 1 ? "place" : "places"} left`}
               </p>
+              {event.salesCents !== null && event.price && (
+                <p className="mt-2 text-sm">
+                  <span className="font-semibold">{formatMoney(event.salesCents, event.price.currency)}</span>{" "}
+                  <span className="text-muted-foreground">in ticket sales, less refunds</span>
+                </p>
+              )}
             </>
           )}
         </section>
@@ -548,10 +569,14 @@ function MemberActions({
   onCancel,
   onJoinWaitlist,
   onLeaveWaitlist,
+  onBuy,
+  paymentReturn,
   ended,
   full,
 }: EventPanelProps & { event: ClubEvent; ended: boolean; full: boolean }) {
   const [showingTicket, setShowingTicket] = useState(false);
+  const [givingBack, setGivingBack] = useState(false);
+  const paid = event.yourPayment;
 
   if (ended) {
     return (
@@ -590,13 +615,47 @@ function MemberActions({
           size="lg"
           variant="ghost"
           className="h-11 text-muted-foreground"
-          onClick={onCancel}
+          // a paid place asks first: the refund depends on how close the event is
+          onClick={paid ? () => setGivingBack(true) : onCancel}
           disabled={pending === "cancel"}
         >
           {pending === "cancel" && <Spinner />}
           {pending === "cancel" ? "Cancelling…" : "Cancel my place"}
         </Button>
+        {paid && (
+          <ConfirmDialog
+            open={givingBack}
+            onOpenChange={setGivingBack}
+            title="Give your ticket back?"
+            body={
+              paid.refundable
+                ? `You'll get ${formatMoney(paid.amountCents, paid.currency)} back, to the card you paid with, within a few days.`
+                : `It's less than ${event.refundCutoffHours} hours to the start, so there's no refund. Someone else can buy the place.`
+            }
+            confirmLabel={paid.refundable ? "Give it back and refund" : "Give it back"}
+            pendingLabel="Giving it back…"
+            dismissLabel="Keep my ticket"
+            destructive
+            onConfirm={async () => {
+              onCancel();
+              return null;
+            }}
+          />
+        )}
       </div>
+    );
+  }
+
+  // back from Stripe, paid: the ticket arrives as soon as Stripe tells us
+  if (paymentReturn === "paid") {
+    return (
+      <p role="status" className="flex items-start gap-2 rounded-xl bg-cobalt-50 p-4 text-sm text-cobalt-800">
+        <LoaderCircle className="mt-0.5 size-4 shrink-0 animate-spin motion-reduce:animate-none" aria-hidden />
+        <span>
+          <span className="font-semibold">Payment received.</span> Your ticket will appear here in a moment, and it&rsquo;s
+          on its way by email.
+        </span>
+      </p>
     );
   }
 
@@ -625,6 +684,34 @@ function MemberActions({
           {pending === "leave-waitlist" && <Spinner />}
           {pending === "leave-waitlist" ? "Leaving…" : "Leave the waitlist"}
         </Button>
+      </div>
+    );
+  }
+
+  // a paid event: places are bought, and a full one has no queue
+  if (event.price) {
+    return (
+      <div className="flex flex-col gap-2">
+        {paymentReturn === "cancelled" && (
+          <p role="status" className="text-sm text-muted-foreground">
+            Payment cancelled: nothing was charged. Your place is held a little while if you change your mind.
+          </p>
+        )}
+        <Button
+          size="lg"
+          variant={event.canManage ? "outline" : "default"}
+          className="h-11 font-semibold"
+          disabled={full || pending === "buy"}
+          onClick={onBuy}
+        >
+          {pending === "buy" && <Spinner />}
+          {full
+            ? "Sold out"
+            : pending === "buy"
+              ? "Going to checkout…"
+              : `Buy a ticket for ${formatMoney(event.price.amountCents, event.price.currency)}`}
+        </Button>
+        {!full && <p className="text-center text-xs text-muted-foreground">Paid securely through Stripe.</p>}
       </div>
     );
   }

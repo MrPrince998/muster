@@ -15,6 +15,8 @@ const MESSAGES: Record<string, { title: string; body: string }> = {
     body: "It may be more than a day old, or cut short. Ask for your place again from the event's page.",
   },
   EVENT_FULL: { title: "The event filled up", body: "Every place went before you confirmed." },
+  SOLD_OUT: { title: "Sold out", body: "Every ticket went before you confirmed. If someone gives theirs back, it's on sale again on the event's page." },
+  PAYMENTS_NOT_SET_UP: { title: "Tickets aren't on sale", body: "The organisers can't take payments right now. Try again later." },
   REGISTRATION_CLOSED: { title: "Registration closed", body: "The organisers stopped taking registrations before you confirmed." },
   EVENT_ENDED: { title: "This event is over", body: "It finished before you confirmed." },
   EVENT_NOT_OPEN: { title: "This event was called off", body: "It isn't taking registrations any more." },
@@ -23,7 +25,7 @@ const MESSAGES: Record<string, { title: string; body: string }> = {
 
 /**
  * /e/[eventId]/confirm?token=…: the link from the "confirm your place" email.
- * Takes the place, then shows the ticket. Clicking the link twice is fine.
+ * Takes the place (or, at a paid event, goes on to pay for it), then shows the ticket. Clicking the link twice is fine.
  */
 export default function ConfirmPlaceContainer() {
   const { eventId } = useParams<{ eventId: string }>();
@@ -40,7 +42,12 @@ export default function ConfirmPlaceContainer() {
     if (!token || started.current) return;
     started.current = true;
     confirm.mutateAsync({ token }).then(
-      (result) => ("ticketToken" in result ? router.replace(`/t/${result.ticketToken}`) : setWaiting(result.waitlistPosition)),
+      (result) => {
+        if ("ticketToken" in result) router.replace(`/t/${result.ticketToken}`);
+        // a paid event: on to Stripe to pay, the place held meanwhile
+        else if ("checkoutUrl" in result) window.location.assign(result.checkoutUrl);
+        else setWaiting(result.waitlistPosition);
+      },
       (error: unknown) => setFailure(asApiError(error).code),
     );
   }, [token, confirm, router]);

@@ -18,6 +18,8 @@ export interface PublicEvent {
   workspaceName: string;
   // the zone its times are meant in (IANA name)
   timeZone: string;
+  // a ticket's price; null: free
+  price: { amountCents: number; currency: string } | null;
 }
 
 export interface GuestPlaceInput {
@@ -26,4 +28,4 @@ export interface GuestPlaceInput {
 }
 
 /** POST .../places/confirm: a ticket, or (the event being full) a place in the queue. */
-export type GuestPlaceResult = { ticketToken: string } | { waitlistPosition: number };
+export type GuestPlaceResult = { ticketToken: string } | { waitlistPosition: number } | { checkoutUrl: string };

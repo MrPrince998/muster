@@ -4,6 +4,7 @@ import { cn } from "@/lib/utils";
 import type { ClubEvent } from "@/types/event.interface";
 import { formatTime, stubParts } from "./format";
 import { seriesLabel } from "../../shared/series-scope-choice";
+import { formatMoney } from "@/lib/money";
 
 // The tear line between stub and body, with a notch punched at each end
 // (the same ticket as on the sign-in page, turned on its side).
@@ -88,6 +89,7 @@ export function EventStub({
               {draft && <Tag tone="muted">Draft</Tag>}
               {cancelled && <Tag tone="stamp">Cancelled</Tag>}
               {event.series && <Tag tone="muted">{seriesLabel(event.series)}</Tag>}
+              {event.price && <Tag tone="muted">{formatMoney(event.price.amountCents, event.price.currency)}</Tag>}
               {!draft && !cancelled && !past && !event.registrationOpen && <Tag tone="muted">Registration closed</Tag>}
               {!draft && !cancelled && event.visibility === "public" && <Tag tone="muted">Open to guests</Tag>}
               {!cancelled && !past && event.youreGoing && <Tag tone="cobalt">You&rsquo;re going</Tag>}

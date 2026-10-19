@@ -5,6 +5,7 @@ import type { UseFormReturn } from "react-hook-form";
 import { Button } from "@/components/ui/button";
 import { Field, FieldError, FieldLabel } from "@/components/ui/field";
 import { InputGroup, InputGroupInput } from "@/components/ui/input-group";
+import { formatMoney } from "@/lib/money";
 import { cn } from "@/lib/utils";
 import type { PublicEvent } from "@/types";
 import { differsFromDevice, zoneCity, zoneName } from "@/lib/time-zone";
@@ -26,10 +27,12 @@ export interface PublicEventViewProps {
   // where the confirmation link went, once asked
   sentTo: string | null;
   onAskAgain: () => void;
+  // back from Stripe: paid (the ticket is on its way by email) or not
+  paymentReturn: "paid" | "cancelled" | null;
 }
 
 /** A public event: what, when and where, and a ticket-shaped card to get a place. Presentational. */
-export default function PublicEventView({ event, form, onSubmit, sentTo, onAskAgain }: PublicEventViewProps) {
+export default function PublicEventView({ event, form, onSubmit, sentTo, onAskAgain, paymentReturn }: PublicEventViewProps) {
   return (
     <div className="mx-auto grid w-full max-w-5xl gap-10 px-5 py-10 sm:px-8 lg:grid-cols-[minmax(0,1fr)_22rem] lg:gap-16 lg:py-16">
       <article className="min-w-0">
@@ -91,7 +94,7 @@ export default function PublicEventView({ event, form, onSubmit, sentTo, onAskAg
             </div>
             <div className="mx-5 border-t-2 border-dashed border-zinc-200" />
             <div className="p-6">
-              <Card event={event} form={form} onSubmit={onSubmit} sentTo={sentTo} onAskAgain={onAskAgain} />
+              <Card event={event} form={form} onSubmit={onSubmit} sentTo={sentTo} onAskAgain={onAskAgain} paymentReturn={paymentReturn} />
             </div>
           </div>
         </div>
@@ -112,7 +115,9 @@ function Places({ event }: { event: PublicEvent }) {
           : event.placesLeft === null
             ? "Places open"
             : event.placesLeft === 0
-              ? "Full"
+              ? event.price
+                ? "Sold out"
+                : "Full"
               : `${event.placesLeft} ${event.placesLeft === 1 ? "place" : "places"} left`;
   return (
     <>
@@ -121,16 +126,20 @@ function Places({ event }: { event: PublicEvent }) {
         {closed
           ? "No new tickets"
           : event.placesLeft === 0
-            ? event.waitlistCount > 0
-              ? `${event.waitlistCount} waiting. Places go in order.`
-              : "Join the waitlist for the next place"
-            : "Free, with a QR ticket for the door"}
+            ? event.price
+              ? "Every ticket has gone"
+              : event.waitlistCount > 0
+                ? `${event.waitlistCount} waiting. Places go in order.`
+                : "Join the waitlist for the next place"
+            : event.price
+              ? `${formatMoney(event.price.amountCents, event.price.currency)}, with a QR ticket for the door`
+              : "Free, with a QR ticket for the door"}
       </p>
     </>
   );
 }
 
-function Card({ event, form, onSubmit, sentTo, onAskAgain }: PublicEventViewProps) {
+function Card({ event, form, onSubmit, sentTo, onAskAgain, paymentReturn }: PublicEventViewProps) {
   const {
     register,
     formState: { errors, isSubmitting },
@@ -154,6 +163,27 @@ function Card({ event, form, onSubmit, sentTo, onAskAgain }: PublicEventViewProp
       </p>
     );
   }
+  if (paymentReturn === "paid") {
+    return (
+      <div role="status">
+        <span className="grid size-10 place-items-center rounded-full bg-cobalt-50 text-cobalt">
+          <MailCheck className="size-5" aria-hidden />
+        </span>
+        <p className="mt-3 text-xl leading-tight font-extrabold font-stretch-70%">Payment received</p>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Your ticket is on its way by email, with a link to its own page. Keep either to get in.
+        </p>
+      </div>
+    );
+  }
+  // a paid event that's full has no waitlist: a ticket given back goes on sale again
+  if (event.price && event.placesLeft === 0) {
+    return (
+      <p className="text-sm text-muted-foreground">
+        Every ticket has gone. If someone gives theirs back, it&rsquo;s on sale again here.
+      </p>
+    );
+  }
   const waitlist = event.placesLeft === 0;
   if (sentTo) {
     return (
@@ -166,7 +196,9 @@ function Card({ event, form, onSubmit, sentTo, onAskAgain }: PublicEventViewProp
           We sent a link to <span className="font-medium break-all text-foreground">{sentTo}</span>.{" "}
           {waitlist
             ? "Open it to join the waitlist; if a place opens up, your ticket arrives by email."
-            : "Your place is held once you open it, and your ticket arrives straight after."}{" "}
+            : event.price
+              ? "Open it to pay; your place is held while you do, and your ticket arrives straight after."
+              : "Your place is held once you open it, and your ticket arrives straight after."}{" "}
           It works for 24 hours.
         </p>
         <button
@@ -182,6 +214,11 @@ function Card({ event, form, onSubmit, sentTo, onAskAgain }: PublicEventViewProp
 
   return (
     <form method="post" onSubmit={onSubmit} noValidate className="space-y-4">
+      {paymentReturn === "cancelled" && (
+        <p role="status" className="text-sm text-muted-foreground">
+          Payment cancelled: nothing was charged. Ask again whenever you&rsquo;re ready.
+        </p>
+      )}
       <Field data-invalid={!!errors.name}>
         <FieldLabel htmlFor="guest-name">Your name</FieldLabel>
         <InputGroup className="h-11">
@@ -212,12 +249,20 @@ function Card({ event, form, onSubmit, sentTo, onAskAgain }: PublicEventViewProp
       )}
       <Button type="submit" size="lg" className="h-11 w-full text-[15px] font-semibold" disabled={isSubmitting}>
         {isSubmitting && <LoaderCircle className="animate-spin" aria-hidden />}
-        {isSubmitting ? "Sending…" : waitlist ? "Join the waitlist" : "Get a ticket"}
+        {isSubmitting
+          ? "Sending…"
+          : waitlist
+            ? "Join the waitlist"
+            : event.price
+              ? `Buy a ticket for ${formatMoney(event.price.amountCents, event.price.currency)}`
+              : "Get a ticket"}
       </Button>
       <p className="text-xs text-muted-foreground">
         {waitlist
           ? "It's full right now. If someone gives their place back, it goes to whoever has waited longest."
-          : "We'll email you a link to confirm. No account needed."}
+          : event.price
+            ? "We'll email you a link to confirm, then you pay through Stripe. No account needed."
+            : "We'll email you a link to confirm. No account needed."}
       </p>
     </form>
   );

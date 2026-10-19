@@ -43,6 +43,23 @@ export interface ClubEvent {
   canManage: boolean;
   // null for a one-off
   series: EventSeries | null;
+  // a ticket's price; null: free
+  price: Price | null;
+  // a paid place given back at least this many hours before the start is refunded
+  refundCutoffHours: number;
+  // places held by people paying for them right now
+  heldCount: number;
+  // what you paid for your place, and whether giving it back now refunds it
+  yourPayment: (Price & { refundable: boolean }) | null;
+  // takings less refunds; only for people who can edit it
+  salesCents: number | null;
+}
+
+/** A price in the currency's smallest unit: 1500 is $15.00. */
+export interface Price {
+  amountCents: number;
+  // ISO 4217, lowercase: "aud"
+  currency: string;
 }
 
 /** GET .../registrations: someone with an active registration. */
@@ -63,6 +80,9 @@ export interface EventInput {
   visibility?: EventVisibility;
   // create only: publish straight away instead of saving a draft
   publish?: boolean;
+  // a ticket's price in cents; null: free (needs the workspace's Stripe account)
+  priceCents?: number | null;
+  refundCutoffHours?: number;
   // create only: the same event every week, fortnight or month, `count` in all
   repeat?: { every: RepeatEvery; count: number };
 }

@@ -3,6 +3,7 @@
 import { Check, LoaderCircle, Trash2 } from "lucide-react";
 import type { UseFormReturn } from "react-hook-form";
 import { Button } from "@/components/ui/button";
+import { PaymentsSection } from "./parts/payments-section";
 import { TimeZoneSection } from "./parts/time-zone-section";
 import { Field, FieldDescription, FieldError, FieldLabel } from "@/components/ui/field";
 import { InputGroup, InputGroupAddon, InputGroupInput, InputGroupText } from "@/components/ui/input-group";
@@ -108,6 +109,8 @@ const SettingsView = (props: SettingsViewProps) => {
       <TimeZoneSection orgId={props.timeZone.orgId} current={props.timeZone.current} />
 
       <JoinPolicySection {...props} />
+
+      <PaymentsSection orgId={props.timeZone.orgId} />
 
       {/* deleting: only the owner, and only after typing the address */}
       <div className="py-10">

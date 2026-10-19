@@ -59,3 +59,24 @@ test("a shared link shows a preview: title, when and where, and a card", async (
   expect(card.headers()["content-type"]).toBe("image/png");
   expect((await card.body()).length).toBeGreaterThan(10_000);
 });
+
+test("a public paid event shows its price, and guests pay after confirming", async ({ page, browser }) => {
+  await openClub(page, "Robotics Society");
+  const panel = await openEvent(page, "Robotics Gala Dinner");
+  const href = (await panel.getByRole("link", { name: "Open page" }).getAttribute("href"))!;
+
+  const stranger = await browser.newContext({ storageState: undefined });
+  const guest = await stranger.newPage();
+  await guest.goto(href);
+  const card = guest.getByRole("complementary", { name: "Get a ticket" });
+  await expect(card.getByText("$45.00, with a QR ticket for the door")).toBeVisible();
+  await card.getByLabel("Your name").fill("Paula Payer");
+  await card.getByLabel("Email").fill("paula.payer@example.test");
+  await card.getByRole("button", { name: "Buy a ticket for $45.00" }).click();
+  await expect(card.getByText(/Open it to pay; your place is held while you do/)).toBeVisible();
+
+  // back from Stripe, paid
+  await guest.goto(`${href}?paid=1`);
+  await expect(card.getByText("Payment received")).toBeVisible();
+  await stranger.close();
+});

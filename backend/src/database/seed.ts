@@ -201,6 +201,8 @@ interface EventPlan {
   waiting?: Person[];
   // one of a recurring series
   series?: { id: string; every: 'week' | 'fortnight' | 'month' };
+  // a paid event: a ticket's price in cents (in AUD)
+  priceCents?: number;
 }
 
 async function makeEvent(m: Tx, orgId: string, clubId: string, by: Person, plan: EventPlan) {
@@ -209,8 +211,8 @@ async function makeEvent(m: Tx, orgId: string, clubId: string, by: Person, plan:
   const [{ id }]: { id: string }[] = await m.query(
     `INSERT INTO events (org_id, club_id, created_by, title, description, location, starts_at, ends_at, capacity,
                          visibility, status, published_at, cancelled_at, cancel_reason, registration_closed_at,
-                         series_id, repeat_every)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17) RETURNING id`,
+                         series_id, repeat_every, price_cents, currency)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19) RETURNING id`,
     [
       orgId,
       clubId,
@@ -229,6 +231,8 @@ async function makeEvent(m: Tx, orgId: string, clubId: string, by: Person, plan:
       plan.registrationClosed ? new Date(Date.now() - DAY) : null,
       plan.series?.id ?? null,
       plan.series?.every ?? null,
+      plan.priceCents ?? null,
+      plan.priceCents ? 'aud' : null,
     ],
   );
   const over = end.getTime() < Date.now();
@@ -284,7 +288,9 @@ async function riverside(ds: DataSource, people: Awaited<ReturnType<typeof makeP
   const orgId = randomUUID();
   await inTenant(ds, orgId, async (m) => {
     await m.query(
-      `INSERT INTO organisations (id, name, slug, join_policy, time_zone, created_at) VALUES ($1, 'Riverside University', 'riverside-uni', 'request', $2, now() - interval '400 days')`,
+      // its Stripe account is a pretend one: it sells tickets only where PAYMENTS_FAKE is on
+      `INSERT INTO organisations (id, name, slug, join_policy, time_zone, created_at, stripe_account_id, payments_enabled, currency)
+       VALUES ($1, 'Riverside University', 'riverside-uni', 'request', $2, now() - interval '400 days', 'acct_demo_riverside', true, 'aud')`,
       [orgId, RIVERSIDE_ZONE],
     );
     await m.query(`INSERT INTO org_members (org_id, user_id, role, joined_at) VALUES ($1, $2, 'owner', now() - interval '400 days')`, [
@@ -396,6 +402,18 @@ async function riverside(ds: DataSource, people: Awaited<ReturnType<typeof makeP
         series: buildNights,
       });
     }
+    // a paid one: the end-of-year dinner (nobody yet: tickets go on sale)
+    await makeEvent(m, orgId, robotics.id, demo, {
+      title: 'Robotics Gala Dinner',
+      description: 'Three courses and the year in robots. Tickets cover dinner; refunds up to two days before.',
+      location: 'The Boathouse',
+      start: daysFromNow(24, 19),
+      hours: 4,
+      capacity: 40,
+      visibility: 'public',
+      priceCents: 4500,
+      going: [],
+    });
     await makeEvent(m, orgId, robotics.id, demo, {
       title: 'Drone Race',
       location: 'Sports Field',

@@ -175,12 +175,12 @@ export class GuestService {
           page.searchParams.set('paid', paid);
           return page.toString();
         };
-        const { url } = await this.payments.startCheckout(
+        const { url, checkoutId } = await this.payments.startCheckout(
           m,
           { orgId, eventId, userId, publicOnly: true },
           { successUrl: back('1'), cancelUrl: back('0') },
         );
-        return { checkoutUrl: url };
+        return { checkoutUrl: url, checkoutId, orgId };
       }
       const place = await takePlace(m, { orgId, eventId, userId, publicOnly: true, alreadyOk: true });
       const [row]: (TicketRow & { email: string })[] = await m.query(SELECT_TICKET, [place.id, eventId]);
@@ -188,7 +188,10 @@ export class GuestService {
     });
 
     if ('waitlistPosition' in outcome) return { waitlistPosition: outcome.waitlistPosition };
-    if ('checkoutUrl' in outcome) return { checkoutUrl: outcome.checkoutUrl };
+    if ('checkoutUrl' in outcome) {
+      await this.payments.afterCheckout(outcome.orgId, outcome.checkoutId);
+      return { checkoutUrl: outcome.checkoutUrl };
+    }
     const { ticket, isNew } = outcome;
     const ticketToken = await this.tickets.sign(ticket.registration_id, eventId, ticket.ends_at);
     if (isNew) this.email.inBackground('ticket', this.emailTicket(ticket, ticketToken));

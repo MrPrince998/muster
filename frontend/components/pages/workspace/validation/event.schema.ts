@@ -1,3 +1,4 @@
+import { parseMoney } from "@/lib/money";
 import { isoToWallClock, wallClockToIso } from "@/lib/time-zone";
 import { z } from "zod";
 
@@ -16,6 +17,15 @@ export const eventFormSchema = z
       .trim()
       .refine((value) => value === "" || (/^\d+$/.test(value) && Number(value) >= 1), "Enter a whole number, 1 or more"),
     visibility: z.enum(["members", "public"]),
+    // a ticket's price as typed ("15", "15.50"); empty: free
+    price: z
+      .string()
+      .trim()
+      .refine((value) => value === "" || (parseMoney(value) ?? 0) >= 50, "Enter a price of at least 0.50, or leave it empty"),
+    refundCutoffHours: z
+      .string()
+      .trim()
+      .refine((value) => /^\d+$/.test(value) && Number(value) <= 720, "Enter whole hours, up to 720"),
     // new events only: how often it repeats, and how many in all
     repeatEvery: z.enum(["none", "week", "fortnight", "month"]),
     repeatCount: z.string().trim(),
@@ -55,6 +65,8 @@ export function toEventInput(values: EventFormValues, zone?: string) {
     endsAt: instant(values.endsAt),
     capacity: values.capacity === "" ? null : Number(values.capacity),
     visibility: values.visibility,
+    priceCents: values.price === "" ? null : parseMoney(values.price),
+    refundCutoffHours: Number(values.refundCutoffHours),
   };
 }
 

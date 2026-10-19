@@ -38,6 +38,13 @@ function throttleDisabled(): boolean {
   return off;
 }
 
+// development and browser tests: a pretend Stripe where every checkout is paid at once
+function paymentsFake(): boolean {
+  const fake = process.env.PAYMENTS_FAKE === "true";
+  if (fake && production) throw new Error("PAYMENTS_FAKE can't be used in production");
+  return fake;
+}
+
 function trustProxy(): number {
   const hops = Number(process.env.TRUST_PROXY ?? 0);
   if (!Number.isInteger(hops) || hops < 0) {
@@ -92,6 +99,7 @@ export const config = {
     // signs the webhooks Stripe sends; required once payments are on
     stripeWebhookSecret: process.env.STRIPE_WEBHOOK_SECRET || undefined,
     // Muster's share of each ticket, in percent (0: none)
+    fake: paymentsFake(),
     platformFeePercent: Math.min(Math.max(Number(process.env.PLATFORM_FEE_PERCENT ?? 0) || 0, 0), 20),
   },
 
