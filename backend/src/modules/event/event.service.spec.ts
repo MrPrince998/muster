@@ -1,6 +1,7 @@
 import type { TenantService } from '../../database/tenant.service.js';
 import type { EmailService } from '../email/email.service.js';
 import { ClubAccess } from '../permission/club-access.js';
+import type { PaymentService } from '../payment/payment.service.js';
 import type { WaitlistService } from '../waitlist/waitlist.service.js';
 import { Permission } from '../permission/permissions.js';
 import { EventService } from './event.service.js';
@@ -61,10 +62,16 @@ function setup(event: ReturnType<typeof row>, after: ReturnType<typeof row> = ev
     sendEventChanged: vi.fn().mockResolvedValue(undefined),
   };
   const waitlist = { promote: vi.fn().mockResolvedValue(undefined) };
+  // free events: no prices, nothing to refund
+  const payments = {
+    priceFor: vi.fn().mockResolvedValue({ priceCents: null, currency: null }),
+    refundEvent: vi.fn().mockResolvedValue(undefined),
+  };
   const service = new EventService(
     tenant as unknown as TenantService,
     email as unknown as EmailService,
     waitlist as unknown as WaitlistService,
+    payments as unknown as PaymentService,
   );
   return { service, email, waitlist, ran: (fragment: string) => calls.filter((c) => c.sql.includes(fragment)) };
 }

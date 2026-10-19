@@ -7,6 +7,7 @@ import { Permission } from '../permission/permissions.js';
 import { RegistrationService } from './registration.service.js';
 import type { TicketService } from '../ticket/ticket.service.js';
 import type { WaitlistService } from '../waitlist/waitlist.service.js';
+import type { PaymentService } from '../payment/payment.service.js';
 
 const scanner = new ClubAccess('club1', 'u-scanner', false, 20, [Permission.CheckinScan]);
 const counts = [{ registered: 10, attended: 4 }];
@@ -32,6 +33,7 @@ function setup(answers: [fragment: string, answer: unknown][], ticket: { registr
     tickets as unknown as TicketService,
     {} as EmailService,
     {} as WaitlistService,
+    {} as PaymentService,
   );
   return { service, ran: (fragment: string) => calls.filter((c) => c.sql.includes(fragment)) };
 }

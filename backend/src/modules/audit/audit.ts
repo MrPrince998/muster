@@ -28,6 +28,7 @@ export const AuditAction = {
   EventDeleted: 'event.deleted',
   EventAttendeesExported: 'event.attendees_exported',
   EventManualCheckIn: 'event.manual_check_in',
+  PaymentsConnected: 'payments.connected',
 } as const;
 export type AuditAction = (typeof AuditAction)[keyof typeof AuditAction];
 

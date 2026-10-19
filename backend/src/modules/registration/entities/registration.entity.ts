@@ -36,6 +36,7 @@ import { User } from '../../user/entities/user.entity.js';
 // a cancelled registration can never have been used, and vice versa
 @Check('registrations_cancelled_or_checked_in', `"cancelled_at" IS NULL OR "checked_in_at" IS NULL`)
 // "my tickets"
+@Unique('registrations_payment_intent_id_key', ['paymentIntentId'])
 @Index('registrations_user_id_idx', ['userId'])
 // counting taken seats during the capacity check. Partial, so it only holds
 // active rows: the count stays an index-only scan however many cancel.
@@ -71,6 +72,19 @@ export class Registration {
   // the day-before reminder went out (claimed atomically, so it goes once)
   @Column({ name: 'reminder_sent_at', type: 'timestamptz', nullable: true })
   reminderSentAt: Date | null;
+
+  // what they paid for a paid event's place (smallest unit), and the payment
+  @Column({ name: 'amount_paid_cents', type: 'integer', nullable: true })
+  amountPaidCents: number | null;
+
+  @Column({ type: 'varchar', length: 3, nullable: true })
+  currency: string | null;
+
+  @Column({ name: 'payment_intent_id', type: 'varchar', length: 255, nullable: true })
+  paymentIntentId: string | null;
+
+  @Column({ name: 'refunded_at', type: 'timestamptz', nullable: true })
+  refundedAt: Date | null;
 
   // asked "how was it?" after the event (claimed atomically, so it's asked once)
   @Column({ name: 'feedback_requested_at', type: 'timestamptz', nullable: true })

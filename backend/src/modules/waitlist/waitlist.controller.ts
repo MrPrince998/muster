@@ -57,6 +57,8 @@ export class WaitlistController {
       if (free !== 0 && (await waitingCount(m, eventId)) === 0) {
         throw HttpError.conflict('There is a place free: register instead', 'PLACES_AVAILABLE');
       }
+      // a place freed at a paid event is bought by whoever's first, not handed down a queue
+      if (event.price_cents !== null) throw HttpError.conflict('This event is sold out', 'SOLD_OUT');
       return { position: await this.waitlist.join(m, { orgId, eventId, userId: access.userId }) };
     });
   }

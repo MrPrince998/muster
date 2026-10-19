@@ -9,6 +9,7 @@ import 'dotenv/config';
 import { DataSource } from 'typeorm';
 import { AppModule } from '../../src/app.module.js';
 import { EmailSender, type OutgoingEmail } from '../../src/modules/email/email-sender.js';
+import { FakeGateway, PaymentGateway } from '../../src/modules/payment/payment-gateway.js';
 
 /** Captures emails instead of sending them. */
 export class CapturingSender extends EmailSender {
@@ -41,13 +42,17 @@ export interface TestUser {
  */
 export async function createTestApp() {
   const mail = new CapturingSender();
+  // a stand-in for Stripe: accounts ready at once, webhooks signed "test"
+  const payments = new FakeGateway();
   const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
     .overrideProvider(EmailSender)
     .useValue(mail)
+    .overrideProvider(PaymentGateway)
+    .useValue(payments)
     .overrideGuard(ThrottlerGuard)
     .useValue({ canActivate: () => true })
     .compile();
-  const app: INestApplication<App> = moduleRef.createNestApplication();
+  const app: INestApplication<App> = moduleRef.createNestApplication({ rawBody: true });
   app.use(cookieParser());
   await app.init();
 
@@ -87,5 +92,5 @@ export async function createTestApp() {
     }
   }
 
-  return { app, api, mail, user, suffix, close };
+  return { app, api, mail, payments, user, suffix, close };
 }

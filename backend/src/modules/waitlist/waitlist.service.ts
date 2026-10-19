@@ -10,6 +10,8 @@ const eventNotFound = () => HttpError.notFound('Event not found', 'EVENT_NOT_FOU
 
 interface LockedEvent {
   status: 'draft' | 'published' | 'cancelled';
+  // set: a paid event, whose places are bought (no waitlist)
+  price_cents: number | null;
   ends_at: Date;
   capacity: number | null;
   registration_closed_at: Date | null;
@@ -37,7 +39,7 @@ export async function lockEvent(
   clubId?: string,
 ): Promise<LockedEvent | undefined> {
   const [event]: LockedEvent[] = await m.query(
-    `SELECT status, ends_at, capacity, registration_closed_at, visibility FROM events
+    `SELECT status, ends_at, capacity, registration_closed_at, visibility, price_cents FROM events
      WHERE id = $1 AND ($2::uuid IS NULL OR club_id = $2) FOR UPDATE`,
     [eventId, clubId ?? null],
   );
@@ -53,12 +55,26 @@ export async function waitingCount(m: EntityManager, eventId: string): Promise<n
   return count;
 }
 
-/** Free places right now; null for no limit. */
-export async function freePlaces(m: EntityManager, eventId: string, capacity: number | null): Promise<number | null> {
+// places held by someone paying for them right now (other than `$2`, when given)
+const HELD = `(SELECT count(*) FROM checkouts c
+               WHERE c.event_id = $1 AND c.status = 'pending' AND c.expires_at > now()
+                 AND c.user_id IS DISTINCT FROM $2)`;
+
+/**
+ * Free places right now; null for no limit. A place someone is paying for
+ * is taken until they've paid or their checkout runs out (`exceptUserId`'s
+ * own isn't: it's the place they're about to take).
+ */
+export async function freePlaces(
+  m: EntityManager,
+  eventId: string,
+  capacity: number | null,
+  exceptUserId?: string,
+): Promise<number | null> {
   if (capacity === null) return null;
   const [{ count }]: { count: number }[] = await m.query(
-    `SELECT count(*)::int AS count FROM registrations WHERE event_id = $1 AND cancelled_at IS NULL`,
-    [eventId],
+    `SELECT ((SELECT count(*) FROM registrations WHERE event_id = $1 AND cancelled_at IS NULL) + ${HELD})::int AS count`,
+    [eventId, exceptUserId ?? null],
   );
   return Math.max(0, capacity - count);
 }
@@ -133,7 +149,13 @@ export class WaitlistService {
     const promoted = await this.tenant.withTenant(orgId, async (m) => {
       const event = await lockEvent(m, eventId);
       if (!event) throw eventNotFound();
-      if (event.status !== 'published' || event.ends_at <= new Date() || event.registration_closed_at !== null) {
+      // a paid event's places are bought, never handed out
+      if (
+        event.status !== 'published' ||
+        event.ends_at <= new Date() ||
+        event.registration_closed_at !== null ||
+        event.price_cents !== null
+      ) {
         return [];
       }
       const free = await freePlaces(m, eventId, event.capacity);

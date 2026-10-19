@@ -143,6 +143,8 @@ export function describe(row: Pick<Row, 'action' | 'subject_name' | 'club_name' 
       return `deleted the draft ${title}${later}`;
     case A.EventAttendeesExported:
       return `downloaded the attendee list for ${title} (${d.people} ${d.people === 1 ? 'person' : 'people'})`;
+    case A.PaymentsConnected:
+      return 'started connecting a Stripe account, to sell tickets';
     case A.EventManualCheckIn:
       return `checked ${who} in by name, without a ticket`;
     default:

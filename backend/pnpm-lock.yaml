@@ -220,6 +220,9 @@ importers:
       rxjs:
         specifier: ^7.8.1
         version: 7.8.2
+      stripe:
+        specifier: ^18.5.0
+        version: 18.5.0(@types/node@24.19.1)
       typeorm:
         specifier: ^1.1.2
         version: 1.1.2(pg@8.23.1)(supports-color@7.2.0)
@@ -2360,6 +2363,15 @@ packages:
   strip-bom@3.0.0:
     resolution: {integrity: sha512-vavAMRXOgBVNF6nyEEmL3DBK19iRpDcoIwW+swQ+CbGiu7lju6t+JklA1MHweoWtadgt4ISVUsXLyDq34ddcwA==}
     engines: {node: '>=4'}
+
+  stripe@18.5.0:
+    resolution: {integrity: sha512-Hp+wFiEQtCB0LlNgcFh5uVyKznpDjzyUZ+CNVEf+I3fhlYvh7rZruIg+jOwzJRCpy0ZTPMjlzm7J2/M2N6d+DA==}
+    engines: {node: '>=12.*'}
+    peerDependencies:
+      '@types/node': '>=12.x.x'
+    peerDependenciesMeta:
+      '@types/node':
+        optional: true
 
   strtok3@10.3.5:
     resolution: {integrity: sha512-ki4hZQfh5rX0QDLLkOCj+h+CVNkqmp/CMf8v8kZpkNVK6jGQooMytqzLZYUVYIZcFZ6yDB70EfD8POcFXiF5oA==}
@@ -4518,6 +4530,12 @@ snapshots:
       ansi-regex: 6.4.0
 
   strip-bom@3.0.0: {}
+
+  stripe@18.5.0(@types/node@24.19.1):
+    dependencies:
+      qs: 6.16.0
+    optionalDependencies:
+      '@types/node': 24.19.1
 
   strtok3@10.3.5:
     dependencies:

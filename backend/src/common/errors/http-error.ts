@@ -38,6 +38,10 @@ export class HttpError extends Error {
     return new HttpError(HttpStatus.CONFLICT, message, code, details);
   }
 
+  static serviceUnavailable(message = 'Service unavailable', code = 'SERVICE_UNAVAILABLE') {
+    return new HttpError(HttpStatus.SERVICE_UNAVAILABLE, message, code);
+  }
+
   static internal(message = 'Internal server error', code = 'INTERNAL_SERVER_ERROR') {
     return new HttpError(HttpStatus.INTERNAL_SERVER_ERROR, message, code);
   }

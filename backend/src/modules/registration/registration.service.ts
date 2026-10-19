@@ -18,7 +18,8 @@ import type {
   TicketWithCodeDto,
 } from './dto/ticket.dto.js';
 import { TicketService } from '../ticket/ticket.service.js';
-import { WaitlistService, waitingCount } from '../waitlist/waitlist.service.js';
+import { WaitlistService } from '../waitlist/waitlist.service.js';
+import { PaymentService } from '../payment/payment.service.js';
 import { audit, AuditAction } from '../audit/audit.js';
 
 const ticketNotFound = () => HttpError.notFound("You don't have a ticket for this event", 'TICKET_NOT_FOUND');
@@ -70,78 +71,9 @@ export const toTicket = (row: TicketRow): TicketDto => ({
   timeZone: row.time_zone,
 });
 
-/**
- * Takes a place at an event for someone, inside the caller's tenant
- * transaction: the event row is locked, so the capacity check and the insert
- * can't interleave with another registration (README: "Concurrency-safe
- * operations"). Members come through their club (`clubId`); guests through a
- * public event's page (`publicOnly`), where anything not public is "not found".
- * With `alreadyOk`, someone already registered gets their place back instead
- * of an error (a confirmation link clicked twice).
- */
-export async function takePlace(
-  m: EntityManager,
-  place: { orgId: string; eventId: string; userId: string; clubId?: string; publicOnly?: boolean; alreadyOk?: boolean },
-): Promise<{ id: string; event_id: string; created_at: Date; isNew: boolean }> {
-  const events: {
-    status: EventStatus;
-    ends_at: Date;
-    capacity: number | null;
-    registration_closed_at: Date | null;
-    visibility: string;
-  }[] = await m.query(
-    `SELECT status, ends_at, capacity, registration_closed_at, visibility FROM events
-     WHERE id = $1 AND ($2::uuid IS NULL OR club_id = $2) FOR UPDATE`,
-    [place.eventId, place.clubId ?? null],
-  );
-  const event = events[0];
-  // drafts are invisible to people registering; so is anything not public, from outside
-  if (!event || event.status === EventStatus.Draft || (place.publicOnly && event.visibility !== 'public')) {
-    throw eventNotFound();
-  }
+import { takePlace } from './place.js';
 
-  const mine: { id: string; created_at: Date; cancelled_at: Date | null }[] = await m.query(
-    `SELECT id, created_at, cancelled_at FROM registrations WHERE event_id = $1 AND user_id = $2`,
-    [place.eventId, place.userId],
-  );
-  if (mine[0] && mine[0].cancelled_at === null) {
-    if (place.alreadyOk) return { id: mine[0].id, event_id: place.eventId, created_at: mine[0].created_at, isNew: false };
-    throw HttpError.conflict("You're already registered", 'ALREADY_REGISTERED');
-  }
-
-  if (event.status !== EventStatus.Published) {
-    throw HttpError.conflict('This event is not open for registration', 'EVENT_NOT_OPEN');
-  }
-  if (event.ends_at <= new Date()) {
-    throw HttpError.conflict('This event has ended', 'EVENT_ENDED');
-  }
-  if (event.registration_closed_at !== null) {
-    throw HttpError.conflict('Registration for this event is closed', 'REGISTRATION_CLOSED');
-  }
-  if (event.capacity !== null) {
-    const [{ count }]: { count: number }[] = await m.query(
-      `SELECT count(*)::int AS count FROM registrations WHERE event_id = $1 AND cancelled_at IS NULL`,
-      [place.eventId],
-    );
-    if (count >= event.capacity) {
-      throw HttpError.conflict('This event is full', 'EVENT_FULL');
-    }
-  }
-  // a place freed while people are waiting is theirs: no jumping the queue
-  if ((await waitingCount(m, place.eventId)) > 0) {
-    throw HttpError.conflict('This event is full', 'EVENT_FULL');
-  }
-
-  const [row]: { id: string; event_id: string; created_at: Date }[] = await m.query(
-    `INSERT INTO registrations (org_id, event_id, user_id)
-     VALUES ($1, $2, $3)
-     ON CONFLICT ON CONSTRAINT registrations_event_id_user_id_key
-     DO UPDATE SET cancelled_at = NULL
-     RETURNING id, event_id, created_at`,
-    [place.orgId, place.eventId, place.userId],
-  );
-  return { ...row, isNew: true };
-}
+export { checkPlace, paymentRequired, takePlace } from './place.js';
 
 @Injectable()
 export class RegistrationService {
@@ -151,6 +83,7 @@ export class RegistrationService {
     private readonly tickets: TicketService,
     private readonly email: EmailService,
     private readonly waitlist: WaitlistService,
+    private readonly payments: PaymentService,
   ) {}
 
   /**
@@ -184,7 +117,7 @@ export class RegistrationService {
   /** Gives your place back. Not possible once you've been checked in. */
   async cancel(access: ClubAccess, eventId: string): Promise<void> {
     const orgId = await this.events.inClub(access, async (m, orgId) => {
-      const [rows]: [{ checked_in_at: Date | null }[], number] = await m.query(
+      const [rows]: [{ id: string }[], number] = await m.query(
         `UPDATE registrations r SET cancelled_at = now()
          FROM events e
          WHERE r.event_id = $1 AND r.user_id = $2 AND r.cancelled_at IS NULL AND r.checked_in_at IS NULL
@@ -192,7 +125,11 @@ export class RegistrationService {
          RETURNING r.id`,
         [eventId, access.userId, access.clubId],
       );
-      if (rows.length > 0) return orgId;
+      if (rows.length > 0) {
+        // paid, and before the cut-off: the money goes back (or, if Stripe can't, the place stays theirs)
+        await this.payments.refundIfDue(m, rows[0].id);
+        return orgId;
+      }
 
       // nothing cancelled: say why
       const existing: { checked_in_at: Date | null }[] = await m.query(

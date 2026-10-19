@@ -11,6 +11,7 @@ import { EmailService, type EventRecipient } from '../email/email.service.js';
 import { formatWhen } from '../email/format-when.js';
 import type { ClubAccess } from '../permission/club-access.js';
 import { WaitlistService } from '../waitlist/waitlist.service.js';
+import { PaymentService } from '../payment/payment.service.js';
 import { Permission } from '../permission/permissions.js';
 import type {
   CancelEventDto,
@@ -52,6 +53,13 @@ interface EventRow {
   repeat_every: RepeatEvery | null;
   series_index: number;
   series_count: number;
+  price_cents: number | null;
+  currency: string | null;
+  refund_cutoff_hours: number;
+  held_count: number;
+  your_paid_cents: number | null;
+  your_paid_currency: string | null;
+  sales_cents: number;
 }
 
 type ClubDetails = { name: string; orgSlug: string; timeZone: string };
@@ -79,6 +87,15 @@ const SELECT_EVENTS = `
     (SELECT count(*) FROM events s
       WHERE s.series_id = e.series_id AND (s.starts_at, s.id) <= (e.starts_at, e.id))::int AS series_index,
     (SELECT count(*) FROM events s WHERE s.series_id = e.series_id)::int AS series_count,
+    e.price_cents, e.currency, e.refund_cutoff_hours,
+    (SELECT count(*) FROM checkouts h
+      WHERE h.event_id = e.id AND h.status = 'pending' AND h.expires_at > now())::int AS held_count,
+    (SELECT r.amount_paid_cents FROM registrations r
+      WHERE r.event_id = e.id AND r.user_id = $2 AND r.cancelled_at IS NULL AND r.refunded_at IS NULL) AS your_paid_cents,
+    (SELECT r.currency FROM registrations r
+      WHERE r.event_id = e.id AND r.user_id = $2 AND r.cancelled_at IS NULL AND r.refunded_at IS NULL) AS your_paid_currency,
+    (SELECT coalesce(sum(r.amount_paid_cents), 0) FROM registrations r
+      WHERE r.event_id = e.id AND r.amount_paid_cents IS NOT NULL AND r.refunded_at IS NULL)::int AS sales_cents,
     (SELECT count(*) FROM registrations r
       WHERE r.event_id = e.id AND r.cancelled_at IS NULL)::int          AS registered_count,
     (SELECT count(*) FROM registrations r
@@ -108,6 +125,7 @@ export class EventService {
     private readonly tenant: TenantService,
     private readonly email: EmailService,
     private readonly waitlist: WaitlistService,
+    private readonly payments: PaymentService,
   ) {}
 
   /**
@@ -155,6 +173,7 @@ export class EventService {
     assertEndsAfterStart(startsAt, endsAt);
 
     return this.inClub(access, async (m, orgId) => {
+      const price = await this.payments.priceFor(m, orgId, dto.priceCents ?? null);
       const dates = dto.repeat
         ? occurrences(startsAt, endsAt, dto.repeat.every, dto.repeat.count, await TenantService.timeZone(m))
         : [{ startsAt, endsAt }];
@@ -164,8 +183,9 @@ export class EventService {
         const [{ id }]: { id: string }[] = await m.query(
           `INSERT INTO events
              (org_id, club_id, created_by, title, description, location,
-              starts_at, ends_at, capacity, visibility, status, published_at, series_id, repeat_every)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+              starts_at, ends_at, capacity, visibility, status, published_at, series_id, repeat_every,
+              price_cents, currency, refund_cutoff_hours)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
            RETURNING id`,
           [
             orgId,
@@ -182,6 +202,9 @@ export class EventService {
             dto.publish ? new Date() : null,
             seriesId,
             dto.repeat?.every ?? null,
+            price.priceCents,
+            price.currency,
+            dto.refundCutoffHours ?? 48,
           ],
         );
         ids.push(id);
@@ -218,8 +241,9 @@ export class EventService {
       };
       assertEndsAfterStart(edited.startsAt, edited.endsAt);
       const club = await this.clubDetails(m, access.clubId);
+      const price = dto.priceCents === undefined ? undefined : await this.payments.priceFor(m, orgId, dto.priceCents);
 
-      const changes = [await this.applyUpdate(m, event, dto, edited, club)];
+      const changes = [await this.applyUpdate(m, event, dto, edited, club, price)];
       const moving = dto.startsAt !== undefined || dto.endsAt !== undefined;
       for (const other of later) {
         if (other.status === EventStatus.Cancelled) continue;
@@ -227,7 +251,7 @@ export class EventService {
         const times = moving
           ? shiftLike(own, { before: { startsAt: event.starts_at, endsAt: event.ends_at }, after: edited }, club.timeZone)
           : own;
-        changes.push(await this.applyUpdate(m, other, dto, times, club));
+        changes.push(await this.applyUpdate(m, other, dto, times, club, price));
       }
       // opening or closing registration reads as its own thing; anything else is an edit
       const fields = Object.keys(dto).filter((key) => dto[key as keyof UpdateEventDto] !== undefined);
@@ -283,6 +307,8 @@ export class EventService {
     dto: UpdateEventDto,
     { startsAt, endsAt }: { startsAt: Date; endsAt: Date },
     club: ClubDetails,
+    // a new price (and its currency), or undefined to keep it
+    price?: { priceCents: number | null; currency: string | null },
   ): Promise<EventChange> {
     const capacity = dto.capacity === undefined ? event.capacity : dto.capacity;
     if (capacity !== null) {
@@ -312,7 +338,8 @@ export class EventService {
     await m.query(
       `UPDATE events SET
          title = $2, description = $3, location = $4,
-         starts_at = $5, ends_at = $6, capacity = $7, visibility = $8, registration_closed_at = $9
+         starts_at = $5, ends_at = $6, capacity = $7, visibility = $8, registration_closed_at = $9,
+         price_cents = $10, currency = $11, refund_cutoff_hours = $12
        WHERE id = $1`,
       [
         event.id,
@@ -324,6 +351,9 @@ export class EventService {
         capacity,
         dto.visibility ?? event.visibility,
         closedAt,
+        price ? price.priceCents : event.price_cents,
+        price ? price.currency : event.currency,
+        dto.refundCutoffHours ?? event.refund_cutoff_hours,
       ],
     );
 
@@ -363,7 +393,7 @@ export class EventService {
     scope: SeriesScope = 'this',
   ): Promise<EventDto> {
     const note = reason?.trim() || null;
-    const { event, cancelled, club } = await this.inClub(access, async (m) => {
+    const { event, cancelled, club, orgId } = await this.inClub(access, async (m, orgId) => {
       const [event, ...later] = await this.lockSeries(m, access, eventId, scope);
       if (event.status === EventStatus.Draft) {
         throw HttpError.conflict('A draft is deleted, not cancelled', 'EVENT_IS_DRAFT');
@@ -401,8 +431,12 @@ export class EventService {
           ...(cancelled.length > 1 && { alsoLater: cancelled.length - 1 }),
         },
       });
-      return { event: await this.findOne(m, access, eventId), cancelled, club };
+      return { event: await this.findOne(m, access, eventId), cancelled, club, orgId };
     });
+    // everyone who paid gets their money back
+    for (const { eventId: id } of cancelled) {
+      this.email.inBackground('refunds', this.payments.refundEvent(orgId, id));
+    }
 
     for (const { eventId: id, title, when, recipients } of cancelled) {
       if (recipients.length === 0) continue;
@@ -676,6 +710,18 @@ export class EventService {
       series: row.series_id
         ? { id: row.series_id, every: row.repeat_every!, index: row.series_index, count: row.series_count }
         : null,
+      price: row.price_cents !== null && row.currency ? { amountCents: row.price_cents, currency: row.currency } : null,
+      refundCutoffHours: row.refund_cutoff_hours ?? 48,
+      heldCount: row.held_count ?? 0,
+      yourPayment:
+        row.your_paid_cents !== null && row.your_paid_cents !== undefined && row.your_paid_currency
+          ? {
+              amountCents: row.your_paid_cents,
+              currency: row.your_paid_currency,
+              refundable: Date.now() < row.starts_at.getTime() - (row.refund_cutoff_hours ?? 48) * 3_600_000,
+            }
+          : null,
+      salesCents: canManage(access, row.created_by) && row.price_cents !== null ? (row.sales_cents ?? 0) : null,
     };
   }
 }

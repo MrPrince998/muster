@@ -6,7 +6,8 @@ import { config } from './config/config.js';
 import { setupSwagger } from './swagger.js';
 
 async function bootstrap() {
-  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  // rawBody: Stripe's webhooks are checked against the exact bytes it signed
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, { rawBody: true });
   // behind a proxy, read the client's address from X-Forwarded-For (rate limits are per client)
   if (config.trustProxy > 0) app.set('trust proxy', config.trustProxy);
   // on SIGTERM (a deploy, a scale-down): finish requests and close the database pool

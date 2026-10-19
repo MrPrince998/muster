@@ -14,6 +14,7 @@ import type { TicketWithCodeDto } from './dto/ticket.dto.js';
 import { takePlace, toTicket, type TicketRow } from './registration.service.js';
 import { TicketService } from '../ticket/ticket.service.js';
 import { freePlaces, lockEvent, waitingCount, WaitlistService } from '../waitlist/waitlist.service.js';
+import { PaymentService } from '../payment/payment.service.js';
 
 const ticketNotFound = () =>
   HttpError.notFound('This ticket was cancelled, or the link is wrong', 'TICKET_NOT_FOUND');
@@ -33,7 +34,11 @@ interface PublicEventRow {
   registration_closed_at: Date | null;
   capacity: number | null;
   registered: number;
+  // places held by people paying for them right now
+  held: number;
   waiting: number;
+  price_cents: number | null;
+  currency: string | null;
   club_name: string;
   org_name: string;
   time_zone: string;
@@ -44,8 +49,10 @@ const SELECT_PUBLIC_EVENT = `
   SELECT e.id, e.title, e.description, e.location, e.starts_at, e.ends_at, e.status, e.cancel_reason,
          e.ends_at <= now() AS ended, e.registration_closed_at, e.capacity,
          (SELECT count(*) FROM registrations r WHERE r.event_id = e.id AND r.cancelled_at IS NULL)::int AS registered,
+         (SELECT count(*) FROM checkouts h
+           WHERE h.event_id = e.id AND h.status = 'pending' AND h.expires_at > now())::int AS held,
          (SELECT count(*) FROM waitlist_entries w WHERE w.event_id = e.id AND w.promoted_at IS NULL)::int AS waiting,
-         c.name AS club_name, o.name AS org_name, o.time_zone
+         e.price_cents, e.currency, c.name AS club_name, o.name AS org_name, o.time_zone
   FROM events e
   JOIN clubs c ON c.id = e.club_id
   JOIN organisations o ON o.id = e.org_id
@@ -79,6 +86,7 @@ export class GuestService {
     private readonly tickets: TicketService,
     private readonly email: EmailService,
     private readonly waitlist: WaitlistService,
+    private readonly payments: PaymentService,
   ) {}
 
   /** A public event's page. Drafts and members-only events are "not found". */
@@ -116,7 +124,9 @@ export class GuestService {
     const event = await this.inEvent(eventId, (m) => this.publicEvent(m, eventId));
     assertTakingPlaces(event);
     // full (or people already waiting): the link joins the waitlist instead
-    const full = (event.capacity !== null && event.registered >= event.capacity) || event.waiting > 0;
+    const full = (event.capacity !== null && event.registered + event.held >= event.capacity) || event.waiting > 0;
+    // a paid event has no waitlist: a place frees up for whoever buys it first
+    if (full && event.price_cents !== null) throw HttpError.conflict('This event is sold out', 'SOLD_OUT');
     const email = normalizeEmail(guest.email);
     const token = await this.tickets.signGuestConfirmation({ eventId, email, name: guest.name });
     this.email.inBackground(
@@ -155,7 +165,22 @@ export class GuestService {
         already.length === 0 &&
         ((await freePlaces(m, eventId, event.capacity)) === 0 || (await waitingCount(m, eventId)) > 0);
       if (full && event.visibility === 'public' && event.status === 'published' && event.ends_at > new Date() && event.registration_closed_at === null) {
+        if (event.price_cents !== null) throw HttpError.conflict('This event is sold out', 'SOLD_OUT');
         return { waitlistPosition: await this.waitlist.join(m, { orgId, eventId, userId }) };
+      }
+      // a paid event: the place is held while they pay, and the ticket comes once Stripe says so
+      if (event?.price_cents != null && already.length === 0) {
+        const page = new URL(`/e/${eventId}`, config.appUrl);
+        const back = (paid: '1' | '0') => {
+          page.searchParams.set('paid', paid);
+          return page.toString();
+        };
+        const { url } = await this.payments.startCheckout(
+          m,
+          { orgId, eventId, userId, publicOnly: true },
+          { successUrl: back('1'), cancelUrl: back('0') },
+        );
+        return { checkoutUrl: url };
       }
       const place = await takePlace(m, { orgId, eventId, userId, publicOnly: true, alreadyOk: true });
       const [row]: (TicketRow & { email: string })[] = await m.query(SELECT_TICKET, [place.id, eventId]);
@@ -163,6 +188,7 @@ export class GuestService {
     });
 
     if ('waitlistPosition' in outcome) return { waitlistPosition: outcome.waitlistPosition };
+    if ('checkoutUrl' in outcome) return { checkoutUrl: outcome.checkoutUrl };
     const { ticket, isNew } = outcome;
     const ticketToken = await this.tickets.sign(ticket.registration_id, eventId, ticket.ends_at);
     if (isNew) this.email.inBackground('ticket', this.emailTicket(ticket, ticketToken));
@@ -199,7 +225,10 @@ export class GuestService {
            RETURNING id`,
           [ids.registrationId, ids.eventId],
         );
-        if (cancelled.length > 0) return;
+        if (cancelled.length > 0) {
+          await this.payments.refundIfDue(m, ids.registrationId);
+          return;
+        }
         const [row]: { checked_in_at: Date | null }[] = await m.query(
           `SELECT checked_in_at FROM registrations WHERE id = $1 AND cancelled_at IS NULL`,
           [ids.registrationId],
@@ -274,12 +303,13 @@ function toPublicEvent(row: PublicEventRow): PublicEventDto {
     ended: row.ended,
     registrationOpen: row.registration_closed_at === null,
     // while people are waiting, a free place is theirs, not the public's
-    placesLeft: row.capacity === null ? null : row.waiting > 0 ? 0 : Math.max(0, row.capacity - row.registered),
+    placesLeft: row.capacity === null ? null : row.waiting > 0 ? 0 : Math.max(0, row.capacity - row.registered - row.held),
     waitlistCount: row.waiting,
     clubName: row.club_name,
     workspaceName: row.org_name,
     // the workspace's: where the event happens
     timeZone: row.time_zone,
+    price: row.price_cents !== null && row.currency ? { amountCents: row.price_cents, currency: row.currency } : null,
   };
 }
 

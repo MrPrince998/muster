@@ -1,6 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
 import { IsEmail, IsNotEmpty, IsString, MaxLength } from 'class-validator';
+import { PriceDto } from '../../event/dto/event.dto.js';
 
 const trim = ({ value }: { value: unknown }) => (typeof value === 'string' ? value.trim() : value);
 
@@ -24,6 +25,9 @@ export class PublicEventDto {
   @ApiProperty() workspaceName: string;
   @ApiProperty({ example: 'Australia/Sydney', description: 'The time zone the event is held in (IANA name)' })
   timeZone: string;
+
+  @ApiPropertyOptional({ type: PriceDto, nullable: true, description: 'A ticket costs this; null: free' })
+  price: PriceDto | null;
 }
 
 export class GuestPlaceDto {
@@ -55,4 +59,7 @@ export class GuestPlaceResultDto {
 
   @ApiPropertyOptional({ description: 'Full: their place on the waitlist, from 1' })
   waitlistPosition?: number;
+
+  @ApiPropertyOptional({ description: 'A paid event: Stripe checkout, where the place is bought (held half an hour)' })
+  checkoutUrl?: string;
 }

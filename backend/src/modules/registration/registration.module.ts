@@ -12,9 +12,10 @@ import { PublicController } from './public.controller.js';
 import { ReminderService } from './reminder.service.js';
 import { TicketModule } from '../ticket/ticket.module.js';
 import { WaitlistModule } from '../waitlist/waitlist.module.js';
+import { PaymentModule } from '../payment/payment.module.js';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Registration]), EventModule, PermissionModule, EmailModule, TicketModule, WaitlistModule],
+  imports: [TypeOrmModule.forFeature([Registration]), EventModule, PermissionModule, EmailModule, TicketModule, WaitlistModule, PaymentModule],
   controllers: [RegistrationController, TicketController, PublicController],
   providers: [RegistrationService, GuestService, ReminderService],
 })

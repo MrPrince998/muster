@@ -54,6 +54,9 @@ export type RepeatEvery = (typeof REPEAT_EVERY)[number];
 // cancelled exactly when it has a cancellation time; only a cancelled event has a reason
 @Check('events_cancelled_at', `("status" = 'cancelled') = ("cancelled_at" IS NOT NULL)`)
 @Check('events_cancel_reason', `"cancel_reason" IS NULL OR "status" = 'cancelled'`)
+@Check('events_price_check', `"price_cents" IS NULL OR "price_cents" >= 50`)
+@Check('events_currency_check', `("price_cents" IS NULL) = ("currency" IS NULL)`)
+@Check('events_refund_cutoff_check', `"refund_cutoff_hours" >= 0`)
 @Check('events_repeat_every_check', `"repeat_every" IN ('week', 'fortnight', 'month')`)
 // in a series exactly when it has a rule
 @Check('events_series_check', `("series_id" IS NULL) = ("repeat_every" IS NULL)`)
@@ -125,6 +128,17 @@ export class Event {
   // the organiser's note to the people registered, shown with the cancellation
   @Column({ name: 'cancel_reason', type: 'varchar', length: 500, nullable: true })
   cancelReason: string | null;
+
+  // a ticket's price in the currency's smallest unit (cents); null: free
+  @Column({ name: 'price_cents', type: 'integer', nullable: true })
+  priceCents: number | null;
+
+  @Column({ type: 'varchar', length: 3, nullable: true })
+  currency: string | null;
+
+  // a place given back at least this long before the start is refunded
+  @Column({ name: 'refund_cutoff_hours', type: 'integer', default: 48 })
+  refundCutoffHours: number;
 
   // when members who asked for new-event emails were told; null: not yet
   @Column({ name: 'announced_at', type: 'timestamptz', nullable: true })

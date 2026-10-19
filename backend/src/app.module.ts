@@ -18,6 +18,7 @@ import { FeedModule } from './modules/feed/feed.module.js';
 import { NotificationModule } from './modules/notification/notification.module.js';
 import { FeedbackModule } from './modules/feedback/feedback.module.js';
 import { AuditModule } from './modules/audit/audit.module.js';
+import { PaymentModule } from './modules/payment/payment.module.js';
 
 @Module({
   imports: [
@@ -36,6 +37,7 @@ import { AuditModule } from './modules/audit/audit.module.js';
     NotificationModule,
     FeedbackModule,
     AuditModule,
+    PaymentModule,
   ],
   controllers: [AppController],
   providers: [

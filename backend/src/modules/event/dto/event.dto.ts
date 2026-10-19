@@ -95,6 +95,25 @@ export class CreateEventDto {
   visibility?: EventVisibility;
 
   /**
+   * A ticket's price, in the currency's smallest unit (1500 is $15.00); null
+   * or left out: free. Needs the workspace's Stripe account to be ready; the
+   * currency is the account's. @example 1500
+   */
+  @IsOptional()
+  @ValidateIf((_o, value) => value !== null)
+  @IsInt()
+  @Min(50)
+  @Max(1_000_000)
+  priceCents?: number | null;
+
+  /** A paid place given back at least this many hours before the start is refunded. @example 48 */
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(720)
+  refundCutoffHours?: number;
+
+  /**
    * Repeat it: the same event every week, fortnight or month, at the same
    * local time in the workspace's zone. Each one is its own event, with its
    * own places and tickets.
@@ -124,6 +143,26 @@ export class CancelEventDto {
   @IsString()
   @MaxLength(500)
   reason?: string;
+}
+
+/** A paid event's ticket price. */
+export class PriceDto {
+  @ApiProperty({ description: "In the currency's smallest unit (cents)", example: 1500 })
+  amountCents: number;
+
+  @ApiProperty({ description: 'ISO 4217, lowercase', example: 'aud' })
+  currency: string;
+}
+
+export class YourPaymentDto {
+  @ApiProperty()
+  amountCents: number;
+
+  @ApiProperty()
+  currency: string;
+
+  @ApiProperty({ description: 'Giving the place back now refunds it' })
+  refundable: boolean;
 }
 
 export class EventSeriesDto {
@@ -200,6 +239,21 @@ export class EventDto {
 
   @ApiPropertyOptional({ type: EventSeriesDto, nullable: true, description: 'The series it repeats in; null for a one-off' })
   series: EventSeriesDto | null;
+
+  @ApiPropertyOptional({ type: PriceDto, nullable: true, description: 'A ticket costs this; null: free' })
+  price: PriceDto | null;
+
+  @ApiProperty({ description: 'A paid place given back at least this many hours before the start is refunded' })
+  refundCutoffHours: number;
+
+  @ApiProperty({ description: 'Places held by people paying for them right now' })
+  heldCount: number;
+
+  @ApiPropertyOptional({ type: YourPaymentDto, nullable: true, description: 'What you paid for your place, if anything' })
+  yourPayment: YourPaymentDto | null;
+
+  @ApiPropertyOptional({ type: Number, nullable: true, description: 'Takings, less refunds (only for people who can edit it)' })
+  salesCents: number | null;
 }
 
 export class EventAttendeeDto {

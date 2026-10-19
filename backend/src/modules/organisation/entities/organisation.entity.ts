@@ -1,4 +1,5 @@
 import {
+  Unique,
   BeforeInsert,
   BeforeUpdate,
   Check,
@@ -37,6 +38,7 @@ export type JoinPolicy = (typeof JoinPolicy)[keyof typeof JoinPolicy];
 // lowercase letters, digits and single hyphens, no leading/trailing hyphen
 @Check('organisations_slug_format', `"slug" ~ '^[a-z0-9]+(-[a-z0-9]+)*$'`)
 @Check('organisations_join_policy', `"join_policy" IN ('invite', 'request', 'open')`)
+@Unique('organisations_stripe_account_id_key', ['stripeAccountId'])
 export class Organisation {
   @PrimaryGeneratedColumn('uuid', { primaryKeyConstraintName: 'organisations_pkey' })
   id: string;
@@ -56,6 +58,18 @@ export class Organisation {
   // IANA zone its events happen in: every time it shows or emails is on this clock
   @Column({ name: 'time_zone', type: 'varchar', length: 64, default: 'UTC' })
   timeZone: string;
+
+  // its Stripe Connect account: ticket money goes there
+  @Column({ name: 'stripe_account_id', type: 'varchar', length: 64, nullable: true })
+  stripeAccountId: string | null;
+
+  // Stripe says the account can take payments (onboarding finished)
+  @Column({ name: 'payments_enabled', type: 'boolean', default: false })
+  paymentsEnabled: boolean;
+
+  // the account's currency: what its tickets are priced in
+  @Column({ type: 'varchar', length: 3, nullable: true })
+  currency: string | null;
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;

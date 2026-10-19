@@ -85,6 +85,16 @@ export const config = {
   // "Australia/Sydney"). There's no per-workspace zone yet.
   timeZone: process.env.APP_TIME_ZONE ?? "UTC",
 
+  // paid tickets through Stripe Connect (each workspace connects its own
+  // account). Unset: payments are off, and events can only be free.
+  payments: {
+    stripeSecretKey: process.env.STRIPE_SECRET_KEY || undefined,
+    // signs the webhooks Stripe sends; required once payments are on
+    stripeWebhookSecret: process.env.STRIPE_WEBHOOK_SECRET || undefined,
+    // Muster's share of each ticket, in percent (0: none)
+    platformFeePercent: Math.min(Math.max(Number(process.env.PLATFORM_FEE_PERCENT ?? 0) || 0, 0), 20),
+  },
+
   email: {
     // unset in development: emails are logged instead of sent
     resendApiKey:
