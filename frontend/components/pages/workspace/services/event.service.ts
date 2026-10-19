@@ -1,7 +1,7 @@
 import { request } from "@/lib/api/client";
 import { useApiMutation } from "@/lib/api/useApiMutation";
 import { useApiQuery } from "@/lib/api/useApiQuery";
-import type { Answers, ClubEvent, EventAttendee, EventChanges, EventInput, EventScope, SeriesScope } from "@/types/event.interface";
+import type { Answers, ClubEvent, DiscountCode, EventAttendee, EventChanges, EventInput, EventScope, SeriesScope } from "@/types/event.interface";
 
 // Everything about a club's events sits under one key, so any change can
 // refresh all three lists (and the counts) at once.
@@ -94,8 +94,12 @@ export const useRegister = (clubId: string) =>
 
 /** Joins a full event's waitlist; your position comes back. PLACES_AVAILABLE if you could just register. */
 export const useJoinWaitlist = (clubId: string) =>
-  useApiMutation<{ position: number }, { eventId: string; answers?: Answers }>(
-    ({ eventId, answers }) => ({ method: "post", url: `/clubs/${clubId}/events/${eventId}/waitlist`, data: { answers } }),
+  useApiMutation<{ position: number }, { eventId: string; answers?: Answers; ticketTypeId?: string }>(
+    ({ eventId, answers, ticketTypeId }) => ({
+      method: "post",
+      url: `/clubs/${clubId}/events/${eventId}/waitlist`,
+      data: { answers, ticketTypeId },
+    }),
     { invalidates: [eventsKey(clubId)] },
   );
 
@@ -178,4 +182,28 @@ export const useSendEventMessage = (clubId: string, eventId: string) =>
   useApiMutation<EventMessage, { subject: string; body: string; toWaitlist: boolean }>(
     { method: "post", url: `/clubs/${clubId}/events/${eventId}/messages` },
     { invalidates: [messagesKey(clubId, eventId)] },
+  );
+
+const codesKey = (clubId: string, eventId: string) => ["clubs", clubId, "events", eventId, "discount-codes"];
+
+/** An event's discount codes, with their uses (people who can edit it). */
+export const useDiscountCodes = (clubId: string, eventId: string, enabled: boolean) =>
+  useApiQuery<DiscountCode[]>(codesKey(clubId, eventId), { url: `/clubs/${clubId}/events/${eventId}/discount-codes` }, { enabled });
+
+/** A new code: a percentage or an amount off. CODE_TAKEN if the event has it already. */
+export const useCreateDiscountCode = (clubId: string, eventId: string) =>
+  useApiMutation<
+    DiscountCode[],
+    { code: string; percentOff?: number; amountOffCents?: number; maxUses?: number; expiresAt?: string }
+  >({ method: "post", url: `/clubs/${clubId}/events/${eventId}/discount-codes` }, { invalidates: [codesKey(clubId, eventId)] });
+
+/** Turns a code on or off. */
+export const useSetDiscountCode = (clubId: string, eventId: string) =>
+  useApiMutation<DiscountCode[], { codeId: string; active: boolean }>(
+    ({ codeId, active }) => ({
+      method: "patch",
+      url: `/clubs/${clubId}/events/${eventId}/discount-codes/${codeId}`,
+      data: { active },
+    }),
+    { invalidates: [codesKey(clubId, eventId)] },
   );

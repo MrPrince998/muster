@@ -55,6 +55,38 @@ export interface ClubEvent {
   salesCents: number | null;
   // what people taking a place are asked
   questions: Question[];
+  // the ways in; none: free for everyone
+  ticketTypes: TicketType[];
+  // which ticket you have
+  yourTicketType: string | null;
+}
+
+/** One way into an event: "General $15", "Members free", "Early bird". */
+export interface TicketType {
+  id: string;
+  name: string;
+  // 0: free
+  priceCents: number;
+  currency: string | null;
+  capacity: number | null;
+  // left of this type; null: no limit of its own
+  remaining: number | null;
+  membersOnly: boolean;
+  salesEndAt: string | null;
+  // before its end, and some left
+  onSale: boolean;
+}
+
+/** A discount code, as its event's organisers see it. */
+export interface DiscountCode {
+  id: string;
+  code: string;
+  percentOff: number | null;
+  amountOffCents: number | null;
+  maxUses: number | null;
+  uses: number;
+  expiresAt: string | null;
+  active: boolean;
 }
 
 /** A question an event asks the people taking a place. */
@@ -99,6 +131,15 @@ export interface EventInput {
   // a ticket's price in cents; null: free (needs the workspace's Stripe account)
   priceCents?: number | null;
   refundCutoffHours?: number;
+  // the ways in; a type already on sale keeps its id (and its sales)
+  ticketTypes?: {
+    id?: string;
+    name: string;
+    priceCents: number;
+    capacity?: number | null;
+    membersOnly?: boolean;
+    salesEndAt?: string | null;
+  }[];
   // a question already asked keeps its id, so its answers stay with it
   questions?: { id?: string; label: string; kind: "text" | "choice"; options?: string[]; required?: boolean }[];
   // create only: the same event every week, fortnight or month, `count` in all

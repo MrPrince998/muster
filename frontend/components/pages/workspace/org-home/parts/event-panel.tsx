@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  BadgePercent,
   CalendarDays,
   Check,
   Clock,
@@ -46,6 +47,8 @@ import {
   seriesLabel,
 } from "../../shared/series-scope-choice";
 import { AnswersDialog } from "../../dialogs/answers-dialog";
+import { GetTicketDialog, ticketNote, ticketPrice, type TicketChoice } from "../../dialogs/get-ticket-dialog";
+import { DiscountCodesDialog } from "../../dialogs/discount-codes-dialog";
 import { MessageDialog } from "../../dialogs/message-dialog";
 import { TicketDialog } from "../../tickets/ticket-dialog";
 import { differsFromDevice, zoneCity, zoneName } from "@/lib/time-zone";
@@ -96,9 +99,9 @@ export interface EventPanelProps {
   // with the answers to the event's questions, when it asks any
   onRegister: (answers?: Answers) => void;
   onCancel: () => void;
-  onJoinWaitlist: (answers?: Answers) => void;
-  // a paid event: off to Stripe to buy a place
-  onBuy: (answers?: Answers) => void;
+  onJoinWaitlist: (answers?: Answers, ticketTypeId?: string) => void;
+  // an event with ticket types: the place now if it's free, or off to Stripe to buy it
+  onBuy: (choice: TicketChoice) => void;
   // back from Stripe: paid (the ticket is on its way) or not
   paymentReturn: "paid" | "cancelled" | null;
   onLeaveWaitlist: () => void;
@@ -195,14 +198,31 @@ function PanelBody(props: EventPanelProps & { event: ClubEvent }) {
             {event.location}
           </Detail>
         )}
-        {event.price && (
-          <Detail icon={Ticket} label="Ticket">
-            {formatMoney(event.price.amountCents, event.price.currency)}
-            <span className="block text-xs text-muted-foreground">
-              {event.refundCutoffHours === 0
-                ? "Refunded if given back before it starts"
-                : `Refunded if given back ${event.refundCutoffHours} hours or more before it starts`}
-            </span>
+        {event.ticketTypes.length > 0 && (
+          <Detail icon={Ticket} label="Tickets">
+            <ul className="space-y-1">
+              {event.ticketTypes.map((t) => {
+                const note = ticketNote(t, props.timeZone);
+                return (
+                  <li key={t.id}>
+                    <span className="font-medium">{t.name}</span>{" "}
+                    {ticketPrice(t)}
+                    {note && (
+                      <span className="block text-xs text-muted-foreground">
+                        {note}
+                      </span>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+            {event.price && (
+              <span className="mt-1 block text-xs text-muted-foreground">
+                {event.refundCutoffHours === 0
+                  ? "Paid tickets are refunded if given back before it starts"
+                  : `Paid tickets are refunded if given back ${event.refundCutoffHours} hours or more before it starts`}
+              </span>
+            )}
           </Detail>
         )}
         {event.series && (
@@ -417,6 +437,7 @@ function OrganiserActions({
   const [reason, setReason] = useState("");
   const [scope, setScope] = useState<SeriesScope>("this");
   const [messaging, setMessaging] = useState(false);
+  const [coding, setCoding] = useState(false);
   const series = hasLaterInSeries(event);
   const going = event.registeredCount;
 
@@ -484,6 +505,24 @@ function OrganiserActions({
             open={messaging}
             onOpenChange={setMessaging}
             timeZone={timeZone}
+          />
+        </>
+      )}
+      {event.price && !ended && (
+        <>
+          <Button
+            size="lg"
+            variant="outline"
+            className="h-11"
+            onClick={() => setCoding(true)}
+          >
+            <BadgePercent aria-hidden />
+            Discount codes
+          </Button>
+          <DiscountCodesDialog
+            event={event}
+            open={coding}
+            onOpenChange={setCoding}
           />
         </>
       )}
@@ -636,38 +675,55 @@ function MemberActions({
   paymentReturn,
   ended,
   full,
+  timeZone,
 }: EventPanelProps & { event: ClubEvent; ended: boolean; full: boolean }) {
   const [showingTicket, setShowingTicket] = useState(false);
   const [givingBack, setGivingBack] = useState(false);
   const paid = event.yourPayment;
   // the event's questions come first, whichever way they're taking a place
-  const [asking, setAsking] = useState<"register" | "waitlist" | "buy" | null>(
+  const [asking, setAsking] = useState<"register" | "waitlist" | null>(null);
+  // events with ticket types: the choice (and any code) in a dialog of its own
+  const typed = event.ticketTypes.length > 0;
+  const [ticketing, setTicketing] = useState<"ticket" | "waitlist" | null>(
     null,
   );
   const take = (
-    way: "register" | "waitlist" | "buy",
+    way: "register" | "waitlist",
     act: (answers?: Answers) => void,
-  ) => (event.questions.length > 0 ? setAsking(way) : act());
-  const questions = asking && (
-    <AnswersDialog
-      event={event}
-      open={!!asking}
-      onOpenChange={(open) => !open && setAsking(null)}
-      confirmLabel={
-        asking === "buy"
-          ? "Go to checkout"
-          : asking === "waitlist"
-            ? "Join the waitlist"
-            : "Register"
-      }
-      onConfirm={(answers) =>
-        (asking === "buy"
-          ? onBuy
-          : asking === "waitlist"
-            ? onJoinWaitlist
-            : onRegister)(answers)
-      }
-    />
+  ) =>
+    typed && way === "waitlist"
+      ? setTicketing("waitlist")
+      : event.questions.length > 0
+        ? setAsking(way)
+        : act();
+  const questions = (
+    <>
+      {asking && (
+        <AnswersDialog
+          event={event}
+          open={!!asking}
+          onOpenChange={(open) => !open && setAsking(null)}
+          confirmLabel={asking === "waitlist" ? "Join the waitlist" : "Register"}
+          onConfirm={(answers) =>
+            (asking === "waitlist" ? onJoinWaitlist : onRegister)(answers)
+          }
+        />
+      )}
+      {ticketing && (
+        <GetTicketDialog
+          event={event}
+          open={!!ticketing}
+          onOpenChange={(open) => !open && setTicketing(null)}
+          waitlist={ticketing === "waitlist"}
+          timeZone={timeZone}
+          onConfirm={(choice) =>
+            ticketing === "waitlist"
+              ? onJoinWaitlist(choice.answers, choice.ticketTypeId)
+              : onBuy(choice)
+          }
+        />
+      )}
+    </>
   );
 
   if (ended) {
@@ -684,7 +740,11 @@ function MemberActions({
     return (
       <div className="flex flex-col gap-2">
         <p className="rounded-xl bg-cobalt-50 p-4 text-sm text-cobalt-800">
-          <span className="font-semibold">You&rsquo;re going.</span> Show your
+          <span className="font-semibold">
+            You&rsquo;re going
+            {event.yourTicketType ? ` (${event.yourTicketType})` : ""}.
+          </span>{" "}
+          Show your
           ticket at the door to get in. We&rsquo;ll email you a reminder the day
           before.
         </p>
@@ -788,8 +848,23 @@ function MemberActions({
     );
   }
 
-  // a paid event: places are bought, and a full one has no queue
-  if (event.price) {
+  // ticket types: one button, the choice in the dialog; a paid event that's full has no queue
+  const paidTypes = event.ticketTypes.some((t) => t.priceCents > 0);
+  if (typed && (paidTypes || !(full || event.waitlistCount > 0))) {
+    const onSale = event.ticketTypes.filter((t) => t.onSale);
+    const only = event.ticketTypes.length === 1 ? event.ticketTypes[0] : null;
+    const soldOut = full || onSale.length === 0;
+    // one free ticket and nothing to ask: no dialog needed
+    const direct = only && only.priceCents === 0 && event.questions.length === 0;
+    const label = soldOut
+      ? "Sold out"
+      : only
+        ? only.priceCents > 0
+          ? `Buy a ticket for ${ticketPrice(only)}`
+          : "Get a ticket"
+        : event.price && onSale.every((t) => t.priceCents > 0)
+          ? `Get a ticket, from ${formatMoney(event.price.amountCents, event.price.currency)}`
+          : "Get a ticket";
     return (
       <div className="flex flex-col gap-2">
         {paymentReturn === "cancelled" && (
@@ -802,19 +877,17 @@ function MemberActions({
           size="lg"
           variant={event.canManage ? "outline" : "default"}
           className="h-11 font-semibold"
-          disabled={full || pending === "buy"}
-          onClick={() => take("buy", onBuy)}
+          disabled={soldOut || pending === "buy"}
+          onClick={() =>
+            direct ? onBuy({ ticketTypeId: only!.id }) : setTicketing("ticket")
+          }
         >
           {pending === "buy" && <Spinner />}
-          {full
-            ? "Sold out"
-            : pending === "buy"
-              ? "Going to checkout…"
-              : `Buy a ticket for ${formatMoney(event.price.amountCents, event.price.currency)}`}
+          {pending === "buy" ? "Getting your ticket…" : label}
         </Button>
-        {!full && (
+        {!soldOut && paidTypes && (
           <p className="text-center text-xs text-muted-foreground">
-            Paid securely through Stripe.
+            Paid tickets go through Stripe.
           </p>
         )}
         {questions}

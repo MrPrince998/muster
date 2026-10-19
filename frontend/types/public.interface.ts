@@ -22,12 +22,18 @@ export interface PublicEvent {
   price: { amountCents: number; currency: string } | null;
   // what people taking a place are asked
   questions: import("./event.interface").Question[];
+  // the tickets on offer to the public; none: free
+  ticketTypes: import("./event.interface").TicketType[];
+  // discount codes work for this event
+  hasCodes: boolean;
 }
 
 export interface GuestPlaceInput {
   name: string;
   email: string;
   answers?: Record<string, string>;
+  ticketTypeId?: string;
+  code?: string;
 }
 
 /** POST .../places/confirm: a ticket, or (the event being full) a place in the queue. */

@@ -17,11 +17,31 @@ export const eventFormSchema = z
       .trim()
       .refine((value) => value === "" || (/^\d+$/.test(value) && Number(value) >= 1), "Enter a whole number, 1 or more"),
     visibility: z.enum(["members", "public"]),
-    // a ticket's price as typed ("15", "15.50"); empty: free
-    price: z
-      .string()
-      .trim()
-      .refine((value) => value === "" || (parseMoney(value) ?? 0) >= 50, "Enter a price of at least 0.50, or leave it empty"),
+    // the ways in; none: free for everyone
+    tickets: z
+      .array(
+        z.object({
+          id: z.string().optional(),
+          name: z.string().trim().min(1, "Name the ticket").max(60, "Use 60 characters or fewer"),
+          // as typed ("15", "15.50"); empty or 0: free
+          price: z
+            .string()
+            .trim()
+            .refine(
+              (value) => value === "" || value === "0" || (parseMoney(value) ?? 0) >= 50,
+              "Free, or at least 0.50",
+            ),
+          // empty: no limit of its own
+          capacity: z
+            .string()
+            .trim()
+            .refine((value) => value === "" || (/^\d+$/.test(value) && Number(value) >= 1), "A whole number, 1 or more"),
+          membersOnly: z.boolean(),
+          // datetime-local; empty: on sale until the event
+          salesEnd: z.string(),
+        }),
+      )
+      .max(10),
     refundCutoffHours: z
       .string()
       .trim()
@@ -87,7 +107,14 @@ export function toEventInput(values: EventFormValues, zone?: string) {
     endsAt: instant(values.endsAt),
     capacity: values.capacity === "" ? null : Number(values.capacity),
     visibility: values.visibility,
-    priceCents: values.price === "" ? null : parseMoney(values.price),
+    ticketTypes: values.tickets.map((t) => ({
+      ...(t.id && { id: t.id }),
+      name: t.name,
+      priceCents: t.price === "" ? 0 : (parseMoney(t.price) ?? 0),
+      capacity: t.capacity === "" ? null : Number(t.capacity),
+      membersOnly: t.membersOnly,
+      salesEndAt: t.salesEnd ? instant(t.salesEnd) : null,
+    })),
     refundCutoffHours: Number(values.refundCutoffHours),
     questions: values.questions.map((q) => ({
       ...(q.id && { id: q.id }),

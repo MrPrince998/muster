@@ -89,7 +89,12 @@ export function EventStub({
               {draft && <Tag tone="muted">Draft</Tag>}
               {cancelled && <Tag tone="stamp">Cancelled</Tag>}
               {event.series && <Tag tone="muted">{seriesLabel(event.series)}</Tag>}
-              {event.price && <Tag tone="muted">{formatMoney(event.price.amountCents, event.price.currency)}</Tag>}
+              {event.price && (
+                <Tag tone="muted">
+                  {event.ticketTypes.length > 1 ? "From " : ""}
+                  {formatMoney(event.price.amountCents, event.price.currency)}
+                </Tag>
+              )}
               {!draft && !cancelled && !past && !event.registrationOpen && <Tag tone="muted">Registration closed</Tag>}
               {!draft && !cancelled && event.visibility === "public" && <Tag tone="muted">Open to guests</Tag>}
               {!cancelled && !past && event.youreGoing && <Tag tone="cobalt">You&rsquo;re going</Tag>}

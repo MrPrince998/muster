@@ -1,13 +1,15 @@
 "use client";
 
+import { useQueryClient } from "@tanstack/react-query";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { asApiError } from "@/lib/api/client";
-import { startCheckout } from "../services/payment.service";
+import { getTicket } from "../services/payment.service";
 import type { ClubEvent } from "@/types/event.interface";
 import { useWorkspace } from "../org-shell/workspace-context";
 import {
   useCancelEvent,
+  eventsKey,
   useCancelRegistration,
   useClubEvents,
   useDeleteEvent,
@@ -28,6 +30,14 @@ function actionMessage(code: string): string {
       return "Someone took the last place just before you. The event is full now.";
     case "INVALID_ANSWERS":
       return "Some answers need another look. Try again, answering every required question.";
+    case "TICKET_TYPE_SOLD_OUT":
+      return "That ticket has just sold out. Choose another.";
+    case "TICKET_SALES_ENDED":
+      return "That ticket is no longer on sale.";
+    case "CODE_NOT_VALID":
+      return "That discount code doesn't work for this event. It may be used up, ended, or mistyped.";
+    case "TICKET_TYPE_REQUIRED":
+      return "Choose a ticket first.";
     case "SOLD_OUT":
       return "Sold out: every ticket has gone.";
     case "PAYMENTS_NOT_SET_UP":
@@ -106,6 +116,7 @@ export default function OrgHomeContainer() {
   const [pending, setPending] = useState<PanelAction | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
+  const queryClient = useQueryClient();
   const register = useRegister(club?.id ?? "");
   const cancel = useCancelRegistration(club?.id ?? "");
   const joinWaitlist = useJoinWaitlist(club?.id ?? "");
@@ -242,14 +253,19 @@ export default function OrgHomeContainer() {
         onRegister: (answers) =>
           openEvent && run("register", () => register.mutateAsync({ eventId: openEvent.id, answers })),
         onCancel: () => openEvent && run("cancel", () => cancel.mutateAsync({ eventId: openEvent.id })),
-        onJoinWaitlist: (answers) =>
-          openEvent && run("waitlist", () => joinWaitlist.mutateAsync({ eventId: openEvent.id, answers })),
-        onBuy: (answers) =>
+        onJoinWaitlist: (answers, ticketTypeId) =>
+          openEvent && run("waitlist", () => joinWaitlist.mutateAsync({ eventId: openEvent.id, answers, ticketTypeId })),
+        onBuy: (choice) =>
           openEvent &&
           run("buy", async () => {
-            const { url } = await startCheckout(openEvent.clubId, openEvent.id, answers);
+            const { url, registered } = await getTicket(openEvent.clubId, openEvent.id, choice);
+            // free (a free ticket, or a code): the place is theirs, and the lists say so
+            if (registered || !url) {
+              await queryClient.invalidateQueries({ queryKey: eventsKey(openEvent.clubId) });
+              return;
+            }
             window.location.assign(url);
-            // stays "going to checkout" while the browser leaves
+            // stays "getting your ticket" while the browser leaves for Stripe
             await new Promise(() => undefined);
           }),
         paymentReturn:

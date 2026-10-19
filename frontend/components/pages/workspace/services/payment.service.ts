@@ -26,6 +26,18 @@ export const useRefreshPayments = (orgId: string) =>
 export const paymentsRedirect = (orgId: string, to: "connect" | "dashboard") =>
   request<{ url: string }>({ method: "post", url: `/orgs/${orgId}/payments/${to}` });
 
-/** Starts buying a place at a paid event: Stripe's checkout page. */
-export const startCheckout = (clubId: string, eventId: string, answers?: Record<string, string>) =>
-  request<{ url: string }>({ method: "post", url: `/clubs/${clubId}/events/${eventId}/checkout`, data: { answers } });
+/**
+ * Gets a ticket at an event with ticket types: Stripe's checkout page when
+ * it costs something (`url`), or the place straight away (`registered`)
+ * when it comes to nothing (a free ticket, or a code).
+ */
+export const getTicket = (
+  clubId: string,
+  eventId: string,
+  body: { answers?: Record<string, string>; ticketTypeId?: string; code?: string },
+) =>
+  request<{ url: string | null; registered: boolean }>({
+    method: "post",
+    url: `/clubs/${clubId}/events/${eventId}/checkout`,
+    data: body,
+  });

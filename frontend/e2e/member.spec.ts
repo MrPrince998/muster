@@ -61,32 +61,33 @@ test("my tickets lists the seeded ones and opens a QR code", async ({ page }) =>
   await expect(page.getByRole("dialog").getByRole("img", { name: /QR code/ })).toBeVisible();
 });
 
-test("buy a ticket for a paid event, then give it back for a refund", async ({ page }) => {
+test("buy a ticket with a discount code, then give it back for a refund", async ({ page }) => {
   await openClub(page, "Robotics Society");
   const panel = await openEvent(page, "Robotics Gala Dinner");
-  await expect(panel.getByText("Refunded if given back 48 hours or more before it starts")).toBeVisible();
+  await expect(panel.getByRole("definition").filter({ hasText: "Members" }).first()).toBeVisible();
 
+  // two tickets: the choice (and a code, and the dinner's questions) in a dialog
+  await panel.getByRole("button", { name: "Get a ticket, from $35.00" }).click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByRole("radio", { name: /Members/ }).check();
+  await dialog.getByLabel(/Discount code/).fill("robot10");
+  await dialog.getByRole("button", { name: "Continue to pay $35.00" }).click();
+  await expect(dialog.getByText("Choose one")).toBeVisible();
+  await dialog.getByText("Vegetarian", { exact: true }).click();
+  await dialog.getByLabel(/Anything the kitchen should know/).fill("No coriander, please");
   // development's pretend Stripe: checkout is paid at once and comes straight back
-  await panel.getByRole("button", { name: "Buy a ticket for $45.00" }).click();
-  // its questions first: the dietary one is required
-  const questions = page.getByRole("dialog");
-  await questions.getByRole("button", { name: "Go to checkout" }).click();
-  await expect(questions.getByText("Choose one")).toBeVisible();
-  await questions.getByText("Vegetarian", { exact: true }).click();
-  await questions.getByLabel(/Anything the kitchen should know/).fill("No coriander, please");
-  await questions.getByRole("button", { name: "Go to checkout" }).click();
+  await dialog.getByRole("button", { name: "Continue to pay $35.00" }).click();
   await expect(page).toHaveURL(/paid=1/);
   const back = page.getByRole("complementary", { name: "Robotics Gala Dinner" });
-  await expect(back.getByText("You’re going.")).toBeVisible({ timeout: 15_000 });
-  // the organiser's takings
+  await expect(back.getByText("You’re going (Members).")).toBeVisible({ timeout: 15_000 });
   await expect(back.getByText("in ticket sales, less refunds")).toBeVisible();
-  // the organiser's tally of the answers
   const said = back.getByRole("region", { name: "Answers" });
   await expect(said.getByRole("listitem").filter({ hasText: "Vegetarian" })).toHaveText(/Vegetarian\s*1/);
 
+  // ROBOT10 took 10% off $35.00
   await back.getByRole("button", { name: "Cancel my place" }).click();
   const confirm = page.getByRole("alertdialog");
-  await expect(confirm.getByText(/You'll get \$45\.00 back/)).toBeVisible();
+  await expect(confirm.getByText(/You'll get \$31\.50 back/)).toBeVisible();
   await confirm.getByRole("button", { name: "Give it back and refund" }).click();
-  await expect(back.getByRole("button", { name: "Buy a ticket for $45.00" })).toBeVisible();
+  await expect(back.getByRole("button", { name: "Get a ticket, from $35.00" })).toBeVisible();
 });

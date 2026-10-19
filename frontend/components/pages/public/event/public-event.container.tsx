@@ -18,6 +18,12 @@ function placeMessage(code: string): string {
   switch (code) {
     case "EVENT_FULL":
       return "The last place has just gone.";
+    case "CODE_NOT_VALID":
+      return "That discount code doesn't work for this event.";
+    case "TICKET_TYPE_SOLD_OUT":
+      return "That ticket has just sold out. Choose another.";
+    case "TICKET_SALES_ENDED":
+      return "That ticket is no longer on sale.";
     case "INVALID_ANSWERS":
       return "Some answers need another look.";
     case "SOLD_OUT":
@@ -54,6 +60,10 @@ export default function PublicEventContainer() {
   // answers to the event's questions, checked with the rest before the link is sent
   const [answers, setAnswers] = useState<Answers>({});
   const [answerErrors, setAnswerErrors] = useState<Record<string, string>>({});
+  // which ticket (the first on sale, until they choose), and any code
+  const [ticketChoice, setTicketChoice] = useState<string | undefined>(undefined);
+  const [code, setCode] = useState("");
+  const ticketTypeId = ticketChoice ?? event.data?.ticketTypes.find((t) => t.onSale)?.id;
 
   const onSubmit = form.handleSubmit(async ({ name, email }) => {
     const problems = answerProblems(event.data?.questions ?? [], answers);
@@ -65,7 +75,14 @@ export default function PublicEventContainer() {
           .map(([id, value]) => [id, value.trim()])
           .filter(([, value]) => value),
       );
-      await request.mutateAsync({ name, email, answers: given });
+      const chosen = event.data?.ticketTypes.find((t) => t.id === ticketTypeId);
+      await request.mutateAsync({
+        name,
+        email,
+        answers: given,
+        ...(chosen && { ticketTypeId: chosen.id }),
+        ...(chosen && chosen.priceCents > 0 && code.trim() && { code: code.trim() }),
+      });
       setSentTo(email);
     } catch (error) {
       form.setError("root", { message: placeMessage(asApiError(error).code) });
@@ -108,6 +125,7 @@ export default function PublicEventContainer() {
       onSubmit={onSubmit}
       sentTo={sentTo}
       questions={{ answers, onChange: setAnswers, problems: answerErrors }}
+      tickets={{ chosen: ticketTypeId, onChoose: setTicketChoice, code, onCode: setCode }}
       paymentReturn={paid === "1" ? "paid" : paid === "0" ? "cancelled" : null}
       onAskAgain={() => {
         setSentTo(null);

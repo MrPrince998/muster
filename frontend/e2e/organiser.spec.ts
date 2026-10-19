@@ -155,12 +155,28 @@ test("price an event, with the workspace's Stripe account ready", async ({ page 
   await form.getByLabel("Name", { exact: true }).fill("Paid Workshop");
   await form.locator("#event-starts").fill(localDateTime(30, 10));
   await form.locator("#event-ends").fill(localDateTime(30, 12));
-  await form.getByLabel("Ticket price").fill("12.50");
+  // tickets: a paid general one, and a free one for members, limited
+  await form.getByRole("button", { name: "Add a ticket" }).click();
+  await form.getByLabel("Ticket 1 price").fill("12.50");
+  await form.getByRole("button", { name: "Add a ticket" }).click();
+  await form.getByLabel("Ticket 2 name").fill("Members");
+  await form.getByLabel("Ticket 2 limit").fill("5");
+  await form.getByLabel("Robotics Society members only").nth(1).check();
   await form.getByRole("button", { name: "Publish" }).click();
 
   const panel = page.getByRole("complementary", { name: "Paid Workshop" });
-  await expect(panel.getByRole("definition").filter({ hasText: /^\$12\.50Refunded/ })).toBeVisible();
-  await expect(page.getByRole("button").filter({ hasText: "Paid Workshop" }).getByText("$12.50")).toBeVisible();
+  const tickets = panel.getByRole("definition").filter({ hasText: "General" });
+  await expect(tickets.getByRole("listitem")).toHaveText(["General $12.50", /^Members Free\s*Members only/]);
+  await expect(page.getByRole("button").filter({ hasText: "Paid Workshop" }).getByText("From $12.50")).toBeVisible();
+
+  // a code for it
+  await panel.getByRole("button", { name: "Discount codes" }).click();
+  const codes = page.getByRole("dialog");
+  await codes.getByLabel("Code").fill("spring");
+  await codes.getByLabel("Percent off").fill("20");
+  await codes.getByLabel("Most uses").fill("10");
+  await codes.getByRole("button", { name: "Make code" }).click();
+  await expect(codes.getByRole("listitem")).toHaveText(/SPRING\s*20% off, used 0 of 10/);
 });
 
 test("message everyone going to an event", async ({ page }) => {

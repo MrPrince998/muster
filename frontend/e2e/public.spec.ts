@@ -60,7 +60,7 @@ test("a shared link shows a preview: title, when and where, and a card", async (
   expect((await card.body()).length).toBeGreaterThan(10_000);
 });
 
-test("a public paid event shows its price, and guests pay after confirming", async ({ page, browser }) => {
+test("a public paid event shows the public ticket, takes a code, and guests pay after confirming", async ({ page, browser }) => {
   await openClub(page, "Robotics Society");
   const panel = await openEvent(page, "Robotics Gala Dinner");
   const href = (await panel.getByRole("link", { name: "Open page" }).getAttribute("href"))!;
@@ -76,6 +76,12 @@ test("a public paid event shows its price, and guests pay after confirming", asy
   await card.getByRole("button", { name: "Buy a ticket for $45.00" }).click();
   await expect(card.getByText("Choose one")).toBeVisible();
   await card.getByText("Vegan", { exact: true }).click();
+  // the members' ticket isn't offered here; the code box is
+  await expect(card.getByRole("radio", { name: /Members/ })).toHaveCount(0);
+  await card.getByLabel(/Discount code/).fill("NOTACODE");
+  await card.getByRole("button", { name: "Buy a ticket for $45.00" }).click();
+  await expect(card.getByText("That discount code doesn't work for this event.")).toBeVisible();
+  await card.getByLabel(/Discount code/).fill("ROBOT10");
   await card.getByRole("button", { name: "Buy a ticket for $45.00" }).click();
   await expect(card.getByText(/Open it to pay; your place is held while you do/)).toBeVisible();
 

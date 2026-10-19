@@ -23,6 +23,7 @@ import { useCreateEvent, useUpdateEvent } from "../services/event.service";
 import { differsFromDevice, zoneCity } from "@/lib/time-zone";
 import { hasLaterInSeries, SeriesScopeChoice } from "../shared/series-scope-choice";
 import { usePaymentStatus } from "../services/payment.service";
+import { parseMoney } from "@/lib/money";
 import { eventFormSchema, type EventFormValues, toEventInput, toLocalInput } from "../validation/event.schema";
 
 function messageFor(code: string): string {
@@ -37,6 +38,10 @@ function messageFor(code: string): string {
       return "A choose-one question needs at least two choices.";
     case "TOO_MANY_QUESTIONS":
       return "Up to five questions.";
+    case "TICKET_TYPE_HAS_SALES":
+      return "People already have one of the tickets you removed. Keep it, and set an end date for its sales instead.";
+    case "TICKET_NAME_TAKEN":
+      return "Two tickets have the same name. Give each its own.";
     case "PAYMENTS_NOT_SET_UP":
       return "This workspace can't take payments yet. Connect Stripe in Settings, or make the event free.";
     case "NETWORK_ERROR":
@@ -54,7 +59,7 @@ const emptyValues: EventFormValues = {
   endsAt: "",
   capacity: "",
   visibility: "members",
-  price: "",
+  tickets: [],
   refundCutoffHours: "48",
   questions: [],
   repeatEvery: "none",
@@ -88,7 +93,7 @@ export default function EventFormDialog({
   timeZone?: string;
 }) {
   const editing = !!event;
-  // prices only once the workspace's Stripe account can take payments (or the event already has one)
+  // paid tickets only once the workspace's Stripe account can take payments (or the event has some already)
   const payments = usePaymentStatus(orgId);
   const canPrice = !!payments.data?.ready || !!event?.price;
   const currency = (event?.price?.currency ?? payments.data?.currency ?? "").toUpperCase();
@@ -102,6 +107,9 @@ export default function EventFormDialog({
   } = form;
   const repeatEvery = useWatch({ control, name: "repeatEvery" });
   const questions = useFieldArray({ control, name: "questions" });
+  const tickets = useFieldArray({ control, name: "tickets" });
+  const ticketValues = useWatch({ control, name: "tickets" });
+  const anyPaid = (ticketValues ?? []).some((t) => (parseMoney(t.price) ?? 0) > 0);
   const questionKinds = useWatch({ control, name: "questions" });
   const repeatCount = Number(useWatch({ control, name: "repeatCount" }));
   // editing one of a series: just it, or the rest too
@@ -127,7 +135,14 @@ export default function EventFormDialog({
             endsAt: toLocalInput(event.endsAt, timeZone),
             capacity: event.capacity === null ? "" : String(event.capacity),
             visibility: event.visibility === "public" ? "public" : "members",
-            price: event.price ? (event.price.amountCents / 100).toFixed(2) : "",
+            tickets: event.ticketTypes.map((t) => ({
+              id: t.id,
+              name: t.name,
+              price: t.priceCents ? (t.priceCents / 100).toFixed(2) : "",
+              capacity: t.capacity === null ? "" : String(t.capacity),
+              membersOnly: t.membersOnly,
+              salesEnd: t.salesEndAt ? toLocalInput(t.salesEndAt, timeZone) : "",
+            })),
             refundCutoffHours: String(event.refundCutoffHours),
             questions: event.questions.map((q) => ({
               id: q.id,
@@ -276,50 +291,127 @@ export default function EventFormDialog({
             )}
           </Field>
 
-          {canPrice && (
-            <div className="grid gap-4 sm:grid-cols-2">
-              <Field data-invalid={!!errors.price}>
-                <FieldLabel htmlFor="event-price">Ticket price</FieldLabel>
-                <InputGroup className="h-11">
-                  <InputGroupInput
-                    id="event-price"
-                    inputMode="decimal"
-                    placeholder="Free"
-                    aria-invalid={!!errors.price}
-                    {...register("price")}
-                  />
-                  {currency && (
-                    <InputGroupAddon align="inline-end">
-                      <InputGroupText>{currency}</InputGroupText>
-                    </InputGroupAddon>
+          <fieldset className="space-y-3">
+            <legend className="text-sm font-medium">Tickets</legend>
+            <p className="text-sm text-muted-foreground">
+              {tickets.fields.length === 0
+                ? "None: free for everyone. Add tickets to charge, or to offer different kinds (members, early bird)."
+                : "Leave a price empty for a free ticket."}
+            </p>
+            {tickets.fields.map((field, index) => {
+              const fieldErrors = errors.tickets?.[index];
+              const paid = (parseMoney(ticketValues?.[index]?.price ?? "") ?? 0) > 0;
+              return (
+                <div key={field.id} className="space-y-2 rounded-lg border p-3">
+                  <div className="flex gap-2">
+                    <InputGroup className="h-10 flex-1">
+                      <InputGroupInput
+                        aria-label={`Ticket ${index + 1} name`}
+                        placeholder="General"
+                        aria-invalid={!!fieldErrors?.name}
+                        {...register(`tickets.${index}.name`)}
+                      />
+                    </InputGroup>
+                    <InputGroup className="h-10 w-32">
+                      <InputGroupInput
+                        aria-label={`Ticket ${index + 1} price`}
+                        inputMode="decimal"
+                        placeholder="Free"
+                        aria-invalid={!!fieldErrors?.price}
+                        {...register(`tickets.${index}.price`)}
+                      />
+                      {currency && (
+                        <InputGroupAddon align="inline-end">
+                          <InputGroupText>{currency}</InputGroupText>
+                        </InputGroupAddon>
+                      )}
+                    </InputGroup>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      aria-label={`Remove ticket ${index + 1}`}
+                      onClick={() => tickets.remove(index)}
+                    >
+                      <Trash2 aria-hidden />
+                    </Button>
+                  </div>
+                  <FieldError errors={[fieldErrors?.name, fieldErrors?.price]} />
+                  {paid && !canPrice && (
+                    <p className="text-sm text-destructive">
+                      Connect Stripe in Settings to sell paid tickets, or make this one free.
+                    </p>
                   )}
-                </InputGroup>
-                {errors.price ? (
-                  <FieldError errors={[errors.price]} />
-                ) : (
-                  <FieldDescription>Leave empty for a free event. Paid through Stripe.</FieldDescription>
-                )}
-              </Field>
-              <Field data-invalid={!!errors.refundCutoffHours}>
-                <FieldLabel htmlFor="event-refund">Refunds until</FieldLabel>
-                <InputGroup className="h-11">
-                  <InputGroupInput
-                    id="event-refund"
-                    inputMode="numeric"
-                    aria-invalid={!!errors.refundCutoffHours}
-                    {...register("refundCutoffHours")}
-                  />
-                  <InputGroupAddon align="inline-end">
-                    <InputGroupText>hours before</InputGroupText>
-                  </InputGroupAddon>
-                </InputGroup>
-                {errors.refundCutoffHours ? (
-                  <FieldError errors={[errors.refundCutoffHours]} />
-                ) : (
-                  <FieldDescription>A ticket given back before then is refunded in full.</FieldDescription>
-                )}
-              </Field>
-            </div>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <span className="text-xs text-muted-foreground sm:col-start-1">How many (optional)</span>
+                    <span className="text-xs text-muted-foreground max-sm:hidden">On sale until (optional)</span>
+                    <InputGroup className="h-10">
+                      <InputGroupInput
+                        aria-label={`Ticket ${index + 1} limit`}
+                        inputMode="numeric"
+                        placeholder="No limit"
+                        aria-invalid={!!fieldErrors?.capacity}
+                        {...register(`tickets.${index}.capacity`)}
+                      />
+                    </InputGroup>
+                    <span className="text-xs text-muted-foreground sm:hidden">On sale until (optional)</span>
+                    <InputGroup className="h-10">
+                      <InputGroupInput
+                        aria-label={`Ticket ${index + 1} on sale until`}
+                        type="datetime-local"
+                        {...register(`tickets.${index}.salesEnd`)}
+                      />
+                    </InputGroup>
+                  </div>
+                  <FieldError errors={[fieldErrors?.capacity]} />
+                  <label className="flex items-center gap-2 text-sm">
+                    <input type="checkbox" className="size-4 accent-cobalt" {...register(`tickets.${index}.membersOnly`)} />
+                    {clubName} members only
+                  </label>
+                </div>
+              );
+            })}
+            {tickets.fields.length < 10 && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() =>
+                  tickets.append({
+                    name: tickets.fields.length === 0 ? "General" : "",
+                    price: "",
+                    capacity: "",
+                    membersOnly: false,
+                    salesEnd: "",
+                  })
+                }
+              >
+                <Plus aria-hidden />
+                Add a ticket
+              </Button>
+            )}
+          </fieldset>
+
+          {anyPaid && (
+            <Field data-invalid={!!errors.refundCutoffHours}>
+              <FieldLabel htmlFor="event-refund">Refunds until</FieldLabel>
+              <InputGroup className="h-11 sm:max-w-56">
+                <InputGroupInput
+                  id="event-refund"
+                  inputMode="numeric"
+                  aria-invalid={!!errors.refundCutoffHours}
+                  {...register("refundCutoffHours")}
+                />
+                <InputGroupAddon align="inline-end">
+                  <InputGroupText>hours before</InputGroupText>
+                </InputGroupAddon>
+              </InputGroup>
+              {errors.refundCutoffHours ? (
+                <FieldError errors={[errors.refundCutoffHours]} />
+              ) : (
+                <FieldDescription>A paid ticket given back before then is refunded in full.</FieldDescription>
+              )}
+            </Field>
           )}
 
           <fieldset className="space-y-2">

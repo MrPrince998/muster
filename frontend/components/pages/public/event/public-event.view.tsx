@@ -8,6 +8,7 @@ import { InputGroup, InputGroupInput } from "@/components/ui/input-group";
 import { formatMoney } from "@/lib/money";
 import type { Answers } from "@/types/event.interface";
 import { QuestionFields } from "../../workspace/shared/question-fields";
+import { ticketNote, ticketPrice } from "../../workspace/dialogs/get-ticket-dialog";
 import { cn } from "@/lib/utils";
 import type { PublicEvent } from "@/types";
 import { differsFromDevice, zoneCity, zoneName } from "@/lib/time-zone";
@@ -33,10 +34,12 @@ export interface PublicEventViewProps {
   paymentReturn: "paid" | "cancelled" | null;
   // answers to the event's questions, kept by the container
   questions: { answers: Answers; onChange: (answers: Answers) => void; problems: Record<string, string> };
+  // the ticket chosen (events with ticket types), and any discount code
+  tickets: { chosen: string | undefined; onChoose: (id: string) => void; code: string; onCode: (code: string) => void };
 }
 
 /** A public event: what, when and where, and a ticket-shaped card to get a place. Presentational. */
-export default function PublicEventView({ event, form, onSubmit, sentTo, onAskAgain, paymentReturn, questions }: PublicEventViewProps) {
+export default function PublicEventView({ event, form, onSubmit, sentTo, onAskAgain, paymentReturn, questions, tickets }: PublicEventViewProps) {
   return (
     <div className="mx-auto grid w-full max-w-5xl gap-10 px-5 py-10 sm:px-8 lg:grid-cols-[minmax(0,1fr)_22rem] lg:gap-16 lg:py-16">
       <article className="min-w-0">
@@ -98,7 +101,7 @@ export default function PublicEventView({ event, form, onSubmit, sentTo, onAskAg
             </div>
             <div className="mx-5 border-t-2 border-dashed border-zinc-200" />
             <div className="p-6">
-              <Card event={event} form={form} onSubmit={onSubmit} sentTo={sentTo} onAskAgain={onAskAgain} paymentReturn={paymentReturn} questions={questions} />
+              <Card event={event} form={form} onSubmit={onSubmit} sentTo={sentTo} onAskAgain={onAskAgain} paymentReturn={paymentReturn} questions={questions} tickets={tickets} />
             </div>
           </div>
         </div>
@@ -136,14 +139,14 @@ function Places({ event }: { event: PublicEvent }) {
                 ? `${event.waitlistCount} waiting. Places go in order.`
                 : "Join the waitlist for the next place"
             : event.price
-              ? `${formatMoney(event.price.amountCents, event.price.currency)}, with a QR ticket for the door`
+              ? `${event.ticketTypes.filter((t) => t.priceCents > 0).length > 1 || event.ticketTypes.some((t) => t.priceCents === 0) ? "From " : ""}${formatMoney(event.price.amountCents, event.price.currency)}, with a QR ticket for the door`
               : "Free, with a QR ticket for the door"}
       </p>
     </>
   );
 }
 
-function Card({ event, form, onSubmit, sentTo, onAskAgain, paymentReturn, questions }: PublicEventViewProps) {
+function Card({ event, form, onSubmit, sentTo, onAskAgain, paymentReturn, questions, tickets }: PublicEventViewProps) {
   const {
     register,
     formState: { errors, isSubmitting },
@@ -189,6 +192,7 @@ function Card({ event, form, onSubmit, sentTo, onAskAgain, paymentReturn, questi
     );
   }
   const waitlist = event.placesLeft === 0;
+  const chosenType = event.ticketTypes.find((t) => t.id === tickets.chosen);
   if (sentTo) {
     return (
       <div role="status">
@@ -246,6 +250,55 @@ function Card({ event, form, onSubmit, sentTo, onAskAgain, paymentReturn, questi
         </InputGroup>
         <FieldError errors={[errors.email]} />
       </Field>
+      {event.ticketTypes.length > 1 && (
+        <fieldset className="space-y-2">
+          <legend className="text-sm font-medium">Ticket</legend>
+          {event.ticketTypes.map((t) => {
+            const note = ticketNote(t, event.timeZone);
+            return (
+              <label
+                key={t.id}
+                className={cn(
+                  "flex cursor-pointer items-start gap-3 rounded-lg border p-3 text-sm transition-colors has-checked:border-cobalt has-checked:bg-cobalt-50",
+                  "has-focus-visible:ring-3 has-focus-visible:ring-ring/50",
+                  !t.onSale && "cursor-not-allowed opacity-60",
+                )}
+              >
+                <input
+                  type="radio"
+                  name="guest-ticket"
+                  value={t.id}
+                  disabled={!t.onSale}
+                  checked={tickets.chosen === t.id}
+                  onChange={() => tickets.onChoose(t.id)}
+                  className="mt-0.5 accent-cobalt"
+                />
+                <span className="flex-1">
+                  <span className="block font-medium">{t.name}</span>
+                  {note && <span className="text-muted-foreground">{note}</span>}
+                </span>
+                <span className="font-semibold tabular-nums">{ticketPrice(t)}</span>
+              </label>
+            );
+          })}
+        </fieldset>
+      )}
+      {event.hasCodes && (chosenType?.priceCents ?? 0) > 0 && (
+        <div className="space-y-1.5">
+          <label htmlFor="guest-code" className="text-sm font-medium">
+            Discount code <span className="font-normal text-muted-foreground">(optional)</span>
+          </label>
+          <InputGroup className="h-11">
+            <InputGroupInput
+              id="guest-code"
+              value={tickets.code}
+              maxLength={30}
+              autoCapitalize="characters"
+              onChange={(e) => tickets.onCode(e.target.value)}
+            />
+          </InputGroup>
+        </div>
+      )}
       {event.questions.length > 0 && (
         <QuestionFields
           questions={event.questions}
@@ -266,8 +319,8 @@ function Card({ event, form, onSubmit, sentTo, onAskAgain, paymentReturn, questi
           ? "Sending…"
           : waitlist
             ? "Join the waitlist"
-            : event.price
-              ? `Buy a ticket for ${formatMoney(event.price.amountCents, event.price.currency)}`
+            : chosenType && chosenType.priceCents > 0
+              ? `Buy a ticket for ${ticketPrice(chosenType)}`
               : "Get a ticket"}
       </Button>
       <p className="text-xs text-muted-foreground">
