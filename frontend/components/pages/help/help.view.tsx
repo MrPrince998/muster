@@ -99,6 +99,10 @@ const SECTIONS: { title: string; answers: Answer[] }[] = [
         a: "Yes. A couple of hours after an event ends, everyone who was checked in gets one email asking how it was: a rating out of five and a comment if they like. Open the event under Past to see the average and the comments. Answers never show who gave them.",
       },
       {
+        q: "How do I tell everyone going about a change?",
+        a: "Open the event and choose Message everyone going. It emails everyone with a place, guests included, and the waitlist if you tick it. What you've sent is listed there, so nobody says it twice. Up to ten messages a day per event.",
+      },
+      {
         q: "How do I stop registrations without cancelling?",
         a: "Open the event and choose Close registration. People already going keep their place, and you can open it again later.",
       },

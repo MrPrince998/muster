@@ -32,7 +32,9 @@ import {
   CreateEventDto,
   EventAttendeeDto,
   EventDto,
+  EventMessageDto,
   ListEventsQuery,
+  SendEventMessageDto,
   SeriesScopeQuery,
   UpdateEventDto,
 } from './dto/event.dto.js';
@@ -157,6 +159,37 @@ export class EventController {
     @Query() { scope }: SeriesScopeQuery,
   ): Promise<void> {
     return this.events.remove(access, eventId, scope);
+  }
+
+  /**
+   * Message everyone going
+   *
+   * @remarks Same permission as editing it. Emails everyone with a place
+   * (and the waitlist, with toWaitlist), and keeps the message. Ten a day.
+   */
+  @Post(':eventId/messages')
+  @RequirePermission()
+  @ApiCreatedResponse({ type: EventMessageDto })
+  @ApiNotFoundResponse(error('No such event (EVENT_NOT_FOUND)'))
+  @ApiConflictResponse(error('A draft (EVENT_IS_DRAFT), nobody going (NO_RECIPIENTS), or too many today (TOO_MANY_MESSAGES)'))
+  message(
+    @CurrentClubAccess() access: ClubAccess,
+    @Param('eventId', ParseUUIDPipe) eventId: string,
+    @Body() dto: SendEventMessageDto,
+  ): Promise<EventMessageDto> {
+    return this.events.message(access, eventId, dto);
+  }
+
+  /** What's been sent to the people going, newest first */
+  @Get(':eventId/messages')
+  @RequirePermission()
+  @ApiOkResponse({ type: [EventMessageDto] })
+  @ApiNotFoundResponse(error('No such event (EVENT_NOT_FOUND)'))
+  messages(
+    @CurrentClubAccess() access: ClubAccess,
+    @Param('eventId', ParseUUIDPipe) eventId: string,
+  ): Promise<EventMessageDto[]> {
+    return this.events.messages(access, eventId);
   }
 
   /** The event as a calendar file (.ics), for "Add to calendar" */

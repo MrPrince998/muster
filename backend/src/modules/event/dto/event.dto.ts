@@ -256,6 +256,48 @@ export class EventDto {
   salesCents: number | null;
 }
 
+export class SendEventMessageDto {
+  /** @example 'Room change' */
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(150)
+  subject: string;
+
+  /** A blank line starts a new paragraph. @example 'We have moved to Hall C, next door.' */
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(5000)
+  body: string;
+
+  /** Send it to the waitlist too */
+  @IsOptional()
+  @IsBoolean()
+  toWaitlist?: boolean;
+}
+
+export class EventMessageDto {
+  @ApiProperty({ format: 'uuid' })
+  id: string;
+
+  @ApiProperty()
+  subject: string;
+
+  @ApiProperty()
+  body: string;
+
+  @ApiProperty({ description: "Who sent it (today's name)" })
+  senderName: string;
+
+  @ApiProperty()
+  toWaitlist: boolean;
+
+  @ApiProperty({ description: 'How many it went to' })
+  recipientCount: number;
+
+  @ApiProperty()
+  sentAt: Date;
+}
+
 export class EventAttendeeDto {
   @ApiProperty({ format: 'uuid' })
   userId: string;

@@ -16,6 +16,7 @@ import { verifyEmailTemplate } from './templates/verify-email.js';
 import { newEventTemplate, type NewEventEmailData } from './templates/new-event.js';
 import { digestTemplate, type DigestEmailData } from './templates/digest.js';
 import { feedbackRequestTemplate, type FeedbackRequestEmailData } from './templates/feedback-request.js';
+import { eventMessageTemplate, type EventMessageEmailData } from './templates/event-message.js';
 
 export const APP_URL = Symbol('APP_URL');
 // the gap between emails in a bulk send: Resend accepts a few requests a second
@@ -180,6 +181,32 @@ export class EmailService {
       ...eventCancelledTemplate({ ...event, name: r.name, url }),
       idempotencyKey: `event-cancelled/${r.registrationId}`,
     }));
+  }
+
+  /**
+   * An organiser's message, to everyone going (and, if they chose, everyone
+   * waiting). Guests, who can't sign in, get the event's public page.
+   */
+  sendEventMessage(
+    recipients: (EventRecipient & { guest: boolean; waiting: boolean })[],
+    message: Omit<EventMessageEmailData, 'name' | 'url' | 'waiting'> & {
+      messageId: string;
+      orgSlug: string;
+      clubId: string;
+      eventId: string;
+    },
+  ): Promise<void> {
+    const { messageId, orgSlug, clubId, eventId, ...data } = message;
+    const member = this.eventUrl(orgSlug, clubId, eventId);
+    const guest = new URL(`/e/${eventId}`, this.appUrl).toString();
+    return this.sendEach('event message', recipients, (r) => {
+      const { guest: isGuest, waiting } = r as EventRecipient & { guest: boolean; waiting: boolean };
+      return {
+        to: r.to,
+        ...eventMessageTemplate({ ...data, name: r.name, waiting, url: isGuest ? guest : member }),
+        idempotencyKey: `event-message/${messageId}/${r.registrationId}`,
+      };
+    });
   }
 
   /** Tells everyone registered about a new time or place. */

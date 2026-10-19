@@ -18,12 +18,17 @@ import type {
   CreateEventDto,
   EventAttendeeDto,
   EventDto,
+  EventMessageDto,
+  SendEventMessageDto,
   EventScope,
   SeriesScope,
   UpdateEventDto,
 } from './dto/event.dto.js';
 import { EventStatus, EventVisibility, type RepeatEvery } from './entities/event.entity.js';
 import { audit, AuditAction } from '../audit/audit.js';
+
+// an organiser's messages per event per day
+const MESSAGES_PER_DAY = 10;
 
 export const eventNotFound = () => HttpError.notFound('Event not found', 'EVENT_NOT_FOUND');
 const missingPermission = (missing: Permission[]) =>
@@ -497,6 +502,105 @@ export class EventService {
         details: { title: event.title, ...(ids.length > 1 && { alsoLater: ids.length - 1 }) },
       });
       return this.findOne(m, access, eventId);
+    });
+  }
+
+  /**
+   * Emails everyone going to an event (and the waitlist, if asked), from
+   * someone who can edit it. Kept, for the record. Ten a day per event at
+   * most: enough for real news, not enough to spam.
+   */
+  async message(access: ClubAccess, eventId: string, dto: SendEventMessageDto): Promise<EventMessageDto> {
+    const subject = dto.subject.trim();
+    const body = dto.body.trim();
+    if (!subject || !body) throw HttpError.badRequest('Write a subject and a message', 'MESSAGE_EMPTY');
+    const { sent, recipients, club, event } = await this.inClub(access, async (m, orgId) => {
+      const event = await this.lockForManage(m, access, eventId);
+      if (event.status === EventStatus.Draft) {
+        throw HttpError.conflict('Publish the event first: nobody is going to a draft', 'EVENT_IS_DRAFT');
+      }
+      const [{ today }]: { today: number }[] = await m.query(
+        `SELECT count(*)::int AS today FROM event_messages WHERE event_id = $1 AND created_at > now() - interval '1 day'`,
+        [eventId],
+      );
+      if (today >= MESSAGES_PER_DAY) {
+        throw HttpError.conflict(`${MESSAGES_PER_DAY} messages a day per event at most`, 'TOO_MANY_MESSAGES');
+      }
+      const recipients: (EventRecipient & { guest: boolean; waiting: boolean })[] = await m.query(
+        `SELECT r.id AS "registrationId", u.email AS "to", u.name, (u.password_hash IS NULL) AS guest, false AS waiting
+         FROM registrations r JOIN users u ON u.id = r.user_id
+         WHERE r.event_id = $1 AND r.cancelled_at IS NULL
+         UNION ALL
+         SELECT w.id, u.email, u.name, (u.password_hash IS NULL), true
+         FROM waitlist_entries w JOIN users u ON u.id = w.user_id
+         WHERE w.event_id = $1 AND w.promoted_at IS NULL AND $2`,
+        [eventId, !!dto.toWaitlist],
+      );
+      if (recipients.length === 0) throw HttpError.conflict('Nobody is going yet', 'NO_RECIPIENTS');
+      const [sent]: { id: string; created_at: Date }[] = await m.query(
+        `INSERT INTO event_messages (org_id, event_id, sender_id, subject, body, to_waitlist, recipient_count)
+         VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id, created_at`,
+        [orgId, eventId, access.userId, subject, body, !!dto.toWaitlist, recipients.length],
+      );
+      await audit(m, {
+        actorId: access.userId,
+        action: AuditAction.EventMessaged,
+        clubId: access.clubId,
+        eventId,
+        details: { title: event.title, subject, people: recipients.length },
+      });
+      return { sent, recipients, club: await this.clubDetails(m, access.clubId), event };
+    });
+
+    const [{ name: senderName }]: { name: string }[] = await this.inClub(access, (m) =>
+      m.query(`SELECT name FROM users WHERE id = $1`, [access.userId]),
+    );
+    this.email.inBackground(
+      'event message',
+      this.email.sendEventMessage(recipients, {
+        messageId: sent.id,
+        senderName,
+        clubName: club.name,
+        eventTitle: event.title,
+        when: formatWhen(event.starts_at, event.ends_at, club.timeZone),
+        subject,
+        body,
+        orgSlug: club.orgSlug,
+        clubId: access.clubId,
+        eventId,
+      }),
+    );
+    return {
+      id: sent.id,
+      subject,
+      body,
+      senderName,
+      toWaitlist: !!dto.toWaitlist,
+      recipientCount: recipients.length,
+      sentAt: sent.created_at,
+    };
+  }
+
+  /** What's been sent about an event, newest first (people who can edit it). */
+  messages(access: ClubAccess, eventId: string): Promise<EventMessageDto[]> {
+    return this.inClub(access, async (m) => {
+      await this.lockForManage(m, access, eventId);
+      const rows: { id: string; subject: string; body: string; sender_name: string | null; to_waitlist: boolean; recipient_count: number; created_at: Date }[] =
+        await m.query(
+          `SELECT em.id, em.subject, em.body, u.name AS sender_name, em.to_waitlist, em.recipient_count, em.created_at
+           FROM event_messages em LEFT JOIN users u ON u.id = em.sender_id
+           WHERE em.event_id = $1 ORDER BY em.created_at DESC`,
+          [eventId],
+        );
+      return rows.map((r) => ({
+        id: r.id,
+        subject: r.subject,
+        body: r.body,
+        senderName: r.sender_name ?? 'A deleted account',
+        toWaitlist: r.to_waitlist,
+        recipientCount: r.recipient_count,
+        sentAt: r.created_at,
+      }));
     });
   }
 

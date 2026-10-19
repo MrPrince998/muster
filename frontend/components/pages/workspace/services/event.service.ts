@@ -155,3 +155,27 @@ function saveFile(blob: Blob, filename: string) {
   link.remove();
   URL.revokeObjectURL(url);
 }
+
+/** A message an organiser sent everyone going to an event. */
+export interface EventMessage {
+  id: string;
+  subject: string;
+  body: string;
+  senderName: string;
+  toWaitlist: boolean;
+  recipientCount: number;
+  sentAt: string;
+}
+
+const messagesKey = (clubId: string, eventId: string) => ["clubs", clubId, "events", eventId, "messages"];
+
+/** What's been sent about an event, newest first (people who can edit it). */
+export const useEventMessages = (clubId: string, eventId: string, enabled: boolean) =>
+  useApiQuery<EventMessage[]>(messagesKey(clubId, eventId), { url: `/clubs/${clubId}/events/${eventId}/messages` }, { enabled });
+
+/** Emails everyone going (and the waitlist, if asked). Ten a day per event (TOO_MANY_MESSAGES). */
+export const useSendEventMessage = (clubId: string, eventId: string) =>
+  useApiMutation<EventMessage, { subject: string; body: string; toWaitlist: boolean }>(
+    { method: "post", url: `/clubs/${clubId}/events/${eventId}/messages` },
+    { invalidates: [messagesKey(clubId, eventId)] },
+  );

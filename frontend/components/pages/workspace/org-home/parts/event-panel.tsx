@@ -12,6 +12,7 @@ import {
   LoaderCircle,
   Lock,
   MapPin,
+  Mail,
   Pencil,
   QrCode,
   Repeat,
@@ -35,6 +36,7 @@ import type { ClubEvent, EventAttendee, SeriesScope } from "@/types/event.interf
 import { downloadAttendees, eventsKey } from "../../services/event.service";
 import { ConfirmDialog } from "../../shared/confirm-dialog";
 import { hasLaterInSeries, SeriesScopeChoice, seriesLabel } from "../../shared/series-scope-choice";
+import { MessageDialog } from "../../dialogs/message-dialog";
 import { TicketDialog } from "../../tickets/ticket-dialog";
 import { differsFromDevice, zoneCity, zoneName } from "@/lib/time-zone";
 import { formatMoney } from "@/lib/money";
@@ -384,6 +386,7 @@ function OrganiserActions({
   onToggleRegistration,
   onCancelEvent,
   onDeleteDraft,
+  timeZone,
   draft,
   ended,
 }: EventPanelProps & { event: ClubEvent; draft: boolean; ended: boolean }) {
@@ -393,6 +396,7 @@ function OrganiserActions({
   );
   const [reason, setReason] = useState("");
   const [scope, setScope] = useState<SeriesScope>("this");
+  const [messaging, setMessaging] = useState(false);
   const series = hasLaterInSeries(event);
   const going = event.registeredCount;
 
@@ -438,6 +442,15 @@ function OrganiserActions({
         <Pencil aria-hidden />
         Edit event
       </Button>
+      {!draft && going > 0 && (
+        <>
+          <Button size="lg" variant="outline" className="h-11" onClick={() => setMessaging(true)}>
+            <Mail aria-hidden />
+            Message everyone going
+          </Button>
+          <MessageDialog event={event} open={messaging} onOpenChange={setMessaging} timeZone={timeZone} />
+        </>
+      )}
       {!draft && !ended && (
         <Button
           size="lg"

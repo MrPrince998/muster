@@ -162,3 +162,15 @@ test("price an event, with the workspace's Stripe account ready", async ({ page 
   await expect(panel.getByRole("definition").filter({ hasText: /^\$12\.50Refunded/ })).toBeVisible();
   await expect(page.getByRole("button").filter({ hasText: "Paid Workshop" }).getByText("$12.50")).toBeVisible();
 });
+
+test("message everyone going to an event", async ({ page }) => {
+  await openClub(page, "Robotics Society");
+  const panel = await openEvent(page, "Robot Wars Viewing");
+  await panel.getByRole("button", { name: "Message everyone going" }).click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByLabel("Subject").fill("Pizza is here");
+  await dialog.getByLabel("Message").fill("Grab a slice before the show starts.");
+  await dialog.getByRole("button", { name: /^Send to \d+ people$/ }).click();
+  await expect(dialog.getByText(/^Sent to \d+ people\.$/)).toBeVisible();
+  await expect(dialog.getByRole("region", { name: "Sent already" }).getByText("Pizza is here")).toBeVisible();
+});
