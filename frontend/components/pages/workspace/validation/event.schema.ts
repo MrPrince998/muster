@@ -16,7 +16,16 @@ export const eventFormSchema = z
       .trim()
       .refine((value) => value === "" || (/^\d+$/.test(value) && Number(value) >= 1), "Enter a whole number, 1 or more"),
     visibility: z.enum(["members", "public"]),
+    // new events only: how often it repeats, and how many in all
+    repeatEvery: z.enum(["none", "week", "fortnight", "month"]),
+    repeatCount: z.string().trim(),
   })
+  .refine(
+    (values) =>
+      values.repeatEvery === "none" ||
+      (/^\d+$/.test(values.repeatCount) && Number(values.repeatCount) >= 2 && Number(values.repeatCount) <= 52),
+    { path: ["repeatCount"], message: "Between 2 and 52 times" },
+  )
   .refine((values) => !values.startsAt || !values.endsAt || new Date(values.endsAt) > new Date(values.startsAt), {
     path: ["endsAt"],
     message: "It has to end after it starts",

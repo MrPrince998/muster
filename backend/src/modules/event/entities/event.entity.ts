@@ -32,6 +32,10 @@ export const EventStatus = {
 } as const;
 export type EventStatus = (typeof EventStatus)[keyof typeof EventStatus];
 
+// how often a recurring event repeats
+export const REPEAT_EVERY = ['week', 'fortnight', 'month'] as const;
+export type RepeatEvery = (typeof REPEAT_EVERY)[number];
+
 /**
  * An event run by a club. Tenant-scoped: carries org_id for RLS.
  *
@@ -50,8 +54,13 @@ export type EventStatus = (typeof EventStatus)[keyof typeof EventStatus];
 // cancelled exactly when it has a cancellation time; only a cancelled event has a reason
 @Check('events_cancelled_at', `("status" = 'cancelled') = ("cancelled_at" IS NOT NULL)`)
 @Check('events_cancel_reason', `"cancel_reason" IS NULL OR "status" = 'cancelled'`)
+@Check('events_repeat_every_check', `"repeat_every" IN ('week', 'fortnight', 'month')`)
+// in a series exactly when it has a rule
+@Check('events_series_check', `("series_id" IS NULL) = ("repeat_every" IS NULL)`)
 // a club's events by date: the main listing and calendar query
 @Index('events_club_id_starts_at_idx', ['clubId', 'startsAt'])
+// a series in order, for "this and following" and "3 of 8"
+@Index('events_series_idx', ['seriesId', 'startsAt'], { where: '"series_id" IS NOT NULL' })
 // target for registrations' foreign key: proves a registration's org_id is
 // really its event's workspace
 @Unique('events_id_org_id_key', ['id', 'orgId'])
@@ -110,6 +119,13 @@ export class Event {
   // the organiser's note to the people registered, shown with the cancellation
   @Column({ name: 'cancel_reason', type: 'varchar', length: 500, nullable: true })
   cancelReason: string | null;
+
+  // the events made together from one "repeats weekly, 8 times"; null for a one-off
+  @Column({ name: 'series_id', type: 'uuid', nullable: true })
+  seriesId: string | null;
+
+  @Column({ name: 'repeat_every', type: 'text', nullable: true })
+  repeatEvery: RepeatEvery | null;
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;

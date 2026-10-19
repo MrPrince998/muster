@@ -26,6 +26,34 @@ test("create and publish an event, then cancel it with a note", async ({ page })
   await expect(panel.getByRole("button", { name: "Edit event" })).toHaveCount(0);
 });
 
+test("a weekly series: one form makes them all, and the rest are called off together", async ({ page }) => {
+  await openClub(page, "Robotics Society");
+  await page.getByRole("button", { name: "New event" }).click();
+  const form = page.getByRole("dialog");
+  await form.getByLabel("Name", { exact: true }).fill("Series Test Night");
+  await form.locator("#event-starts").fill(localDateTime(22, 18));
+  await form.locator("#event-ends").fill(localDateTime(22, 20));
+  await form.getByLabel("Repeats").selectOption("week");
+  await form.getByLabel("How many times").fill("3");
+  await expect(form.getByText("Makes 3 events")).toBeVisible();
+  await form.getByRole("button", { name: "Publish" }).click();
+
+  const panel = page.getByRole("complementary", { name: "Series Test Night" });
+  await expect(panel.getByText("Every week, 1 of 3")).toBeVisible();
+  const cards = page.getByRole("button").filter({ hasText: "Series Test Night" });
+  await expect(cards).toHaveCount(3);
+
+  // the second, and the one after it
+  await cards.filter({ hasText: "2 of 3" }).click();
+  await expect(panel.getByText("Every week, 2 of 3")).toBeVisible();
+  await panel.getByRole("button", { name: "Cancel event" }).click();
+  const confirm = page.getByRole("alertdialog");
+  await confirm.getByLabel(/This and following/).check();
+  await confirm.getByRole("button", { name: "Cancel event" }).click();
+  await expect(cards.filter({ hasText: "Cancelled" })).toHaveCount(2);
+  await expect(cards.filter({ hasText: "1 of 3" }).getByText("Cancelled")).toHaveCount(0);
+});
+
 test("check someone in at the door by name", async ({ page }) => {
   await openClub(page, "Robotics Society");
   const panel = await openEvent(page, "Robot Wars Viewing");

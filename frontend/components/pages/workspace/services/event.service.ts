@@ -1,7 +1,7 @@
 import { request } from "@/lib/api/client";
 import { useApiMutation } from "@/lib/api/useApiMutation";
 import { useApiQuery } from "@/lib/api/useApiQuery";
-import type { ClubEvent, EventAttendee, EventChanges, EventInput, EventScope } from "@/types/event.interface";
+import type { ClubEvent, EventAttendee, EventChanges, EventInput, EventScope, SeriesScope } from "@/types/event.interface";
 
 // Everything about a club's events sits under one key, so any change can
 // refresh all three lists (and the counts) at once.
@@ -50,28 +50,38 @@ export const useCreateEvent = (clubId: string, orgId: string) =>
  * A new time or place is emailed to everyone registered.
  */
 export const useUpdateEvent = (clubId: string, orgId: string) =>
-  useApiMutation<ClubEvent, { eventId: string } & EventChanges>(
-    ({ eventId, ...changes }) => ({ method: "patch", url: `/clubs/${clubId}/events/${eventId}`, data: changes }),
+  useApiMutation<ClubEvent, { eventId: string; scope?: SeriesScope } & EventChanges>(
+    ({ eventId, scope, ...changes }) => ({
+      method: "patch",
+      url: `/clubs/${clubId}/events/${eventId}`,
+      params: { scope },
+      data: changes,
+    }),
     { invalidates: refreshes(clubId, orgId) },
   );
 
 export const usePublishEvent = (clubId: string, orgId: string) =>
-  useApiMutation<ClubEvent, { eventId: string }>(
-    ({ eventId }) => ({ method: "post", url: `/clubs/${clubId}/events/${eventId}/publish` }),
+  useApiMutation<ClubEvent, { eventId: string; scope?: SeriesScope }>(
+    ({ eventId, scope }) => ({ method: "post", url: `/clubs/${clubId}/events/${eventId}/publish`, params: { scope } }),
     { invalidates: refreshes(clubId, orgId) },
   );
 
 /** Calls off a published event; everyone registered is emailed, with the reason if given. */
 export const useCancelEvent = (clubId: string, orgId: string) =>
-  useApiMutation<ClubEvent, { eventId: string; reason?: string }>(
-    ({ eventId, reason }) => ({ method: "post", url: `/clubs/${clubId}/events/${eventId}/cancel`, data: { reason } }),
+  useApiMutation<ClubEvent, { eventId: string; reason?: string; scope?: SeriesScope }>(
+    ({ eventId, reason, scope }) => ({
+      method: "post",
+      url: `/clubs/${clubId}/events/${eventId}/cancel`,
+      params: { scope },
+      data: { reason },
+    }),
     { invalidates: [...refreshes(clubId, orgId), ["me", "tickets"]] },
   );
 
 /** Deletes a draft. Published events are cancelled instead (EVENT_NOT_DRAFT). */
 export const useDeleteEvent = (clubId: string, orgId: string) =>
-  useApiMutation<void, { eventId: string }>(
-    ({ eventId }) => ({ method: "delete", url: `/clubs/${clubId}/events/${eventId}` }),
+  useApiMutation<void, { eventId: string; scope?: SeriesScope }>(
+    ({ eventId, scope }) => ({ method: "delete", url: `/clubs/${clubId}/events/${eventId}`, params: { scope } }),
     { invalidates: refreshes(clubId, orgId) },
   );
 

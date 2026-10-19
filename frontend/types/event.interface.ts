@@ -1,6 +1,18 @@
 export type EventVisibility = "members" | "public";
 export type EventStatus = "draft" | "published" | "cancelled";
 export type EventScope = "upcoming" | "past" | "drafts";
+export type RepeatEvery = "week" | "fortnight" | "month";
+// for an event in a series: just this one, or this and the ones after it
+export type SeriesScope = "this" | "following";
+
+/** The series a recurring event belongs to. */
+export interface EventSeries {
+  id: string;
+  every: RepeatEvery;
+  // which one this is, from 1, by date; and how many in all
+  index: number;
+  count: number;
+}
 
 /** GET /clubs/:clubId/events: an event as the signed-in person sees it. */
 export interface ClubEvent {
@@ -29,6 +41,8 @@ export interface ClubEvent {
   yourWaitlistPosition: number | null;
   // you may edit it: event.manage_any, or event.manage_own as its creator
   canManage: boolean;
+  // null for a one-off
+  series: EventSeries | null;
 }
 
 /** GET .../registrations: someone with an active registration. */
@@ -49,7 +63,9 @@ export interface EventInput {
   visibility?: EventVisibility;
   // create only: publish straight away instead of saving a draft
   publish?: boolean;
+  // create only: the same event every week, fortnight or month, `count` in all
+  repeat?: { every: RepeatEvery; count: number };
 }
 
 /** PATCH: any of the fields, plus opening or closing registration. */
-export type EventChanges = Partial<Omit<EventInput, "publish">> & { registrationOpen?: boolean };
+export type EventChanges = Partial<Omit<EventInput, "publish" | "repeat">> & { registrationOpen?: boolean };

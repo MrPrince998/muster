@@ -118,7 +118,7 @@ describe('EventService.remove', () => {
   it('deletes a draft', async () => {
     const { service, ran } = setup(row({ status: 'draft', registered_count: 0 }));
     await service.remove(organiser, 'ev1');
-    expect(ran('DELETE FROM events')[0].params).toEqual(['ev1']);
+    expect(ran('DELETE FROM events')[0].params).toEqual([['ev1']]);
   });
 
   it('refuses a published event: those are cancelled, so the history stays', async () => {

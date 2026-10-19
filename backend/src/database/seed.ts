@@ -199,6 +199,8 @@ interface EventPlan {
   going: Person[];
   turnout?: number;
   waiting?: Person[];
+  // one of a recurring series
+  series?: { id: string; every: 'week' | 'fortnight' | 'month' };
 }
 
 async function makeEvent(m: Tx, orgId: string, clubId: string, by: Person, plan: EventPlan) {
@@ -206,8 +208,9 @@ async function makeEvent(m: Tx, orgId: string, clubId: string, by: Person, plan:
   const end = hoursAfter(plan.start, plan.hours ?? 3);
   const [{ id }]: { id: string }[] = await m.query(
     `INSERT INTO events (org_id, club_id, created_by, title, description, location, starts_at, ends_at, capacity,
-                         visibility, status, published_at, cancelled_at, cancel_reason, registration_closed_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) RETURNING id`,
+                         visibility, status, published_at, cancelled_at, cancel_reason, registration_closed_at,
+                         series_id, repeat_every)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17) RETURNING id`,
     [
       orgId,
       clubId,
@@ -224,6 +227,8 @@ async function makeEvent(m: Tx, orgId: string, clubId: string, by: Person, plan:
       status === 'cancelled' ? new Date(Date.now() - 2 * DAY) : null,
       status === 'cancelled' ? (plan.cancelReason ?? null) : null,
       plan.registrationClosed ? new Date(Date.now() - DAY) : null,
+      plan.series?.id ?? null,
+      plan.series?.every ?? null,
     ],
   );
   const over = end.getTime() < Date.now();
@@ -361,6 +366,20 @@ async function riverside(ds: DataSource, people: Awaited<ReturnType<typeof makeP
       going: soldering.slice(0, 12),
       waiting: soldering.slice(12),
     });
+    // a weekly series: the same evening for six weeks, each with its own places
+    // (no sample(): the random draws after this stay as they were)
+    const buildNights = { id: randomUUID(), every: 'week' as const };
+    for (let week = 0; week < 6; week++) {
+      await makeEvent(m, orgId, robotics.id, demo, {
+        title: 'Build Night',
+        description: 'Bring a project, or help with the club robot. Tools and snacks provided.',
+        location: 'Engineering Lab 2',
+        start: daysFromNow(3 + 7 * week, 18),
+        capacity: 30,
+        going: roboticsCrew.slice(0, [11, 7, 4, 0, 0, 0][week]),
+        series: buildNights,
+      });
+    }
     await makeEvent(m, orgId, robotics.id, demo, {
       title: 'Drone Race',
       location: 'Sports Field',

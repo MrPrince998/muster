@@ -2,8 +2,8 @@
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import { LoaderCircle } from "lucide-react";
-import { useEffect } from "react";
-import { useForm } from "react-hook-form";
+import { useEffect, useState } from "react";
+import { useForm, useWatch } from "react-hook-form";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -18,9 +18,10 @@ import { InputGroup, InputGroupInput } from "@/components/ui/input-group";
 import { Textarea } from "@/components/ui/textarea";
 import { asApiError } from "@/lib/api/client";
 import { cn } from "@/lib/utils";
-import type { ClubEvent } from "@/types/event.interface";
+import type { ClubEvent, SeriesScope } from "@/types/event.interface";
 import { useCreateEvent, useUpdateEvent } from "../services/event.service";
 import { differsFromDevice, zoneCity } from "@/lib/time-zone";
+import { hasLaterInSeries, SeriesScopeChoice } from "../shared/series-scope-choice";
 import { eventFormSchema, type EventFormValues, toEventInput, toLocalInput } from "../validation/event.schema";
 
 function messageFor(code: string): string {
@@ -46,6 +47,8 @@ const emptyValues: EventFormValues = {
   endsAt: "",
   capacity: "",
   visibility: "members",
+  repeatEvery: "none",
+  repeatCount: "4",
 };
 
 /**
@@ -80,8 +83,20 @@ export default function EventFormDialog({
   const form = useForm<EventFormValues>({ resolver: zodResolver(eventFormSchema), defaultValues: emptyValues });
   const {
     register,
+    control,
     formState: { errors, isSubmitting },
   } = form;
+  const repeatEvery = useWatch({ control, name: "repeatEvery" });
+  const repeatCount = Number(useWatch({ control, name: "repeatCount" }));
+  // editing one of a series: just it, or the rest too
+  const inSeries = editing && hasLaterInSeries(event);
+  const [scope, setScope] = useState<SeriesScope>("this");
+  // each time it opens, back to just this one
+  const [wasOpen, setWasOpen] = useState(open);
+  if (open !== wasOpen) {
+    setWasOpen(open);
+    if (open) setScope("this");
+  }
 
   // fill the form each time it opens: the event being edited, or blank
   useEffect(() => {
@@ -96,6 +111,8 @@ export default function EventFormDialog({
             endsAt: toLocalInput(event.endsAt, timeZone),
             capacity: event.capacity === null ? "" : String(event.capacity),
             visibility: event.visibility === "public" ? "public" : "members",
+            repeatEvery: "none",
+            repeatCount: "4",
           }
         : emptyValues,
     );
@@ -105,8 +122,18 @@ export default function EventFormDialog({
     form.handleSubmit(async (values) => {
       try {
         const saved = editing
-          ? await updateEvent.mutateAsync({ eventId: event!.id, ...toEventInput(values, timeZone) })
-          : await createEvent.mutateAsync({ ...toEventInput(values, timeZone), publish });
+          ? await updateEvent.mutateAsync({
+              eventId: event!.id,
+              ...toEventInput(values, timeZone),
+              ...(inSeries && { scope }),
+            })
+          : await createEvent.mutateAsync({
+              ...toEventInput(values, timeZone),
+              publish,
+              ...(values.repeatEvery !== "none" && {
+                repeat: { every: values.repeatEvery, count: Number(values.repeatCount) },
+              }),
+            });
         onOpenChange(false);
         onSaved?.(saved);
       } catch (error) {
@@ -158,6 +185,43 @@ export default function EventFormDialog({
           {differsFromDevice(timeZone) && (
             <p className="-mt-2 text-sm text-muted-foreground">
               Times are in {zoneCity(timeZone!)} time, where {clubName} meets, not your device&rsquo;s.
+            </p>
+          )}
+
+          {!editing && (
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field>
+                <FieldLabel htmlFor="event-repeat">Repeats</FieldLabel>
+                <select
+                  id="event-repeat"
+                  className="h-11 w-full rounded-lg border border-input bg-transparent px-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                  {...register("repeatEvery")}
+                >
+                  <option value="none">Doesn&rsquo;t repeat</option>
+                  <option value="week">Every week</option>
+                  <option value="fortnight">Every fortnight</option>
+                  <option value="month">Every month</option>
+                </select>
+              </Field>
+              {repeatEvery !== "none" && (
+                <Field data-invalid={!!errors.repeatCount}>
+                  <FieldLabel htmlFor="event-repeat-count">How many times</FieldLabel>
+                  <InputGroup className="h-11">
+                    <InputGroupInput
+                      id="event-repeat-count"
+                      inputMode="numeric"
+                      aria-invalid={!!errors.repeatCount}
+                      {...register("repeatCount")}
+                    />
+                  </InputGroup>
+                  <FieldError errors={[errors.repeatCount]} />
+                </Field>
+              )}
+            </div>
+          )}
+          {!editing && repeatEvery !== "none" && repeatCount >= 2 && repeatCount <= 52 && (
+            <p className="-mt-2 text-sm text-muted-foreground">
+              Makes {repeatCount} events at the same time of day, each with its own places and tickets.
             </p>
           )}
 
@@ -223,6 +287,8 @@ export default function EventFormDialog({
             />
             <FieldError errors={[errors.description]} />
           </Field>
+
+          {inSeries && <SeriesScopeChoice value={scope} onChange={setScope} verb="change" />}
 
           {errors.root && (
             <p role="alert" className="text-sm text-destructive">

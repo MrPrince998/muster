@@ -1,8 +1,10 @@
+import { randomUUID } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
 import type { EntityManager } from 'typeorm';
 import { HttpError } from '../../common/errors/http-error.js';
 import { fileSlug, toCsv } from '../../common/utils/csv.js';
 import { buildIcs } from '../../common/utils/ics.js';
+import { occurrences, shiftLike } from '../../common/utils/recurrence.js';
 import { config } from '../../config/config.js';
 import { TenantService } from '../../database/tenant.service.js';
 import { EmailService, type EventRecipient } from '../email/email.service.js';
@@ -16,9 +18,10 @@ import type {
   EventAttendeeDto,
   EventDto,
   EventScope,
+  SeriesScope,
   UpdateEventDto,
 } from './dto/event.dto.js';
-import { EventStatus, EventVisibility } from './entities/event.entity.js';
+import { EventStatus, EventVisibility, type RepeatEvery } from './entities/event.entity.js';
 
 export const eventNotFound = () => HttpError.notFound('Event not found', 'EVENT_NOT_FOUND');
 const missingPermission = (missing: Permission[]) =>
@@ -44,6 +47,25 @@ interface EventRow {
   youre_going: boolean;
   waitlist_count: number;
   waitlist_position: number | null;
+  series_id: string | null;
+  repeat_every: RepeatEvery | null;
+  series_index: number;
+  series_count: number;
+}
+
+type ClubDetails = { name: string; orgSlug: string; timeZone: string };
+
+// what an edit has to tell the people registered, once it's committed
+interface EventChange {
+  eventId: string;
+  morePlaces: boolean;
+  notify: {
+    recipients: EventRecipient[];
+    title: string;
+    when: string;
+    where: string | null;
+    before: { when?: string; where?: string | null };
+  } | null;
 }
 
 // Every event read goes through this, so counts and "am I going" are always
@@ -52,7 +74,10 @@ const SELECT_EVENTS = `
   SELECT
     e.id, e.club_id, e.created_by, e.title, e.description, e.location,
     e.starts_at, e.ends_at, e.capacity, e.visibility, e.status,
-    e.registration_closed_at, e.cancelled_at, e.cancel_reason,
+    e.registration_closed_at, e.cancelled_at, e.cancel_reason, e.series_id, e.repeat_every,
+    (SELECT count(*) FROM events s
+      WHERE s.series_id = e.series_id AND (s.starts_at, s.id) <= (e.starts_at, e.id))::int AS series_index,
+    (SELECT count(*) FROM events s WHERE s.series_id = e.series_id)::int AS series_count,
     (SELECT count(*) FROM registrations r
       WHERE r.event_id = e.id AND r.cancelled_at IS NULL)::int          AS registered_count,
     (SELECT count(*) FROM registrations r
@@ -115,7 +140,11 @@ export class EventService {
     });
   }
 
-  /** Creates a draft, or publishes it straight away when asked and allowed. */
+  /**
+   * Creates a draft, or publishes it straight away when asked and allowed.
+   * With `repeat`, creates the whole series at once (each at the same local
+   * time in the workspace's zone) and returns the first.
+   */
   create(access: ClubAccess, dto: CreateEventDto): Promise<EventDto> {
     if (dto.publish && !access.has(Permission.EventPublish)) {
       throw missingPermission([Permission.EventPublish]);
@@ -125,129 +154,95 @@ export class EventService {
     assertEndsAfterStart(startsAt, endsAt);
 
     return this.inClub(access, async (m, orgId) => {
-      const [{ id }]: { id: string }[] = await m.query(
-        `INSERT INTO events
-           (org_id, club_id, created_by, title, description, location,
-            starts_at, ends_at, capacity, visibility, status, published_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-         RETURNING id`,
-        [
-          orgId,
-          access.clubId,
-          access.userId,
-          dto.title.trim(),
-          dto.description?.trim() || null,
-          dto.location?.trim() || null,
-          startsAt,
-          endsAt,
-          dto.capacity ?? null,
-          dto.visibility ?? EventVisibility.Members,
-          dto.publish ? EventStatus.Published : EventStatus.Draft,
-          dto.publish ? new Date() : null,
-        ],
-      );
-      return this.findOne(m, access, id);
+      const dates = dto.repeat
+        ? occurrences(startsAt, endsAt, dto.repeat.every, dto.repeat.count, await TenantService.timeZone(m))
+        : [{ startsAt, endsAt }];
+      const seriesId = dto.repeat ? randomUUID() : null;
+      const ids: string[] = [];
+      for (const date of dates) {
+        const [{ id }]: { id: string }[] = await m.query(
+          `INSERT INTO events
+             (org_id, club_id, created_by, title, description, location,
+              starts_at, ends_at, capacity, visibility, status, published_at, series_id, repeat_every)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+           RETURNING id`,
+          [
+            orgId,
+            access.clubId,
+            access.userId,
+            dto.title.trim(),
+            dto.description?.trim() || null,
+            dto.location?.trim() || null,
+            date.startsAt,
+            date.endsAt,
+            dto.capacity ?? null,
+            dto.visibility ?? EventVisibility.Members,
+            dto.publish ? EventStatus.Published : EventStatus.Draft,
+            dto.publish ? new Date() : null,
+            seriesId,
+            dto.repeat?.every ?? null,
+          ],
+        );
+        ids.push(id);
+      }
+      return this.findOne(m, access, ids[0]);
     });
   }
 
   /**
    * Edits an event you may manage. Fields left out keep their value. The
    * capacity can't drop below the people already registered. A new time or
-   * place on a published event is emailed to everyone registered.
+   * place on a published event is emailed to everyone registered. With
+   * `following`, the later events of its series change too (cancelled ones
+   * stay as they are): the same fields, and a new time moved the same way on
+   * the clock, each keeping its own date.
    */
-  async update(access: ClubAccess, eventId: string, dto: UpdateEventDto): Promise<EventDto> {
-    const { event, notify, orgId, morePlaces } = await this.inClub(access, async (m, orgId) => {
+  async update(access: ClubAccess, eventId: string, dto: UpdateEventDto, scope: SeriesScope = 'this'): Promise<EventDto> {
+    const { event, changes, orgId, club } = await this.inClub(access, async (m, orgId) => {
       // locked, so a registration can't slip in between the capacity check and the update
-      const event = await this.lockForManage(m, access, eventId);
+      const [event, ...later] = await this.lockSeries(m, access, eventId, scope);
       if (event.status === EventStatus.Cancelled) {
         throw HttpError.conflict("A cancelled event can't be changed", 'EVENT_CANCELLED');
       }
+      const edited = {
+        startsAt: dto.startsAt ? new Date(dto.startsAt) : event.starts_at,
+        endsAt: dto.endsAt ? new Date(dto.endsAt) : event.ends_at,
+      };
+      assertEndsAfterStart(edited.startsAt, edited.endsAt);
+      const club = await this.clubDetails(m, access.clubId);
 
-      const startsAt = dto.startsAt ? new Date(dto.startsAt) : event.starts_at;
-      const endsAt = dto.endsAt ? new Date(dto.endsAt) : event.ends_at;
-      assertEndsAfterStart(startsAt, endsAt);
-
-      const capacity = dto.capacity === undefined ? event.capacity : dto.capacity;
-      if (capacity !== null) {
-        const [{ count }]: { count: number }[] = await m.query(
-          `SELECT count(*)::int AS count FROM registrations WHERE event_id = $1 AND cancelled_at IS NULL`,
-          [eventId],
-        );
-        if (capacity < count) {
-          throw HttpError.conflict(
-            `${count} people are already registered; the capacity can't be lower`,
-            'CAPACITY_BELOW_REGISTERED',
-            { registered: count },
-          );
-        }
+      const changes = [await this.applyUpdate(m, event, dto, edited, club)];
+      const moving = dto.startsAt !== undefined || dto.endsAt !== undefined;
+      for (const other of later) {
+        if (other.status === EventStatus.Cancelled) continue;
+        const own = { startsAt: other.starts_at, endsAt: other.ends_at };
+        const times = moving
+          ? shiftLike(own, { before: { startsAt: event.starts_at, endsAt: event.ends_at }, after: edited }, club.timeZone)
+          : own;
+        changes.push(await this.applyUpdate(m, other, dto, times, club));
       }
-
-      const location = dto.location === undefined ? event.location : dto.location.trim() || null;
-      // closing keeps the first close time; opening clears it
-      const closedAt =
-        dto.registrationOpen === undefined
-          ? event.registration_closed_at
-          : dto.registrationOpen
-            ? null
-            : (event.registration_closed_at ?? new Date());
-
-      await m.query(
-        `UPDATE events SET
-           title = $2, description = $3, location = $4,
-           starts_at = $5, ends_at = $6, capacity = $7, visibility = $8, registration_closed_at = $9
-         WHERE id = $1`,
-        [
-          eventId,
-          dto.title?.trim() ?? event.title,
-          dto.description === undefined ? event.description : dto.description.trim() || null,
-          location,
-          startsAt,
-          endsAt,
-          capacity,
-          dto.visibility ?? event.visibility,
-          closedAt,
-        ],
-      );
-
-      // drafts have nobody registered; a published event tells its people
-      const moved =
-        startsAt.getTime() !== event.starts_at.getTime() || endsAt.getTime() !== event.ends_at.getTime();
-      const relocated = location !== event.location;
-      const club = event.status === EventStatus.Published && (moved || relocated) ? await this.clubDetails(m, access.clubId) : null;
-      const notify = club
-        ? {
-            recipients: await this.recipients(m, eventId),
-            club,
-            before: {
-              ...(moved && { when: formatWhen(event.starts_at, event.ends_at, club.timeZone) }),
-              ...(relocated && { where: event.location }),
-            },
-          }
-        : null;
-      // more room (a higher or no limit, or registration open again): the waitlist goes first
-      const morePlaces =
-        (event.capacity !== null && (capacity === null || capacity > event.capacity)) ||
-        (event.registration_closed_at !== null && closedAt === null);
-      return { event: await this.findOne(m, access, eventId), notify, orgId, morePlaces };
+      return { event: await this.findOne(m, access, eventId), changes, orgId, club };
     });
-    let result = event;
-    if (morePlaces) {
-      await this.waitlist.promote(orgId, eventId);
-      // places were just handed out: the counts have moved
-      result = await this.inClub(access, (m) => this.findOne(m, access, eventId));
-    }
 
-    if (notify && notify.recipients.length > 0) {
+    let result = event;
+    for (const change of changes) {
+      if (!change.morePlaces) continue;
+      await this.waitlist.promote(orgId, change.eventId);
+      // places were just handed out: the counts have moved
+      if (change.eventId === eventId) result = await this.inClub(access, (m) => this.findOne(m, access, eventId));
+    }
+    for (const { eventId: id, notify } of changes) {
+      if (!notify || notify.recipients.length === 0) continue;
       this.email.inBackground(
         'event changed',
         this.email.sendEventChanged(notify.recipients, {
-          eventTitle: event.title,
-          clubName: notify.club.name,
-          orgSlug: notify.club.orgSlug,
+          eventTitle: notify.title,
+          clubName: club.name,
+          orgSlug: club.orgSlug,
           clubId: access.clubId,
-          eventId,
-          when: formatWhen(new Date(event.startsAt), new Date(event.endsAt), notify.club.timeZone),
-          where: event.location,
+          eventId: id,
+          when: notify.when,
+          where: notify.where,
           before: notify.before,
         }),
       );
@@ -255,15 +250,95 @@ export class EventService {
     return result;
   }
 
+  // one event's share of an edit, with the event locked
+  private async applyUpdate(
+    m: EntityManager,
+    event: EventRow,
+    dto: UpdateEventDto,
+    { startsAt, endsAt }: { startsAt: Date; endsAt: Date },
+    club: ClubDetails,
+  ): Promise<EventChange> {
+    const capacity = dto.capacity === undefined ? event.capacity : dto.capacity;
+    if (capacity !== null) {
+      const [{ count }]: { count: number }[] = await m.query(
+        `SELECT count(*)::int AS count FROM registrations WHERE event_id = $1 AND cancelled_at IS NULL`,
+        [event.id],
+      );
+      if (capacity < count) {
+        throw HttpError.conflict(
+          `${count} people are already registered; the capacity can't be lower`,
+          'CAPACITY_BELOW_REGISTERED',
+          { registered: count },
+        );
+      }
+    }
+
+    const title = dto.title?.trim() ?? event.title;
+    const location = dto.location === undefined ? event.location : dto.location.trim() || null;
+    // closing keeps the first close time; opening clears it
+    const closedAt =
+      dto.registrationOpen === undefined
+        ? event.registration_closed_at
+        : dto.registrationOpen
+          ? null
+          : (event.registration_closed_at ?? new Date());
+
+    await m.query(
+      `UPDATE events SET
+         title = $2, description = $3, location = $4,
+         starts_at = $5, ends_at = $6, capacity = $7, visibility = $8, registration_closed_at = $9
+       WHERE id = $1`,
+      [
+        event.id,
+        title,
+        dto.description === undefined ? event.description : dto.description.trim() || null,
+        location,
+        startsAt,
+        endsAt,
+        capacity,
+        dto.visibility ?? event.visibility,
+        closedAt,
+      ],
+    );
+
+    // drafts have nobody registered; a published event tells its people
+    const moved = startsAt.getTime() !== event.starts_at.getTime() || endsAt.getTime() !== event.ends_at.getTime();
+    const relocated = location !== event.location;
+    const notify =
+      event.status === EventStatus.Published && (moved || relocated)
+        ? {
+            recipients: await this.recipients(m, event.id),
+            title,
+            when: formatWhen(startsAt, endsAt, club.timeZone),
+            where: location,
+            before: {
+              ...(moved && { when: formatWhen(event.starts_at, event.ends_at, club.timeZone) }),
+              ...(relocated && { where: event.location }),
+            },
+          }
+        : null;
+    // more room (a higher or no limit, or registration open again): the waitlist goes first
+    const morePlaces =
+      (event.capacity !== null && (capacity === null || capacity > event.capacity)) ||
+      (event.registration_closed_at !== null && closedAt === null);
+    return { eventId: event.id, notify, morePlaces };
+  }
+
   /**
    * Calls off a published event: it stays listed as cancelled, tickets stop
    * working at the door, and everyone registered is emailed (with the note,
    * if there is one). Drafts are deleted instead; ended events are history.
+   * With `following`, the later published events of its series go too.
    */
-  async cancel(access: ClubAccess, eventId: string, { reason }: CancelEventDto): Promise<EventDto> {
+  async cancel(
+    access: ClubAccess,
+    eventId: string,
+    { reason }: CancelEventDto,
+    scope: SeriesScope = 'this',
+  ): Promise<EventDto> {
     const note = reason?.trim() || null;
-    const { event, recipients, club, when } = await this.inClub(access, async (m) => {
-      const event = await this.lockForManage(m, access, eventId);
+    const { event, cancelled, club } = await this.inClub(access, async (m) => {
+      const [event, ...later] = await this.lockSeries(m, access, eventId, scope);
       if (event.status === EventStatus.Draft) {
         throw HttpError.conflict('A draft is deleted, not cancelled', 'EVENT_IS_DRAFT');
       }
@@ -273,28 +348,34 @@ export class EventService {
       if (event.ends_at <= new Date()) {
         throw HttpError.conflict('This event has ended', 'EVENT_ENDED');
       }
-      await m.query(
-        `UPDATE events SET status = 'cancelled', cancelled_at = now(), cancel_reason = $2 WHERE id = $1`,
-        [eventId, note],
-      );
       const club = await this.clubDetails(m, access.clubId);
-      return {
-        event: await this.findOne(m, access, eventId),
-        recipients: [...(await this.recipients(m, eventId)), ...(await this.waiting(m, eventId))],
-        club,
-        when: formatWhen(event.starts_at, event.ends_at, club.timeZone),
-      };
+      const targets = [event, ...later.filter((e) => e.status === EventStatus.Published && e.ends_at > new Date())];
+      const cancelled = [];
+      for (const target of targets) {
+        await m.query(
+          `UPDATE events SET status = 'cancelled', cancelled_at = now(), cancel_reason = $2 WHERE id = $1`,
+          [target.id, note],
+        );
+        cancelled.push({
+          eventId: target.id,
+          title: target.title,
+          when: formatWhen(target.starts_at, target.ends_at, club.timeZone),
+          recipients: [...(await this.recipients(m, target.id)), ...(await this.waiting(m, target.id))],
+        });
+      }
+      return { event: await this.findOne(m, access, eventId), cancelled, club };
     });
 
-    if (recipients.length > 0) {
+    for (const { eventId: id, title, when, recipients } of cancelled) {
+      if (recipients.length === 0) continue;
       this.email.inBackground(
         'event cancelled',
         this.email.sendEventCancelled(recipients, {
-          eventTitle: event.title,
+          eventTitle: title,
           clubName: club.name,
           orgSlug: club.orgSlug,
           clubId: access.clubId,
-          eventId,
+          eventId: id,
           when,
           reason: note,
         }),
@@ -303,25 +384,33 @@ export class EventService {
     return event;
   }
 
-  /** Deletes a draft you may manage. A published event is cancelled instead, so its history stays. */
-  remove(access: ClubAccess, eventId: string): Promise<void> {
+  /**
+   * Deletes a draft you may manage (with `following`, the later drafts of its
+   * series too). A published event is cancelled instead, so its history stays.
+   */
+  remove(access: ClubAccess, eventId: string, scope: SeriesScope = 'this'): Promise<void> {
     return this.inClub(access, async (m) => {
-      const event = await this.lockForManage(m, access, eventId);
+      const [event, ...later] = await this.lockSeries(m, access, eventId, scope);
       if (event.status !== EventStatus.Draft) {
         throw HttpError.conflict('Only drafts can be deleted; cancel a published event', 'EVENT_NOT_DRAFT');
       }
-      await m.query(`DELETE FROM events WHERE id = $1`, [eventId]);
+      const ids = [event, ...later.filter((e) => e.status === EventStatus.Draft)].map((e) => e.id);
+      await m.query(`DELETE FROM events WHERE id = ANY($1::uuid[])`, [ids]);
     });
   }
 
-  /** Publishes a draft you may manage: it becomes visible and open for registration. */
-  publish(access: ClubAccess, eventId: string): Promise<EventDto> {
+  /**
+   * Publishes a draft you may manage (with `following`, the later drafts of
+   * its series too): visible and open for registration.
+   */
+  publish(access: ClubAccess, eventId: string, scope: SeriesScope = 'this'): Promise<EventDto> {
     return this.inClub(access, async (m) => {
-      const event = await this.lockForManage(m, access, eventId);
+      const [event, ...later] = await this.lockSeries(m, access, eventId, scope);
       if (event.status !== EventStatus.Draft) {
         throw HttpError.conflict('Only drafts can be published', 'EVENT_NOT_DRAFT');
       }
-      await m.query(`UPDATE events SET status = 'published', published_at = now() WHERE id = $1`, [eventId]);
+      const ids = [event, ...later.filter((e) => e.status === EventStatus.Draft)].map((e) => e.id);
+      await m.query(`UPDATE events SET status = 'published', published_at = now() WHERE id = ANY($1::uuid[])`, [ids]);
       return this.findOne(m, access, eventId);
     });
   }
@@ -461,10 +550,7 @@ export class EventService {
     return rows.map((r) => ({ registrationId: r.id, to: r.email, name: r.name }));
   }
 
-  private async clubDetails(
-    m: EntityManager,
-    clubId: string,
-  ): Promise<{ name: string; orgSlug: string; timeZone: string }> {
+  private async clubDetails(m: EntityManager, clubId: string): Promise<ClubDetails> {
     const [row]: { name: string; slug: string; time_zone: string }[] = await m.query(
       `SELECT c.name, o.slug, o.time_zone FROM clubs c JOIN organisations o ON o.id = c.org_id WHERE c.id = $1`,
       [clubId],
@@ -488,6 +574,25 @@ export class EventService {
     return event;
   }
 
+  // The event, locked as above, and for "this and following" the later events
+  // of its series (the ones this person may manage), also locked, by date.
+  private async lockSeries(
+    m: EntityManager,
+    access: ClubAccess,
+    eventId: string,
+    scope: SeriesScope,
+  ): Promise<[EventRow, ...EventRow[]]> {
+    const event = await this.lockForManage(m, access, eventId);
+    if (scope !== 'following' || !event.series_id) return [event];
+    const later: EventRow[] = await m.query(
+      `SELECT * FROM events
+       WHERE series_id = $1 AND club_id = $2 AND (starts_at, id) > ($3, $4)
+       ORDER BY starts_at, id FOR UPDATE`,
+      [event.series_id, access.clubId, event.starts_at, event.id],
+    );
+    return [event, ...later.filter((e) => canManage(access, e.created_by))];
+  }
+
   private toDto(row: EventRow, access: ClubAccess): EventDto {
     return {
       id: row.id,
@@ -509,6 +614,9 @@ export class EventService {
       waitlistCount: row.waitlist_count ?? 0,
       yourWaitlistPosition: row.waitlist_position ?? null,
       canManage: canManage(access, row.created_by),
+      series: row.series_id
+        ? { id: row.series_id, every: row.repeat_every!, index: row.series_index, count: row.series_count }
+        : null,
     };
   }
 }

@@ -30,7 +30,12 @@ import { Permission } from '../permission/permissions.js';
 import {
   CancelEventDto,
   CreateEventDto,
-  EventAttendeeDto, EventDto, ListEventsQuery, UpdateEventDto } from './dto/event.dto.js';
+  EventAttendeeDto,
+  EventDto,
+  ListEventsQuery,
+  SeriesScopeQuery,
+  UpdateEventDto,
+} from './dto/event.dto.js';
 import { EventService } from './event.service.js';
 
 const error = (description: string) => ({ description, type: ErrorResponseDto });
@@ -92,8 +97,9 @@ export class EventController {
     @CurrentClubAccess() access: ClubAccess,
     @Param('eventId', ParseUUIDPipe) eventId: string,
     @Body() dto: UpdateEventDto,
+    @Query() { scope }: SeriesScopeQuery,
   ): Promise<EventDto> {
-    return this.events.update(access, eventId, dto);
+    return this.events.update(access, eventId, dto, scope);
   }
 
   /** Publish a draft: it becomes visible and open for registration */
@@ -105,8 +111,9 @@ export class EventController {
   publish(
     @CurrentClubAccess() access: ClubAccess,
     @Param('eventId', ParseUUIDPipe) eventId: string,
+    @Query() { scope }: SeriesScopeQuery,
   ): Promise<EventDto> {
-    return this.events.publish(access, eventId);
+    return this.events.publish(access, eventId, scope);
   }
 
   /**
@@ -127,8 +134,9 @@ export class EventController {
     @CurrentClubAccess() access: ClubAccess,
     @Param('eventId', ParseUUIDPipe) eventId: string,
     @Body() dto: CancelEventDto,
+    @Query() { scope }: SeriesScopeQuery,
   ): Promise<EventDto> {
-    return this.events.cancel(access, eventId, dto);
+    return this.events.cancel(access, eventId, dto, scope);
   }
 
   /**
@@ -143,8 +151,12 @@ export class EventController {
   @ApiNoContentResponse({ description: 'Deleted' })
   @ApiNotFoundResponse(error('No such event (EVENT_NOT_FOUND)'))
   @ApiConflictResponse(error('Not a draft (EVENT_NOT_DRAFT)'))
-  remove(@CurrentClubAccess() access: ClubAccess, @Param('eventId', ParseUUIDPipe) eventId: string): Promise<void> {
-    return this.events.remove(access, eventId);
+  remove(
+    @CurrentClubAccess() access: ClubAccess,
+    @Param('eventId', ParseUUIDPipe) eventId: string,
+    @Query() { scope }: SeriesScopeQuery,
+  ): Promise<void> {
+    return this.events.remove(access, eventId, scope);
   }
 
   /** The event as a calendar file (.ics), for "Add to calendar" */

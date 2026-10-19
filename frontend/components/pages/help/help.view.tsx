@@ -79,6 +79,10 @@ const SECTIONS: { title: string; answers: Answer[] }[] = [
         a: "It depends on your role in the club. Admins and Organizers can create, publish and edit events; Scanners can check people in at the door.",
       },
       {
+        q: "Can an event repeat?",
+        a: "Yes. In New event, choose Repeats (every week, fortnight or month) and how many times. Each one is its own event, with its own places and tickets. When you edit, cancel, publish or delete one, you can choose just that one or it and every later one.",
+      },
+      {
         q: "How do I stop registrations without cancelling?",
         a: "Open the event and choose Close registration. People already going keep their place, and you can open it again later.",
       },

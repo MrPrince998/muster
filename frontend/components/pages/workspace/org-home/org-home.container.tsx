@@ -205,10 +205,10 @@ export default function OrgHomeContainer() {
         onJoinWaitlist: () => openEvent && run("waitlist", () => joinWaitlist.mutateAsync({ eventId: openEvent.id })),
         onLeaveWaitlist: () =>
           openEvent && run("leave-waitlist", () => leaveWaitlist.mutateAsync({ eventId: openEvent.id })),
-        onPublish: () =>
+        onPublish: (scope) =>
           openEvent &&
-          run("publish", async () => {
-            await publish.mutateAsync({ eventId: openEvent.id });
+          run(scope === "following" ? "publish-following" : "publish", async () => {
+            await publish.mutateAsync({ eventId: openEvent.id, scope });
             setTab("upcoming");
           }),
         onEdit: () => setDialog("edit-event"),
@@ -217,14 +217,16 @@ export default function OrgHomeContainer() {
           run("registration", () =>
             update.mutateAsync({ eventId: openEvent.id, registrationOpen: !openEvent.registrationOpen }),
           ),
-        onCancelEvent: async (reason) =>
+        onCancelEvent: async (reason, scope) =>
           openEvent
-            ? attempt(() => cancelEvent.mutateAsync({ eventId: openEvent.id, reason: reason.trim() || undefined }))
+            ? attempt(() =>
+                cancelEvent.mutateAsync({ eventId: openEvent.id, reason: reason.trim() || undefined, scope }),
+              )
             : null,
-        onDeleteDraft: async () =>
+        onDeleteDraft: async (scope) =>
           openEvent
             ? attempt(async () => {
-                await deleteEvent.mutateAsync({ eventId: openEvent.id });
+                await deleteEvent.mutateAsync({ eventId: openEvent.id, scope });
                 openEventPanel(null);
               })
             : null,

@@ -14,6 +14,7 @@ import {
   MapPin,
   Pencil,
   QrCode,
+  Repeat,
   ScanLine,
   X,
 } from "lucide-react";
@@ -29,9 +30,10 @@ import {
 } from "@/components/ui/sheet";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
-import type { ClubEvent, EventAttendee } from "@/types/event.interface";
+import type { ClubEvent, EventAttendee, SeriesScope } from "@/types/event.interface";
 import { downloadAttendees, eventsKey } from "../../services/event.service";
 import { ConfirmDialog } from "../../shared/confirm-dialog";
+import { hasLaterInSeries, SeriesScopeChoice, seriesLabel } from "../../shared/series-scope-choice";
 import { TicketDialog } from "../../tickets/ticket-dialog";
 import { differsFromDevice, zoneCity, zoneName } from "@/lib/time-zone";
 import { formatFullDate, formatTimeRange } from "./format";
@@ -54,6 +56,7 @@ export type PanelAction =
   | "register"
   | "cancel"
   | "publish"
+  | "publish-following"
   | "registration"
   | "waitlist"
   | "leave-waitlist";
@@ -75,13 +78,14 @@ export interface EventPanelProps {
   onCancel: () => void;
   onJoinWaitlist: () => void;
   onLeaveWaitlist: () => void;
-  onPublish: () => void;
+  // with "following", the later drafts of its series too
+  onPublish: (scope?: SeriesScope) => void;
   onEdit: () => void;
   // open or close registration
   onToggleRegistration: () => void;
   // these confirm first; they resolve to an error message, or null when done
-  onCancelEvent: (reason: string) => Promise<string | null>;
-  onDeleteDraft: () => Promise<string | null>;
+  onCancelEvent: (reason: string, scope: SeriesScope) => Promise<string | null>;
+  onDeleteDraft: (scope: SeriesScope) => Promise<string | null>;
   onClose: () => void;
 }
 
@@ -166,6 +170,11 @@ function PanelBody(props: EventPanelProps & { event: ClubEvent }) {
         {event.location && (
           <Detail icon={MapPin} label="Place">
             {event.location}
+          </Detail>
+        )}
+        {event.series && (
+          <Detail icon={Repeat} label="Repeats">
+            {seriesLabel(event.series)}
           </Detail>
         )}
         <Detail
@@ -356,26 +365,41 @@ function OrganiserActions({
     null,
   );
   const [reason, setReason] = useState("");
+  const [scope, setScope] = useState<SeriesScope>("this");
+  const series = hasLaterInSeries(event);
   const going = event.registeredCount;
 
   const confirm = (what: "cancel" | "delete") => {
     // the count in the dialog is who gets emailed: fetch it fresh, in case people registered since
     if (what === "cancel")
       void queryClient.invalidateQueries({ queryKey: eventsKey(event.clubId) });
+    setScope("this");
     setConfirming(what);
   };
 
   return (
     <div className="flex flex-col gap-2">
-      {draft && canPublish && (
+      {draft && canPublish && series && (
         <Button
           size="lg"
           className="h-11 font-semibold"
-          onClick={onPublish}
-          disabled={pending === "publish"}
+          onClick={() => onPublish("following")}
+          disabled={pending === "publish" || pending === "publish-following"}
+        >
+          {pending === "publish-following" && <Spinner />}
+          {pending === "publish-following" ? "Publishing…" : "Publish this and following"}
+        </Button>
+      )}
+      {draft && canPublish && (
+        <Button
+          size="lg"
+          variant={series ? "outline" : "default"}
+          className={cn("h-11", !series && "font-semibold")}
+          onClick={() => onPublish()}
+          disabled={pending === "publish" || pending === "publish-following"}
         >
           {pending === "publish" && <Spinner />}
-          {pending === "publish" ? "Publishing…" : "Publish event"}
+          {pending === "publish" ? "Publishing…" : series ? "Publish only this one" : "Publish event"}
         </Button>
       )}
       {draft && !canPublish && (
@@ -424,7 +448,9 @@ function OrganiserActions({
         }}
         title={`Cancel ${event.title}?`}
         body={
-          going === 0
+          scope === "following"
+            ? "Everyone registered for any of them gets an email, and their tickets stop working at the door. They stay listed as cancelled."
+            : going === 0
             ? "Nobody has registered yet. It stays listed as cancelled."
             : `${going} ${going === 1 ? "person has" : "people have"} registered. Each gets an email, and their tickets stop working at the door.`
         }
@@ -432,9 +458,10 @@ function OrganiserActions({
         pendingLabel="Cancelling…"
         dismissLabel="Keep event"
         destructive
-        onConfirm={() => onCancelEvent(reason)}
+        onConfirm={() => onCancelEvent(reason, scope)}
       >
-        {going > 0 && (
+        {series && <SeriesScopeChoice value={scope} onChange={setScope} verb="cancel" name="cancel-scope" />}
+        {(going > 0 || scope === "following") && (
           <div className="space-y-1.5">
             <label htmlFor="cancel-reason" className="text-sm font-medium">
               Note for them{" "}
@@ -458,13 +485,19 @@ function OrganiserActions({
         open={confirming === "delete"}
         onOpenChange={(open) => setConfirming(open ? "delete" : null)}
         title={`Delete ${event.title}?`}
-        body="The draft is gone for good. Nobody else has seen it."
+        body={
+          scope === "following"
+            ? "These drafts are gone for good. Nobody else has seen them; published ones in the series stay."
+            : "The draft is gone for good. Nobody else has seen it."
+        }
         confirmLabel="Delete draft"
         pendingLabel="Deleting…"
         dismissLabel="Keep draft"
         destructive
-        onConfirm={onDeleteDraft}
-      />
+        onConfirm={() => onDeleteDraft(scope)}
+      >
+        {series && <SeriesScopeChoice value={scope} onChange={setScope} verb="delete" name="delete-scope" />}
+      </ConfirmDialog>
     </div>
   );
 }

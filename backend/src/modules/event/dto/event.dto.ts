@@ -1,4 +1,5 @@
 import { ApiProperty, ApiPropertyOptional, OmitType, PartialType } from '@nestjs/swagger';
+import { Type } from 'class-transformer';
 import {
   IsBoolean,
   IsDateString,
@@ -11,8 +12,9 @@ import {
   MaxLength,
   Min,
   ValidateIf,
+  ValidateNested,
 } from 'class-validator';
-import { EventStatus, EventVisibility } from '../entities/event.entity.js';
+import { EventStatus, EventVisibility, REPEAT_EVERY, type RepeatEvery } from '../entities/event.entity.js';
 
 const VISIBILITIES = Object.values(EventVisibility);
 export const EVENT_SCOPES = ['upcoming', 'past', 'drafts'] as const;
@@ -28,6 +30,29 @@ export class ListEventsQuery {
   @IsOptional()
   @IsIn(EVENT_SCOPES)
   scope?: EventScope;
+}
+
+export const SERIES_SCOPES = ['this', 'following'] as const;
+export type SeriesScope = (typeof SERIES_SCOPES)[number];
+
+/** For an event in a series: change just this one, or this and the ones after it. */
+export class SeriesScopeQuery {
+  @ApiPropertyOptional({ enum: SERIES_SCOPES, default: 'this' })
+  @IsOptional()
+  @IsIn(SERIES_SCOPES)
+  scope?: SeriesScope;
+}
+
+export class RepeatDto {
+  @ApiProperty({ enum: REPEAT_EVERY })
+  @IsIn(REPEAT_EVERY)
+  every: RepeatEvery;
+
+  /** How many events in all, the first included. @example 8 */
+  @IsInt()
+  @Min(2)
+  @Max(52)
+  count: number;
 }
 
 export class CreateEventDto {
@@ -69,6 +94,16 @@ export class CreateEventDto {
   @IsIn(VISIBILITIES)
   visibility?: EventVisibility;
 
+  /**
+   * Repeat it: the same event every week, fortnight or month, at the same
+   * local time in the workspace's zone. Each one is its own event, with its
+   * own places and tickets.
+   */
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => RepeatDto)
+  repeat?: RepeatDto;
+
   /** Publish straight away (needs event.publish) instead of saving a draft. */
   @IsOptional()
   @IsBoolean()
@@ -76,7 +111,7 @@ export class CreateEventDto {
 }
 
 // publishing and cancelling have their own routes, so an edit never changes the status
-export class UpdateEventDto extends PartialType(OmitType(CreateEventDto, ['publish'] as const)) {
+export class UpdateEventDto extends PartialType(OmitType(CreateEventDto, ['publish', 'repeat'] as const)) {
   /** false stops new registrations (the event still runs); true opens them again. */
   @IsOptional()
   @IsBoolean()
@@ -89,6 +124,20 @@ export class CancelEventDto {
   @IsString()
   @MaxLength(500)
   reason?: string;
+}
+
+export class EventSeriesDto {
+  @ApiProperty({ format: 'uuid' })
+  id: string;
+
+  @ApiProperty({ enum: REPEAT_EVERY })
+  every: RepeatEvery;
+
+  @ApiProperty({ description: 'Which one this is, from 1, by date' })
+  index: number;
+
+  @ApiProperty({ description: 'How many events the series has' })
+  count: number;
 }
 
 export class EventDto {
@@ -148,6 +197,9 @@ export class EventDto {
 
   @ApiProperty({ description: 'Whether you may edit it (event.manage_any, or event.manage_own as its creator)' })
   canManage: boolean;
+
+  @ApiPropertyOptional({ type: EventSeriesDto, nullable: true, description: 'The series it repeats in; null for a one-off' })
+  series: EventSeriesDto | null;
 }
 
 export class EventAttendeeDto {
