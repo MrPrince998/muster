@@ -75,6 +75,10 @@ const SECTIONS: { title: string; answers: Answer[] }[] = [
         a: "Open the event and choose Close registration. People already going keep their place, and you can open it again later.",
       },
       {
+        q: "Can I get the attendee list as a spreadsheet?",
+        a: "Yes: open the event and choose Download list, next to Who's going. It has everyone's name, whether they came in, and the waitlist, with times in your workspace's time zone.",
+      },
+      {
         q: "How does check-in work?",
         a: "On the day, open the event and choose Open check-in, then scan each ticket's QR code. A ticket works once; a copy is turned away.",
       },

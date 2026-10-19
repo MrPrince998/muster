@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import type { EntityManager } from 'typeorm';
 import { HttpError } from '../../common/errors/http-error.js';
+import { fileSlug, toCsv } from '../../common/utils/csv.js';
 import { TenantService } from '../../database/tenant.service.js';
 import { EmailService, type EventRecipient } from '../email/email.service.js';
 import { formatWhen } from '../email/format-when.js';
@@ -346,6 +347,50 @@ export class EventService {
     });
   }
 
+  /**
+   * The attendee list as a spreadsheet: what the app shows organisers (names,
+   * when they registered and came in, whether they're from outside the
+   * workspace), plus the waitlist in order. No email addresses: the app only
+   * shows those to workspace staff. Times are in the workspace's zone.
+   */
+  attendeesCsv(access: ClubAccess, eventId: string): Promise<{ filename: string; csv: string }> {
+    return this.inClub(access, async (m) => {
+      const event = await this.findOne(m, access, eventId); // 404 if it isn't this club's
+      const zone = await TenantService.timeZone(m);
+      const stamp = (at: Date | null) => (at ? wallClock(at, zone) : '');
+
+      const going: { name: string; created_at: Date; checked_in_at: Date | null; outsider: boolean }[] = await m.query(
+        `SELECT u.name, r.created_at, r.checked_in_at,
+                NOT EXISTS (SELECT 1 FROM org_members om WHERE om.org_id = r.org_id AND om.user_id = r.user_id) AS outsider
+         FROM registrations r JOIN users u ON u.id = r.user_id
+         WHERE r.event_id = $1 AND r.cancelled_at IS NULL
+         ORDER BY lower(u.name)`,
+        [eventId],
+      );
+      const waiting: { name: string; created_at: Date; outsider: boolean }[] = await m.query(
+        `SELECT u.name, w.created_at,
+                NOT EXISTS (SELECT 1 FROM org_members om WHERE om.org_id = w.org_id AND om.user_id = w.user_id) AS outsider
+         FROM waitlist_entries w JOIN users u ON u.id = w.user_id
+         WHERE w.event_id = $1 AND w.promoted_at IS NULL
+         ORDER BY w.created_at, w.id`,
+        [eventId],
+      );
+
+      const csv = toCsv([
+        ['Name', 'Status', `Registered (${zone})`, `Checked in (${zone})`, 'From outside the workspace'],
+        ...going.map((p) => [
+          p.name,
+          p.checked_in_at ? 'Checked in' : 'Going',
+          stamp(p.created_at),
+          stamp(p.checked_in_at),
+          p.outsider ? 'Yes' : 'No',
+        ]),
+        ...waiting.map((p, i) => [p.name, `Waitlist ${i + 1}`, stamp(p.created_at), '', p.outsider ? 'Yes' : 'No']),
+      ]);
+      return { filename: `${fileSlug(event.title)}-attendees.csv`, csv };
+    });
+  }
+
   /** One event of this club, as the current user sees it; drafts only if they may manage them. */
   async findOne(m: EntityManager, access: ClubAccess, eventId: string): Promise<EventDto> {
     const rows: EventRow[] = await m.query(`${SELECT_EVENTS} AND e.id = $3`, [
@@ -440,6 +485,24 @@ export class EventService {
       canManage: canManage(access, row.created_by),
     };
   }
+}
+
+// "2026-10-24 18:30" on the clock in `zone`: sorts as text, and spreadsheets read it as a date
+function wallClock(at: Date, zone: string): string {
+  const p = Object.fromEntries(
+    new Intl.DateTimeFormat('en-CA', {
+      timeZone: zone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      hourCycle: 'h23',
+    })
+      .formatToParts(at)
+      .map((part) => [part.type, part.value]),
+  );
+  return `${p.year}-${p.month}-${p.day} ${p.hour}:${p.minute}`;
 }
 
 function assertEndsAfterStart(startsAt: Date, endsAt: Date) {

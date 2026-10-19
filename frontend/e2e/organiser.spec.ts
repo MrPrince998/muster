@@ -49,3 +49,17 @@ test("attendance numbers for the club", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "The last 12 months" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Event by event" })).toBeVisible();
 });
+
+test("download the attendee list as a spreadsheet", async ({ page }) => {
+  await openClub(page, "Robotics Society");
+  const panel = await openEvent(page, "Soldering Workshop");
+  const [file] = await Promise.all([page.waitForEvent("download"), panel.getByRole("button", { name: "Download list" }).click()]);
+  expect(file.suggestedFilename()).toBe("soldering-workshop-attendees.csv");
+  const text = (await (await file.createReadStream()).toArray()).map(String).join("");
+  const rows = text.replace("﻿", "").trim().split("\r\n");
+  expect(rows[0]).toMatch(/^Name,Status,Registered \(.+\),Checked in \(.+\),From outside the workspace$/);
+  // 12 places taken, 3 waiting (the demo data)
+  expect(rows.filter((r) => r.includes(",Going,"))).toHaveLength(12);
+  expect(rows.filter((r) => /,Waitlist \d,/.test(r))).toHaveLength(3);
+  expect(text).not.toMatch(/@muster\.test/);
+});

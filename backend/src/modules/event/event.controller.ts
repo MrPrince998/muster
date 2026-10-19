@@ -10,6 +10,7 @@ import {
   Patch,
   Post,
   Query,
+  Res,
 } from '@nestjs/common';
 import {
   ApiBadRequestResponse,
@@ -20,6 +21,7 @@ import {
   ApiOkResponse,
   ApiTags,
 } from '@nestjs/swagger';
+import type { Response } from 'express';
 import { ErrorResponseDto } from '../../common/errors/error-response.dto.js';
 import type { ClubAccess } from '../permission/club-access.js';
 import { CurrentClubAccess } from '../permission/decorators/current-club-access.decorator.js';
@@ -143,6 +145,30 @@ export class EventController {
   @ApiConflictResponse(error('Not a draft (EVENT_NOT_DRAFT)'))
   remove(@CurrentClubAccess() access: ClubAccess, @Param('eventId', ParseUUIDPipe) eventId: string): Promise<void> {
     return this.events.remove(access, eventId);
+  }
+
+  /**
+   * The attendee list, as a spreadsheet (CSV)
+   *
+   * @remarks Needs registration.view, like the list itself. Names, status
+   * (going, checked in, waitlist position), times in the workspace's zone,
+   * and whether each person is from outside the workspace. No emails.
+   */
+  @Get(':eventId/registrations/export')
+  @RequirePermission(Permission.RegistrationView)
+  @ApiOkResponse({ description: 'A CSV file', content: { 'text/csv': { schema: { type: 'string' } } } })
+  @ApiNotFoundResponse(error('No such event (EVENT_NOT_FOUND)'))
+  async exportAttendees(
+    @CurrentClubAccess() access: ClubAccess,
+    @Param('eventId', ParseUUIDPipe) eventId: string,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<string> {
+    const { filename, csv } = await this.events.attendeesCsv(access, eventId);
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    // a list of people: never kept by a browser cache or a proxy
+    res.setHeader('Cache-Control', 'no-store');
+    return csv;
   }
 
   /** Who's going */

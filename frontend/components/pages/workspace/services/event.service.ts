@@ -1,3 +1,4 @@
+import { request } from "@/lib/api/client";
 import { useApiMutation } from "@/lib/api/useApiMutation";
 import { useApiQuery } from "@/lib/api/useApiQuery";
 import type { ClubEvent, EventAttendee, EventChanges, EventInput, EventScope } from "@/types/event.interface";
@@ -100,3 +101,31 @@ export const useCancelRegistration = (clubId: string) =>
     ({ eventId }) => ({ method: "delete", url: `/clubs/${clubId}/events/${eventId}/my-registration` }),
     { invalidates: [eventsKey(clubId)] },
   );
+
+/**
+ * Saves the attendee list as a spreadsheet (CSV). Needs registration.view.
+ * Fetched with your session (it's private), then handed to the browser to save.
+ */
+export async function downloadAttendees(clubId: string, eventId: string, title: string): Promise<void> {
+  const blob = await request<Blob>({
+    method: "get",
+    url: `/clubs/${clubId}/events/${eventId}/registrations/export`,
+    responseType: "blob",
+  });
+  const slug =
+    title
+      .normalize("NFD")
+      .replace(/[^\w\s-]/g, "")
+      .trim()
+      .toLowerCase()
+      .replace(/[\s_-]+/g, "-")
+      .slice(0, 60) || "event";
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `${slug}-attendees.csv`;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
