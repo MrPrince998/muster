@@ -25,6 +25,15 @@ test("register for an event, see the ticket, give the place back", async ({ page
     page.getByRole("menuitem", { name: "Apple, Outlook and others" }).click(),
   ]);
   expect(file.suggestedFilename()).toBe("short-film-showcase.ics");
+
+  // the ticket as a picture, for the door with no signal: never cached on the way
+  const saved = await ticket.getByRole("link", { name: "Save ticket image" }).getAttribute("href");
+  const image = await page.request.get(saved!);
+  expect(image.headers()["content-type"]).toBe("image/png");
+  expect(image.headers()["cache-control"]).toBe("private, no-store");
+  expect(image.headers()["content-disposition"]).toBe('inline; filename="short-film-showcase-ticket.png"');
+  expect((await image.body()).length).toBeGreaterThan(20_000);
+  expect((await page.request.get("/t/not-a-ticket/image")).status()).toBe(404);
   await page.keyboard.press("Escape");
 
   await panel.getByRole("button", { name: "Cancel my place" }).click();

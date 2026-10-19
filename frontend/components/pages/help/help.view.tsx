@@ -46,6 +46,10 @@ const SECTIONS: { title: string; answers: Answer[] }[] = [
         ),
       },
       {
+        q: "What if there's no signal at the door?",
+        a: "Open your ticket and choose Save ticket image. The picture has the QR code on it and works like the ticket, so keep it in your photos and show it at the door. The QR code attached to your ticket email works offline too.",
+      },
+      {
         q: "Can I give my place back?",
         a: "Yes, until you've been checked in: open the event and choose Cancel my place, so someone else can have it.",
       },

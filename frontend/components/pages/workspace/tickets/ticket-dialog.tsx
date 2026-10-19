@@ -11,6 +11,7 @@ import {
 import { downloadEventCalendar } from "../services/event.service";
 import { useMyTicket } from "../services/ticket.service";
 import { AddToCalendar } from "../shared/add-to-calendar";
+import { SaveTicketImage } from "./save-ticket-image";
 import { TicketFace } from "./ticket-face";
 
 /**
@@ -74,17 +75,20 @@ export function TicketDialog({
               Description={DialogDescription}
             />
             {!data.eventCancelled && (
-              <AddToCalendar
-                className="mt-3 [&>button]:bg-background"
-                onDownload={() => downloadEventCalendar(data.clubId, data.eventId, data.eventTitle)}
-                event={{
-                  title: data.eventTitle,
-                  startsAt: data.startsAt,
-                  endsAt: data.endsAt,
-                  location: data.location,
-                  details: `${data.clubName}, ${data.workspaceName}`,
-                }}
-              />
+              <div className="mt-3 flex flex-wrap items-start justify-center gap-2">
+                <AddToCalendar
+                  className="[&>button]:bg-background"
+                  onDownload={() => downloadEventCalendar(data.clubId, data.eventId, data.eventTitle)}
+                  event={{
+                    title: data.eventTitle,
+                    startsAt: data.startsAt,
+                    endsAt: data.endsAt,
+                    location: data.location,
+                    details: `${data.clubName}, ${data.workspaceName}`,
+                  }}
+                />
+                {!data.checkedInAt && <SaveTicketImage token={data.token} className="bg-background" />}
+              </div>
             )}
           </>
         )}

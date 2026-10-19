@@ -6,6 +6,7 @@ import { useParams } from "next/navigation";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { asApiError } from "@/lib/api/client";
+import { SaveTicketImage } from "../../workspace/tickets/save-ticket-image";
 import { TicketFace } from "../../workspace/tickets/ticket-face";
 import { AddToCalendar } from "../../workspace/shared/add-to-calendar";
 import { ConfirmDialog } from "../../workspace/shared/confirm-dialog";
@@ -52,20 +53,22 @@ export default function GuestTicketContainer() {
         <TicketFace ticket={data} />
       </div>
       {!data.eventCancelled && (
-        <AddToCalendar
-          className="mt-6"
-          icsHref={publicCalendarUrl(data.eventId)}
-          event={{
-            title: data.eventTitle,
-            startsAt: data.startsAt,
-            endsAt: data.endsAt,
-            location: data.location,
-            details: `${data.clubName}, ${data.workspaceName}. Your ticket: ${new URL(`/t/${token}`, process.env.NEXT_PUBLIC_SITE_URL)}`,
-          }}
-        />
+        <div className="mt-6 flex flex-wrap items-start justify-center gap-2">
+          <AddToCalendar
+            icsHref={publicCalendarUrl(data.eventId)}
+            event={{
+              title: data.eventTitle,
+              startsAt: data.startsAt,
+              endsAt: data.endsAt,
+              location: data.location,
+              details: `${data.clubName}, ${data.workspaceName}. Your ticket: ${new URL(`/t/${token}`, process.env.NEXT_PUBLIC_SITE_URL)}`,
+            }}
+          />
+          {!data.checkedInAt && <SaveTicketImage token={data.token} />}
+        </div>
       )}
       <p className="mt-6 text-center text-sm text-muted-foreground">
-        It&rsquo;s also in your email. Keep this page or that email: either gets you in.
+        It&rsquo;s also in your email. Keep this page or that email: either gets you in. Save the image and it works with no signal too.
       </p>
       {canGiveBack && (
         <div className="mt-6 text-center">
