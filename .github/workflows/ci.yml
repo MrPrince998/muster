@@ -89,6 +89,7 @@ jobs:
         run: pnpm build
         env:
           NEXT_PUBLIC_API_URL: http://localhost:5001
+          NEXT_PUBLIC_SITE_URL: http://localhost:3000
           NEXT_TELEMETRY_DISABLED: 1
 
   browser:
@@ -112,6 +113,10 @@ jobs:
       TICKET_SECRET: ci-only-ticket-secret-not-used-anywhere-else
       APP_URL: http://localhost:3000
       NEXT_PUBLIC_API_URL: http://localhost:5001
+      NEXT_PUBLIC_SITE_URL: http://localhost:3000
+      # where the journeys find the two apps (frontend/playwright.config.ts, e2e/helpers.ts)
+      BASE_URL: http://localhost:3000
+      API_URL: http://localhost:5001
       NEXT_TELEMETRY_DISABLED: 1
       # the journeys reset the demo data first (frontend/e2e/global-setup.ts)
       # in backend/, through corepack: the backend's own pnpm (the journeys run under the frontend's)
@@ -178,4 +183,4 @@ jobs:
       - name: API image
         run: docker build -t muster-api backend
       - name: Web image
-        run: docker build -t muster-web --build-arg NEXT_PUBLIC_API_URL=https://api.example.org frontend
+        run: docker build -t muster-web --build-arg NEXT_PUBLIC_API_URL=https://api.example.org --build-arg NEXT_PUBLIC_SITE_URL=https://example.org frontend
