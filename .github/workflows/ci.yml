@@ -57,6 +57,9 @@ jobs:
         run: pnpm test
       - name: Migrations (from an empty database)
         run: pnpm migration:run
+      # the entities and the migrations describe the same schema: nothing left to generate
+      - name: Schema matches the entities
+        run: pnpm migration:check
       - name: End-to-end tests (incl. tenant isolation)
         run: pnpm test:e2e
       - name: Build

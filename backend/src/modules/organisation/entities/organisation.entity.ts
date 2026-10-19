@@ -53,6 +53,10 @@ export class Organisation {
   @Column({ name: 'join_policy', type: 'varchar', length: 20, default: JoinPolicy.Invite })
   joinPolicy: JoinPolicy;
 
+  // IANA zone its events happen in: every time it shows or emails is on this clock
+  @Column({ name: 'time_zone', type: 'varchar', length: 64, default: 'UTC' })
+  timeZone: string;
+
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;
 

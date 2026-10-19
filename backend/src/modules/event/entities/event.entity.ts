@@ -64,6 +64,10 @@ export type RepeatEvery = (typeof REPEAT_EVERY)[number];
 // target for registrations' foreign key: proves a registration's org_id is
 // really its event's workspace
 @Unique('events_id_org_id_key', ['id', 'orgId'])
+// trigram search on titles (migration 1760000000005; TypeORM can't express the operator class)
+@Index('events_title_trgm_idx', { synchronize: false })
+// the reminder sweep: published events by start (migration 1760000000007)
+@Index('events_starts_at_published_idx', ['startsAt'], { where: `"status" = 'published'` })
 export class Event {
   @PrimaryGeneratedColumn('uuid', { primaryKeyConstraintName: 'events_pkey' })
   id: string;

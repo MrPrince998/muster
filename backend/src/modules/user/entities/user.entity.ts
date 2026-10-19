@@ -34,6 +34,8 @@ const emailTransformer: ValueTransformer = {
  * password_hash instead of creating a second row.
  */
 @Entity('users')
+// trigram search on names (migration 1760000000005; TypeORM can't express the operator class)
+@Index('users_name_trgm_idx', { synchronize: false })
 export class User {
   // UUIDs, not serial ints: ids appear in URLs and ticket tokens, so they
   // must not be guessable or leak how many users exist.

@@ -35,6 +35,8 @@ import { Organisation } from '../../organisation/entities/organisation.entity.js
 @Unique('clubs_id_org_id_key', ['id', 'orgId'])
 // at most one default club per workspace
 @Index('clubs_one_default', ['orgId'], { unique: true, where: `"is_default"` })
+// trigram search on names (migration 1760000000005; TypeORM can't express the operator class)
+@Index('clubs_name_trgm_idx', { synchronize: false })
 export class Club {
   @PrimaryGeneratedColumn('uuid', { primaryKeyConstraintName: 'clubs_pkey' })
   id: string;
