@@ -13,6 +13,8 @@ services:
       - frontend_next:/app/.next
     environment:
       NEXT_PUBLIC_API_URL: http://localhost:5001
+      # the web server's own requests (link previews) go container to container
+      INTERNAL_API_URL: http://backend:5001
     depends_on:
       - backend
     restart: unless-stopped

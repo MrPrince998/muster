@@ -32,3 +32,22 @@ test("a members-only event isn't public", async ({ browser }) => {
   await expect(page.getByRole("heading", { name: "No event here" })).toBeVisible();
   await stranger.close();
 });
+
+test("a shared link shows a preview: title, when and where, and a card", async ({ page, request }) => {
+  await openClub(page, "Robotics Society");
+  const panel = await openEvent(page, "Robot Wars Viewing");
+  const href = (await panel.getByRole("link", { name: "Open page" }).getAttribute("href"))!;
+
+  // what Slack, WhatsApp and the like fetch: the tags are in the <head>, not streamed
+  const html = await (await request.get(href, { headers: { "User-Agent": "Slackbot-LinkExpanding 1.0" } })).text();
+  const head = html.split("</head>")[0];
+  expect(head).toContain('<meta property="og:title" content="Robot Wars Viewing"/>');
+  expect(head).toMatch(/<meta property="og:description" content="[^"]*Lecture Theatre 1\. Robotics Society, Riverside University\. \d+ places left\."/);
+  expect(head).toContain('<meta name="twitter:card" content="summary_large_image"/>');
+
+  const image = head.match(/<meta property="og:image" content="([^"]+)"/)![1];
+  const card = await request.get(new URL(image).pathname + new URL(image).search);
+  expect(card.status()).toBe(200);
+  expect(card.headers()["content-type"]).toBe("image/png");
+  expect((await card.body()).length).toBeGreaterThan(10_000);
+});

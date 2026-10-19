@@ -49,6 +49,10 @@ services:
       args:
         NEXT_PUBLIC_API_URL: https://${API_DOMAIN:?set API_DOMAIN}
         NEXT_PUBLIC_FEEDBACK_EMAIL: ${FEEDBACK_EMAIL:-}
+        NEXT_PUBLIC_SITE_URL: https://${APP_DOMAIN}
+    environment:
+      # link previews: the web server reads public events straight from the API container
+      INTERNAL_API_URL: http://api:5001
     depends_on:
       - api
     restart: unless-stopped

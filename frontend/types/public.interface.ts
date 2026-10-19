@@ -16,6 +16,8 @@ export interface PublicEvent {
   waitlistCount: number;
   clubName: string;
   workspaceName: string;
+  // the zone its times are meant in (IANA name)
+  timeZone: string;
 }
 
 export interface GuestPlaceInput {

@@ -22,6 +22,8 @@ export class PublicEventDto {
   @ApiProperty({ description: 'People waiting for a place' }) waitlistCount: number;
   @ApiProperty() clubName: string;
   @ApiProperty() workspaceName: string;
+  @ApiProperty({ example: 'Australia/Sydney', description: 'The time zone the event is held in (IANA name)' })
+  timeZone: string;
 }
 
 export class GuestPlaceDto {

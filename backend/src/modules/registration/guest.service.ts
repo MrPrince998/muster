@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import type { EntityManager } from 'typeorm';
 import { HttpError } from '../../common/errors/http-error.js';
+import { config } from '../../config/config.js';
 import { TenantService } from '../../database/tenant.service.js';
 import { EmailService } from '../email/email.service.js';
 import { formatWhen } from '../email/format-when.js';
@@ -252,6 +253,8 @@ function toPublicEvent(row: PublicEventRow): PublicEventDto {
     waitlistCount: row.waiting,
     clubName: row.club_name,
     workspaceName: row.org_name,
+    // one zone for the whole app for now (APP_TIME_ZONE)
+    timeZone: config.timeZone,
   };
 }
 

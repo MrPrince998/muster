@@ -140,8 +140,10 @@ jobs:
         run: |
           pnpm install --frozen-lockfile
           pnpm build
-          cp -r .next/static .next/standalone/.next/static
-          cp -r public .next/standalone/public
+          # merge into place (a plain cp -r nests the folder if it's there already)
+          mkdir -p .next/standalone/.next/static .next/standalone/public
+          cp -r .next/static/. .next/standalone/.next/static/
+          cp -r public/. .next/standalone/public/
           PORT=3000 HOSTNAME=127.0.0.1 nohup node .next/standalone/server.js > ../web.log 2>&1 &
       - name: Wait for both
         run: |
