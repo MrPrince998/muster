@@ -147,6 +147,22 @@ export class EventController {
     return this.events.remove(access, eventId);
   }
 
+  /** The event as a calendar file (.ics), for "Add to calendar" */
+  @Get(':eventId/calendar')
+  @RequirePermission()
+  @ApiOkResponse({ description: 'An iCalendar file', content: { 'text/calendar': { schema: { type: 'string' } } } })
+  @ApiNotFoundResponse(error('No such event (EVENT_NOT_FOUND)'))
+  async calendar(
+    @CurrentClubAccess() access: ClubAccess,
+    @Param('eventId', ParseUUIDPipe) eventId: string,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<string> {
+    const { filename, ics } = await this.events.calendar(access, eventId);
+    res.setHeader('Content-Type', 'text/calendar; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    return ics;
+  }
+
   /**
    * The attendee list, as a spreadsheet (CSV)
    *

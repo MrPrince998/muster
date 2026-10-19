@@ -7,8 +7,9 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { asApiError } from "@/lib/api/client";
 import { TicketFace } from "../../workspace/tickets/ticket-face";
+import { AddToCalendar } from "../../workspace/shared/add-to-calendar";
 import { ConfirmDialog } from "../../workspace/shared/confirm-dialog";
-import { useCancelGuestTicket, useGuestTicket } from "../services/public.service";
+import { publicCalendarUrl, useCancelGuestTicket, useGuestTicket } from "../services/public.service";
 
 /**
  * /t/[token]: a ticket, opened by its own signed token. How a guest (who has
@@ -50,6 +51,19 @@ export default function GuestTicketContainer() {
       <div className="[filter:drop-shadow(0_0_0.5px_rgb(26_31_54/0.3))_drop-shadow(0_14px_24px_rgb(47_69_216/0.16))]">
         <TicketFace ticket={data} />
       </div>
+      {!data.eventCancelled && (
+        <AddToCalendar
+          className="mt-6"
+          icsHref={publicCalendarUrl(data.eventId)}
+          event={{
+            title: data.eventTitle,
+            startsAt: data.startsAt,
+            endsAt: data.endsAt,
+            location: data.location,
+            details: `${data.clubName}, ${data.workspaceName}. Your ticket: ${new URL(`/t/${token}`, process.env.NEXT_PUBLIC_SITE_URL)}`,
+          }}
+        />
+      )}
       <p className="mt-6 text-center text-sm text-muted-foreground">
         It&rsquo;s also in your email. Keep this page or that email: either gets you in.
       </p>

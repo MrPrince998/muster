@@ -112,18 +112,34 @@ export async function downloadAttendees(clubId: string, eventId: string, title: 
     url: `/clubs/${clubId}/events/${eventId}/registrations/export`,
     responseType: "blob",
   });
-  const slug =
-    title
-      .normalize("NFD")
-      .replace(/[^\w\s-]/g, "")
-      .trim()
-      .toLowerCase()
-      .replace(/[\s_-]+/g, "-")
-      .slice(0, 60) || "event";
+  saveFile(blob, `${fileSlug(title)}-attendees.csv`);
+}
+
+/** Saves the event as a calendar file (.ics), for any member who can see it. */
+export async function downloadEventCalendar(clubId: string, eventId: string, title: string): Promise<void> {
+  const blob = await request<Blob>({
+    method: "get",
+    url: `/clubs/${clubId}/events/${eventId}/calendar`,
+    responseType: "blob",
+  });
+  saveFile(blob, `${fileSlug(title)}.ics`);
+}
+
+const fileSlug = (title: string) =>
+  title
+    .normalize("NFD")
+    .replace(/[^\w\s-]/g, "")
+    .trim()
+    .toLowerCase()
+    .replace(/[\s_-]+/g, "-")
+    .slice(0, 60) || "event";
+
+// hands a fetched file to the browser to save
+function saveFile(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  link.download = `${slug}-attendees.csv`;
+  link.download = filename;
   document.body.append(link);
   link.click();
   link.remove();

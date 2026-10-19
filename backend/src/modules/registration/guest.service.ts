@@ -1,6 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import type { EntityManager } from 'typeorm';
 import { HttpError } from '../../common/errors/http-error.js';
+import { fileSlug } from '../../common/utils/csv.js';
+import { buildIcs } from '../../common/utils/ics.js';
+import { config } from '../../config/config.js';
 import { TenantService } from '../../database/tenant.service.js';
 import { EmailService } from '../email/email.service.js';
 import { formatWhen } from '../email/format-when.js';
@@ -81,6 +84,27 @@ export class GuestService {
   /** A public event's page. Drafts and members-only events are "not found". */
   event(eventId: string): Promise<PublicEventDto> {
     return this.inEvent(eventId, async (m) => toPublicEvent(await this.publicEvent(m, eventId)));
+  }
+
+  /** A public event as a calendar file: a plain link anyone can open. */
+  calendar(eventId: string): Promise<{ filename: string; ics: string }> {
+    return this.inEvent(eventId, async (m) => {
+      const event = await this.publicEvent(m, eventId);
+      const url = new URL(`/e/${eventId}`, config.appUrl).toString();
+      return {
+        filename: `${fileSlug(event.title)}.ics`,
+        ics: buildIcs({
+          eventId,
+          title: event.title,
+          startsAt: event.starts_at,
+          endsAt: event.ends_at,
+          location: event.location,
+          description: `${event.club_name}, ${event.org_name}. ${url}`,
+          url,
+          cancelled: event.status === 'cancelled',
+        }),
+      };
+    });
   }
 
   /**
@@ -232,6 +256,7 @@ export class GuestService {
       when: formatWhen(row.starts_at, row.ends_at, row.time_zone),
       where: row.location,
       qrPng: await this.tickets.qrPng(token),
+      calendar: { eventId: row.event_id, startsAt: row.starts_at, endsAt: row.ends_at },
     });
   }
 }

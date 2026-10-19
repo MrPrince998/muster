@@ -134,6 +134,7 @@ export class ReminderService implements OnApplicationBootstrap, OnModuleDestroy 
       when: formatWhen(row.starts_at, row.ends_at, row.time_zone),
       where: row.location,
       qrPng: await this.tickets.qrPng(token),
+      calendar: { eventId: row.event_id, startsAt: row.starts_at, endsAt: row.ends_at },
     });
   }
 }

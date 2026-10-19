@@ -2,6 +2,8 @@ import { Injectable } from '@nestjs/common';
 import type { EntityManager } from 'typeorm';
 import { HttpError } from '../../common/errors/http-error.js';
 import { fileSlug, toCsv } from '../../common/utils/csv.js';
+import { buildIcs } from '../../common/utils/ics.js';
+import { config } from '../../config/config.js';
 import { TenantService } from '../../database/tenant.service.js';
 import { EmailService, type EventRecipient } from '../email/email.service.js';
 import { formatWhen } from '../email/format-when.js';
@@ -344,6 +346,30 @@ export class EventService {
         registeredAt: r.created_at,
         checkedInAt: r.checked_in_at,
       }));
+    });
+  }
+
+  /** The event as a calendar file, for "Add to calendar". Any member who can see it. */
+  calendar(access: ClubAccess, eventId: string): Promise<{ filename: string; ics: string }> {
+    return this.inClub(access, async (m) => {
+      const event = await this.findOne(m, access, eventId);
+      const club = await this.clubDetails(m, access.clubId);
+      const url = new URL(`/o/${club.orgSlug}`, config.appUrl);
+      url.searchParams.set('club', access.clubId);
+      url.searchParams.set('event', eventId);
+      return {
+        filename: `${fileSlug(event.title)}.ics`,
+        ics: buildIcs({
+          eventId,
+          title: event.title,
+          startsAt: event.startsAt,
+          endsAt: event.endsAt,
+          location: event.location,
+          description: `${club.name}. ${url.toString()}`,
+          url: url.toString(),
+          cancelled: event.status === EventStatus.Cancelled,
+        }),
+      };
     });
   }
 

@@ -15,6 +15,14 @@ test("anyone with the link can ask for a place", async ({ page, browser }) => {
   await expect(guest.getByRole("heading", { level: 1, name: "Robot Wars Viewing" })).toBeVisible();
   await expect(guest.getByText(/places left/)).toBeVisible();
 
+  // a calendar file anyone can have, no account needed
+  await guest.getByRole("button", { name: "Add to calendar" }).click();
+  const ics = await guest.getByRole("menuitem", { name: "Apple, Outlook and others" }).getAttribute("href");
+  const file = await guest.request.get(ics!);
+  expect(file.headers()["content-type"]).toBe("text/calendar; charset=utf-8");
+  expect(await file.text()).toContain("SUMMARY:Robot Wars Viewing");
+  await guest.keyboard.press("Escape");
+
   const card = guest.getByRole("complementary", { name: "Get a ticket" });
   await card.getByRole("button", { name: "Get a ticket" }).click();
   await expect(card.getByText("Your name goes on the ticket")).toBeVisible();

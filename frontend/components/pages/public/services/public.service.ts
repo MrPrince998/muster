@@ -35,3 +35,11 @@ export const useCancelGuestTicket = (token: string) =>
     { method: "post", url: `/public/tickets/${encodeURIComponent(token)}/cancel` },
     { invalidates: [ticketKey(token)] },
   );
+
+/** A public event's calendar file: a plain link, no session needed. */
+export const publicCalendarUrl = (eventId: string) =>
+  `${process.env.NEXT_PUBLIC_API_URL}/public/events/${encodeURIComponent(eventId)}/calendar`;
+
+/** A public event's page, for links back to it. */
+export const publicEventUrl = (eventId: string) =>
+  new URL(`/e/${encodeURIComponent(eventId)}`, process.env.NEXT_PUBLIC_SITE_URL).toString();

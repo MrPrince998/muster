@@ -8,7 +8,9 @@ import {
   DialogDescription,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { downloadEventCalendar } from "../services/event.service";
 import { useMyTicket } from "../services/ticket.service";
+import { AddToCalendar } from "../shared/add-to-calendar";
 import { TicketFace } from "./ticket-face";
 
 /**
@@ -65,11 +67,26 @@ export function TicketDialog({
             )}
           </div>
         ) : (
-          <TicketFace
-            ticket={data}
-            Title={DialogTitle}
-            Description={DialogDescription}
-          />
+          <>
+            <TicketFace
+              ticket={data}
+              Title={DialogTitle}
+              Description={DialogDescription}
+            />
+            {!data.eventCancelled && (
+              <AddToCalendar
+                className="mt-3 [&>button]:bg-background"
+                onDownload={() => downloadEventCalendar(data.clubId, data.eventId, data.eventTitle)}
+                event={{
+                  title: data.eventTitle,
+                  startsAt: data.startsAt,
+                  endsAt: data.endsAt,
+                  location: data.location,
+                  details: `${data.clubName}, ${data.workspaceName}`,
+                }}
+              />
+            )}
+          </>
         )}
       </DialogContent>
     </Dialog>

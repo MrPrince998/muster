@@ -9,6 +9,8 @@ import { cn } from "@/lib/utils";
 import type { PublicEvent } from "@/types";
 import { differsFromDevice, zoneCity, zoneName } from "@/lib/time-zone";
 import { formatFullDate, formatTimeRange } from "../../workspace/org-home/parts/format";
+import { AddToCalendar } from "../../workspace/shared/add-to-calendar";
+import { publicCalendarUrl, publicEventUrl } from "../services/public.service";
 import type { GuestPlaceValues } from "../validation/guest-place.schema";
 
 // the stub's notches, where the form meets the band (the same ticket as everywhere else)
@@ -60,6 +62,19 @@ export default function PublicEventView({ event, form, onSubmit, sentTo, onAskAg
             </Detail>
           )}
         </dl>
+        {event.status !== "cancelled" && !event.ended && (
+          <AddToCalendar
+            className="mt-6 items-start"
+            icsHref={publicCalendarUrl(event.id)}
+            event={{
+              title: event.title,
+              startsAt: event.startsAt,
+              endsAt: event.endsAt,
+              location: event.location,
+              details: `${event.clubName}, ${event.workspaceName}. ${publicEventUrl(event.id)}`,
+            }}
+          />
+        )}
         {event.description && (
           <p className="mt-8 max-w-prose text-pretty whitespace-pre-line text-muted-foreground">{event.description}</p>
         )}

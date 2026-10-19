@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Post, Res, UseGuards } from '@nestjs/common';
 import {
   ApiAcceptedResponse,
   ApiBadRequestResponse,
@@ -10,6 +10,7 @@ import {
   ApiTooManyRequestsResponse,
 } from '@nestjs/swagger';
 import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
+import type { Response } from 'express';
 import { Public } from '../../common/decorators/public.decorator.js';
 import { ErrorResponseDto } from '../../common/errors/error-response.dto.js';
 import { ConfirmGuestPlaceDto, GuestPlaceDto, GuestPlaceResultDto, PublicEventDto } from './dto/public.dto.js';
@@ -38,6 +39,21 @@ export class PublicController {
   @ApiNotFoundResponse(error('No such public event (EVENT_NOT_FOUND)'))
   event(@Param('eventId', ParseUUIDPipe) eventId: string): Promise<PublicEventDto> {
     return this.guests.event(eventId);
+  }
+
+  /** A public event as a calendar file (.ics): "Add to calendar" for anyone with the link */
+  @Get('events/:eventId/calendar')
+  @Throttle({ default: { limit: 60, ttl: 60_000 } })
+  @ApiOkResponse({ description: 'An iCalendar file', content: { 'text/calendar': { schema: { type: 'string' } } } })
+  @ApiNotFoundResponse(error('No such public event (EVENT_NOT_FOUND)'))
+  async calendar(
+    @Param('eventId', ParseUUIDPipe) eventId: string,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<string> {
+    const { filename, ics } = await this.guests.calendar(eventId);
+    res.setHeader('Content-Type', 'text/calendar; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    return ics;
   }
 
   /**

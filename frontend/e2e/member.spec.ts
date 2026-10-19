@@ -13,6 +13,18 @@ test("register for an event, see the ticket, give the place back", async ({ page
   const ticket = page.getByRole("dialog");
   await expect(ticket.getByRole("heading", { name: "Short Film Showcase" })).toBeVisible();
   await expect(ticket.getByRole("img", { name: /QR code for Sam Rivera/ })).toBeVisible();
+
+  // into a calendar: the file (Apple, Outlook and the rest), or Google's own page
+  await ticket.getByRole("button", { name: "Add to calendar" }).click();
+  await expect(page.getByRole("menuitem", { name: "Google Calendar" })).toHaveAttribute(
+    "href",
+    /^https:\/\/calendar\.google\.com\/calendar\/render\?action=TEMPLATE&text=Short\+Film\+Showcase&dates=\d{8}T\d{6}Z%2F\d{8}T\d{6}Z/,
+  );
+  const [file] = await Promise.all([
+    page.waitForEvent("download"),
+    page.getByRole("menuitem", { name: "Apple, Outlook and others" }).click(),
+  ]);
+  expect(file.suggestedFilename()).toBe("short-film-showcase.ics");
   await page.keyboard.press("Escape");
 
   await panel.getByRole("button", { name: "Cancel my place" }).click();

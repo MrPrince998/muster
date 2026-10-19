@@ -1,4 +1,5 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
+import { buildIcs } from '../../common/utils/ics.js';
 import { EmailSender, type OutgoingEmail } from './email-sender.js';
 import {
   eventCancelledTemplate,
@@ -16,6 +17,22 @@ import { verifyEmailTemplate } from './templates/verify-email.js';
 export const APP_URL = Symbol('APP_URL');
 // the gap between emails in a bulk send: Resend accepts a few requests a second
 export const BULK_PACE_MS = Symbol('BULK_PACE_MS');
+
+/** The event a ticket is for, so the email can carry it as a calendar file. */
+export interface TicketCalendar {
+  eventId: string;
+  startsAt: Date;
+  endsAt: Date;
+}
+
+/** A ticket (or reminder) email: the QR code, and the event to add to a calendar. */
+type TicketEmail = {
+  to: string;
+  qrPng: Buffer;
+  registrationId: string;
+  guestToken?: string;
+  calendar?: TicketCalendar;
+} & Omit<TicketEmailData, 'url'>;
 
 /** One registrant of an event, for the emails sent to all of them. */
 export interface EventRecipient {
@@ -85,13 +102,17 @@ export class EmailService {
    * sign in) gets `guestToken`, and a link to the ticket's own page instead.
    */
   sendTicket(
-    email: { to: string; qrPng: Buffer; registrationId: string; guestToken?: string } & Omit<TicketEmailData, 'url'>,
+    email: TicketEmail,
   ): Promise<void> {
-    const { to, qrPng, registrationId, guestToken, ...data } = email;
+    const { to, qrPng, registrationId, guestToken, calendar, ...data } = email;
+    const url = this.ticketUrl(registrationId, guestToken);
     return this.sender.send({
       to,
-      ...ticketTemplate({ ...data, url: this.ticketUrl(registrationId, guestToken) }),
-      attachments: [{ filename: 'ticket.png', content: qrPng }],
+      ...ticketTemplate({ ...data, url }),
+      attachments: [
+        { filename: 'ticket.png', content: qrPng },
+        ...this.calendarAttachment(calendar, data.eventTitle, data.clubName, data.where, url),
+      ],
     });
   }
 
@@ -100,13 +121,17 @@ export class EmailService {
    * even if a retry sends it twice (the provider drops the repeat).
    */
   sendReminder(
-    email: { to: string; qrPng: Buffer; registrationId: string; guestToken?: string } & Omit<TicketEmailData, 'url'>,
+    email: TicketEmail,
   ): Promise<void> {
-    const { to, qrPng, registrationId, guestToken, ...data } = email;
+    const { to, qrPng, registrationId, guestToken, calendar, ...data } = email;
+    const url = this.ticketUrl(registrationId, guestToken);
     return this.sender.send({
       to,
-      ...reminderTemplate({ ...data, url: this.ticketUrl(registrationId, guestToken) }),
-      attachments: [{ filename: 'ticket.png', content: qrPng }],
+      ...reminderTemplate({ ...data, url }),
+      attachments: [
+        { filename: 'ticket.png', content: qrPng },
+        ...this.calendarAttachment(calendar, data.eventTitle, data.clubName, data.where, url),
+      ],
       idempotencyKey: `event-reminder/${registrationId}`,
     });
   }
@@ -200,6 +225,19 @@ export class EmailService {
 
   // straight to one ticket: My tickets opens the one named in ?ticket=; a
   // guest (who can't sign in) gets the ticket's own page instead
+  // "event.ics": one tap adds it to the reader's calendar, with the way back to the ticket
+  private calendarAttachment(
+    calendar: TicketCalendar | undefined,
+    title: string,
+    clubName: string,
+    where: string | null,
+    ticketUrl: string,
+  ): { filename: string; content: Buffer }[] {
+    if (!calendar) return [];
+    const ics = buildIcs({ ...calendar, title, location: where, description: `${clubName}. Your ticket: ${ticketUrl}`, url: ticketUrl });
+    return [{ filename: 'event.ics', content: Buffer.from(ics, 'utf8') }];
+  }
+
   private ticketUrl(registrationId: string, guestToken?: string): string {
     if (guestToken) return new URL(`/t/${guestToken}`, this.appUrl).toString();
     const url = new URL('/tickets', this.appUrl);
