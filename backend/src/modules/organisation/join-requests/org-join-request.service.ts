@@ -7,6 +7,7 @@ import { EmailService } from '../../email/email.service.js';
 import { OrgJoinRequestStatus } from '../entities/org-join-request.entity.js';
 import type { OrgMembership } from '../org-roles.js';
 import type { JoinRequestDto, MyJoinRequestDto } from './dto/join-request.dto.js';
+import { audit, AuditAction } from '../../audit/audit.js';
 
 // after a rejection, the same person must wait before asking again
 export const REJECTION_COOLDOWN_HOURS = 24;
@@ -135,6 +136,7 @@ export class OrgJoinRequestService {
          ON CONFLICT DO NOTHING`,
         [me.orgId, result.userId],
       );
+      await audit(m, { actorId: me.userId, action: AuditAction.OrgJoinApproved, subjectUserId: result.userId });
       return result;
     });
 
@@ -151,9 +153,11 @@ export class OrgJoinRequestService {
   }
 
   async reject(me: OrgMembership, requestId: string): Promise<void> {
-    const decided = await this.tenant.withTenant(me.orgId, (m) =>
-      this.decide(m, me, requestId, OrgJoinRequestStatus.Rejected),
-    );
+    const decided = await this.tenant.withTenant(me.orgId, async (m) => {
+      const result = await this.decide(m, me, requestId, OrgJoinRequestStatus.Rejected);
+      await audit(m, { actorId: me.userId, action: AuditAction.OrgJoinRejected, subjectUserId: result.userId });
+      return result;
+    });
 
     this.email.inBackground(
       'join request rejected',

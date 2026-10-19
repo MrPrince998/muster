@@ -8,3 +8,4 @@ export * from "./ticket.interface";
 export * from "./search.interface";
 export * from "./public.interface";
 export * from "./analytics.interface";
+export * from "./audit.interface";

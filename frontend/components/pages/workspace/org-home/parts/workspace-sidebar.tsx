@@ -1,6 +1,6 @@
 "use client";
 
-import { Inbox, Plus, Settings, Users } from "lucide-react";
+import { History, Inbox, Plus, Settings, Users } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { cn } from "@/lib/utils";
@@ -46,6 +46,7 @@ export function WorkspaceSidebar() {
       count: pending,
       highlight: pending > 0,
     },
+    can.changeSettings && { href: `${base}/activity`, icon: History, label: "Activity", count: null, highlight: false },
     can.changeSettings && { href: `${base}/settings`, icon: Settings, label: "Settings", count: null, highlight: false },
   ].filter((link) => !!link);
 

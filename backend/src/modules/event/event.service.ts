@@ -22,6 +22,7 @@ import type {
   UpdateEventDto,
 } from './dto/event.dto.js';
 import { EventStatus, EventVisibility, type RepeatEvery } from './entities/event.entity.js';
+import { audit, AuditAction } from '../audit/audit.js';
 
 export const eventNotFound = () => HttpError.notFound('Event not found', 'EVENT_NOT_FOUND');
 const missingPermission = (missing: Permission[]) =>
@@ -185,6 +186,13 @@ export class EventService {
         );
         ids.push(id);
       }
+      await audit(m, {
+        actorId: access.userId,
+        action: AuditAction.EventCreated,
+        clubId: access.clubId,
+        eventId: ids[0],
+        details: { title: dto.title.trim(), published: !!dto.publish, ...(dto.repeat && { repeat: dto.repeat }) },
+      });
       return this.findOne(m, access, ids[0]);
     });
   }
@@ -221,6 +229,24 @@ export class EventService {
           : own;
         changes.push(await this.applyUpdate(m, other, dto, times, club));
       }
+      // opening or closing registration reads as its own thing; anything else is an edit
+      const fields = Object.keys(dto).filter((key) => dto[key as keyof UpdateEventDto] !== undefined);
+      const toggle = fields.length === 1 && fields[0] === 'registrationOpen';
+      await audit(m, {
+        actorId: access.userId,
+        action: toggle
+          ? dto.registrationOpen
+            ? AuditAction.EventRegistrationOpened
+            : AuditAction.EventRegistrationClosed
+          : AuditAction.EventUpdated,
+        clubId: access.clubId,
+        eventId,
+        details: {
+          title: dto.title?.trim() ?? event.title,
+          ...(!toggle && { fields }),
+          ...(changes.length > 1 && { alsoLater: changes.length - 1 }),
+        },
+      });
       return { event: await this.findOne(m, access, eventId), changes, orgId, club };
     });
 
@@ -363,6 +389,18 @@ export class EventService {
           recipients: [...(await this.recipients(m, target.id)), ...(await this.waiting(m, target.id))],
         });
       }
+      await audit(m, {
+        actorId: access.userId,
+        action: AuditAction.EventCancelled,
+        clubId: access.clubId,
+        eventId,
+        details: {
+          title: event.title,
+          reason: note,
+          told: cancelled.reduce((sum, c) => sum + c.recipients.length, 0),
+          ...(cancelled.length > 1 && { alsoLater: cancelled.length - 1 }),
+        },
+      });
       return { event: await this.findOne(m, access, eventId), cancelled, club };
     });
 
@@ -396,6 +434,12 @@ export class EventService {
       }
       const ids = [event, ...later.filter((e) => e.status === EventStatus.Draft)].map((e) => e.id);
       await m.query(`DELETE FROM events WHERE id = ANY($1::uuid[])`, [ids]);
+      await audit(m, {
+        actorId: access.userId,
+        action: AuditAction.EventDeleted,
+        clubId: access.clubId,
+        details: { title: event.title, ...(ids.length > 1 && { alsoLater: ids.length - 1 }) },
+      });
     });
   }
 
@@ -411,6 +455,13 @@ export class EventService {
       }
       const ids = [event, ...later.filter((e) => e.status === EventStatus.Draft)].map((e) => e.id);
       await m.query(`UPDATE events SET status = 'published', published_at = now() WHERE id = ANY($1::uuid[])`, [ids]);
+      await audit(m, {
+        actorId: access.userId,
+        action: AuditAction.EventPublished,
+        clubId: access.clubId,
+        eventId,
+        details: { title: event.title, ...(ids.length > 1 && { alsoLater: ids.length - 1 }) },
+      });
       return this.findOne(m, access, eventId);
     });
   }
@@ -502,6 +553,14 @@ export class EventService {
         ]),
         ...waiting.map((p, i) => [p.name, `Waitlist ${i + 1}`, stamp(p.created_at), '', p.outsider ? 'Yes' : 'No']),
       ]);
+      // a list of people left the app: worth knowing who took it
+      await audit(m, {
+        actorId: access.userId,
+        action: AuditAction.EventAttendeesExported,
+        clubId: access.clubId,
+        eventId,
+        details: { title: event.title, people: going.length + waiting.length },
+      });
       return { filename: `${fileSlug(event.title)}-attendees.csv`, csv };
     });
   }

@@ -20,6 +20,7 @@ import { orgRoleRank, type OrgMembership } from './org-roles.js';
 import { RESERVED_SLUGS, slugify } from './slug.js';
 import type { JoinResultDto, OrganisationPreviewDto } from './join-requests/dto/join-request.dto.js';
 import { OrgJoinRequestService } from './join-requests/org-join-request.service.js';
+import { audit, AuditAction } from '../audit/audit.js';
 
 const SLUG_CONSTRAINT = 'organisations_slug_key';
 const slugTaken = () => HttpError.conflict('That URL is already taken', 'SLUG_TAKEN');
@@ -153,6 +154,13 @@ export class OrganisationService {
            RETURNING id, name, slug, join_policy, time_zone, created_at, updated_at`,
           [me.orgId, dto.name ?? null, dto.slug ?? null, dto.joinPolicy ?? null, dto.timeZone ?? null],
         );
+        // what was set, as set
+        const changed = Object.fromEntries(
+          (['name', 'slug', 'joinPolicy', 'timeZone'] as const).filter((key) => dto[key] !== undefined).map((key) => [key, dto[key]]),
+        );
+        if (Object.keys(changed).length > 0) {
+          await audit(m, { actorId: me.userId, action: AuditAction.OrgUpdated, details: changed });
+        }
         return toDto(rows[0], me.role);
       });
     } catch (error) {

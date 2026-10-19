@@ -19,6 +19,7 @@ import type {
 } from './dto/ticket.dto.js';
 import { TicketService } from '../ticket/ticket.service.js';
 import { WaitlistService, waitingCount } from '../waitlist/waitlist.service.js';
+import { audit, AuditAction } from '../audit/audit.js';
 
 const ticketNotFound = () => HttpError.notFound("You don't have a ticket for this event", 'TICKET_NOT_FOUND');
 
@@ -270,7 +271,12 @@ export class RegistrationService {
   manualCheckIn(access: ClubAccess, eventId: string, userId: string): Promise<CheckInResultDto> {
     return this.events.inClub(access, async (m) => {
       await this.assertCheckInOpen(m, access, eventId);
-      return this.admit(m, access, eventId, 'r.user_id = $1', userId);
+      const result = await this.admit(m, access, eventId, 'r.user_id = $1', userId);
+      // no ticket was shown: the log says who let them in
+      if (result.outcome === 'checked_in') {
+        await audit(m, { actorId: access.userId, action: AuditAction.EventManualCheckIn, clubId: access.clubId, eventId, subjectUserId: userId });
+      }
+      return result;
     });
   }
 

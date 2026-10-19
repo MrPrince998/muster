@@ -94,6 +94,7 @@ describe('cross-tenant access through the API', () => {
     ['delete', `/orgs/${B.orgId}/members/${guest.id}`],
     ['post', `/orgs/${B.orgId}/transfer-ownership`, { userId: attacker.id }],
     ['get', `/orgs/${B.orgId}/join-requests`],
+    ['get', `/orgs/${B.orgId}/audit`],
     ['get', `/orgs/by-slug/${B.slug}`],
     // its club, events and the people in them
     ['get', `/clubs/${B.clubId}/events`],

@@ -17,6 +17,7 @@ import { AnalyticsModule } from './modules/analytics/analytics.module.js';
 import { FeedModule } from './modules/feed/feed.module.js';
 import { NotificationModule } from './modules/notification/notification.module.js';
 import { FeedbackModule } from './modules/feedback/feedback.module.js';
+import { AuditModule } from './modules/audit/audit.module.js';
 
 @Module({
   imports: [
@@ -34,6 +35,7 @@ import { FeedbackModule } from './modules/feedback/feedback.module.js';
     FeedModule,
     NotificationModule,
     FeedbackModule,
+    AuditModule,
   ],
   controllers: [AppController],
   providers: [

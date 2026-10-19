@@ -5,6 +5,7 @@ import { TenantService } from '../../../database/tenant.service.js';
 import { OrgRole } from '../entities/org-member.entity.js';
 import { orgRoleRank, type OrgMembership } from '../org-roles.js';
 import type { AssignableOrgRole, OrgMemberDto } from './dto/member.dto.js';
+import { audit, AuditAction } from '../../audit/audit.js';
 
 const memberNotFound = () => HttpError.notFound('Member not found', 'MEMBER_NOT_FOUND');
 
@@ -61,6 +62,12 @@ export class OrgMemberService {
         userId,
         role,
       ]);
+      await audit(m, {
+        actorId: me.userId,
+        action: AuditAction.OrgMemberRoleChanged,
+        subjectUserId: userId,
+        details: { from: target, to: role },
+      });
     });
   }
 
@@ -81,6 +88,7 @@ export class OrgMemberService {
       }
       await this.assertOwnsNoClub(m, me.orgId, userId, 'They own a club; transfer it before removing them');
       await m.query(`DELETE FROM org_members WHERE org_id = $1 AND user_id = $2`, [me.orgId, userId]);
+      await audit(m, { actorId: me.userId, action: AuditAction.OrgMemberRemoved, subjectUserId: userId });
     });
   }
 
@@ -119,6 +127,7 @@ export class OrgMemberService {
       );
 
       await this.moveDefaultClubOwnership(m, me.orgId, me.userId, userId);
+      await audit(m, { actorId: me.userId, action: AuditAction.OrgOwnershipTransferred, subjectUserId: userId });
     });
   }
 

@@ -72,7 +72,12 @@ export default function OrgShellContainer({ children }: { children: React.ReactN
     { href: base, label: "Events" },
     { href: `${base}/members`, label: "Members" },
     ...(showRequests ? [{ href: `${base}/join-requests`, label: "Join requests" }] : []),
-    ...(can.changeSettings ? [{ href: `${base}/settings`, label: "Settings" }] : []),
+    ...(can.changeSettings
+      ? [
+          { href: `${base}/activity`, label: "Activity" },
+          { href: `${base}/settings`, label: "Settings" },
+        ]
+      : []),
   ];
 
   return (

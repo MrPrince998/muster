@@ -13,6 +13,7 @@ import type {
   InvitePreviewDto,
   InviteStatus,
 } from './dto/invite.dto.js';
+import { audit, AuditAction } from '../audit/audit.js';
 
 const inviteNotFound = () => HttpError.notFound('This invite link does not exist', 'INVITE_NOT_FOUND');
 const requestNotFound = () =>
@@ -124,7 +125,19 @@ export class InviteService {
         ],
       );
       const [row]: InviteRow[] = await m.query(`${SELECT_INVITES} WHERE i.id = $1`, [id]);
-      return toDto(row);
+      const invite = toDto(row);
+      await audit(m, {
+        actorId: access.userId,
+        action: AuditAction.ClubInviteCreated,
+        clubId: access.clubId,
+        details: {
+          role: invite.role?.name ?? null,
+          maxUses: dto.maxUses ?? null,
+          expiresInDays: dto.expiresInDays ?? null,
+          requiresApproval: dto.requiresApproval ?? false,
+        },
+      });
+      return invite;
     });
   }
 
@@ -136,6 +149,7 @@ export class InviteService {
         [inviteId, access.clubId],
       );
       if (rows.length === 0) throw inviteNotFound();
+      await audit(m, { actorId: access.userId, action: AuditAction.ClubInviteRevoked, clubId: access.clubId });
     });
   }
 
@@ -248,14 +262,26 @@ export class InviteService {
         assignedBy: access.userId,
       });
       await this.decide(m, requestId, 'approved', access.userId);
+      await audit(m, {
+        actorId: access.userId,
+        action: AuditAction.ClubJoinApproved,
+        clubId: access.clubId,
+        subjectUserId: request.user_id,
+      });
     });
   }
 
   /** Declines. They could ask again through a link that still works. */
   reject(access: ClubAccess, requestId: string): Promise<void> {
     return this.inClub(access, async (m) => {
-      await this.lockPending(m, access, requestId);
+      const request = await this.lockPending(m, access, requestId);
       await this.decide(m, requestId, 'rejected', access.userId);
+      await audit(m, {
+        actorId: access.userId,
+        action: AuditAction.ClubJoinRejected,
+        clubId: access.clubId,
+        subjectUserId: request.user_id,
+      });
     });
   }
 

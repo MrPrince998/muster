@@ -6,6 +6,7 @@ import { TenantService } from '../../database/tenant.service.js';
 import type { ClubAccess } from '../permission/club-access.js';
 import type { Permission } from '../permission/permissions.js';
 import type { ClubMemberDto, ClubRoleDto, CreateRoleDto, UpdateRoleDto } from './dto/club-admin.dto.js';
+import { audit, AuditAction } from '../audit/audit.js';
 
 // enough for any club; keeps the roles list (and positions under Owner's 100) small
 export const MAX_ROLES = 25;
@@ -105,6 +106,15 @@ export class ClubAdminService {
           [access.clubId, userId, id, orgId, access.userId],
         );
       }
+      if (added.length > 0 || removed.length > 0) {
+        await audit(m, {
+          actorId: access.userId,
+          action: AuditAction.ClubMemberRolesChanged,
+          clubId: access.clubId,
+          subjectUserId: userId,
+          details: { added: added.map((id) => byId.get(id)!.name), removed: removed.map((id) => byId.get(id)!.name) },
+        });
+      }
       return this.toMember(await this.member(m, access, userId), access);
     });
   }
@@ -119,6 +129,7 @@ export class ClubAdminService {
       const target = await this.member(m, access, userId);
       if (!this.manageable(target, access)) throw memberAboveYou();
       await m.query(`DELETE FROM club_members WHERE club_id = $1 AND user_id = $2`, [access.clubId, userId]);
+      await audit(m, { actorId: access.userId, action: AuditAction.ClubMemberRemoved, clubId: access.clubId, subjectUserId: userId });
     });
   }
 
@@ -158,6 +169,12 @@ export class ClubAdminService {
           [access.clubId, access.userId, next.id, orgId, userId],
         );
       }
+      await audit(m, {
+        actorId: access.userId,
+        action: AuditAction.ClubOwnershipTransferred,
+        clubId: access.clubId,
+        subjectUserId: userId,
+      });
     });
   }
 
@@ -189,6 +206,12 @@ export class ClubAdminService {
         throw error;
       }
       await this.renumber(m, [id, ...others.map((role) => role.id)]);
+      await audit(m, {
+        actorId: access.userId,
+        action: AuditAction.ClubRoleCreated,
+        clubId: access.clubId,
+        details: { role: dto.name, permissions: dto.permissions },
+      });
       return this.roleList(m, access);
     });
   }
@@ -214,6 +237,17 @@ export class ClubAdminService {
       } catch (error) {
         if (isUniqueViolation(error, 'roles_club_id_name_key')) throw nameTaken();
         throw error;
+      }
+      const granted = (dto.permissions ?? []).filter((p) => !role.permissions.includes(p));
+      const revoked = dto.permissions ? role.permissions.filter((p) => !dto.permissions!.includes(p)) : [];
+      const renamed = dto.name !== undefined && dto.name !== role.name;
+      if (renamed || granted.length > 0 || revoked.length > 0) {
+        await audit(m, {
+          actorId: access.userId,
+          action: AuditAction.ClubRoleUpdated,
+          clubId: access.clubId,
+          details: { role: dto.name ?? role.name, ...(renamed && { was: role.name }), granted, revoked },
+        });
       }
       return this.roleList(m, access);
     });
@@ -251,6 +285,7 @@ export class ClubAdminService {
       if (!access.canManageRole({ position: role.position, isOwner: false })) throw roleAboveYou();
       await m.query(`UPDATE invites SET default_role_id = NULL WHERE default_role_id = $1`, [roleId]);
       await m.query(`DELETE FROM roles WHERE id = $1`, [roleId]);
+      await audit(m, { actorId: access.userId, action: AuditAction.ClubRoleDeleted, clubId: access.clubId, details: { role: role.name } });
     });
   }
 

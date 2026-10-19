@@ -116,6 +116,10 @@ const SECTIONS: { title: string; answers: Answer[] }[] = [
     title: "Your account",
     answers: [
       {
+        q: "Can I see who changed what?",
+        a: "Yes, if you're the workspace's owner or an admin: Activity, in the workspace menu, lists changes to roles, members, events, invites and settings, plus attendee-list downloads and check-ins by name, each with who and when. Nobody can edit or delete that list.",
+      },
+      {
         q: "How do I change my name or password?",
         a: (
           <>

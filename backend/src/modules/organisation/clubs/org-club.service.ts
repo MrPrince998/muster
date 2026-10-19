@@ -9,6 +9,7 @@ import { ALL_PERMISSIONS, Permission } from '../../permission/permissions.js';
 import type { OrgMembership } from '../org-roles.js';
 import { slugify } from '../slug.js';
 import type { ClubSummaryDto, CreateClubDto } from './dto/org-club.dto.js';
+import { audit, AuditAction } from '../../audit/audit.js';
 
 const SLUG_CONSTRAINT = 'clubs_org_id_slug_key';
 
@@ -84,6 +85,7 @@ export class OrgClubService {
             description: dto.description?.trim() || null,
             ownerId: me.userId,
           });
+          await audit(m, { actorId: me.userId, action: AuditAction.ClubCreated, clubId, details: { name: dto.name.trim() } });
           const [club] = await this.summaries(m, me.userId, clubId);
           return club;
         });

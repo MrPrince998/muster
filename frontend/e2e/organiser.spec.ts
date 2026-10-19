@@ -130,3 +130,17 @@ test("past events show how the people who came rated them, without names", async
   await page.goto("/feedback?token=nope");
   await expect(page.getByRole("heading", { name: "This link doesn't work" })).toBeVisible();
 });
+
+test("the activity page says who changed what", async ({ page }) => {
+  await openClub(page, "Robotics Society");
+  const panel = await openEvent(page, "Soldering Workshop");
+  await panel.getByRole("button", { name: "Close registration" }).click();
+  await panel.getByRole("button", { name: "Open registration" }).click();
+  await expect(panel.getByRole("button", { name: "Close registration" })).toBeVisible();
+
+  await page.getByRole("link", { name: "Activity" }).first().click();
+  await expect(page.getByRole("heading", { level: 1, name: "Activity" })).toBeVisible();
+  const today = page.getByRole("region", { name: "Today" });
+  await expect(today.getByRole("listitem").nth(0)).toHaveText(/Sam Rivera reopened registration for “Soldering Workshop”/);
+  await expect(today.getByRole("listitem").nth(1)).toHaveText(/Sam Rivera closed registration for “Soldering Workshop”/);
+});
