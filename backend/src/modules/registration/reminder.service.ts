@@ -26,6 +26,7 @@ interface DueRow {
   name: string;
   // no password: a guest, whose way back to the ticket is its own page
   guest: boolean;
+  time_zone: string;
 }
 
 // Takes the due places in this workspace and marks them reminded, in one
@@ -33,7 +34,7 @@ interface DueRow {
 // rows already taken (SKIP LOCKED) and can't claim them a second time.
 const CLAIM = `
   UPDATE registrations r SET reminder_sent_at = now()
-  FROM events e, clubs c, users u
+  FROM events e, clubs c, users u, organisations o
   WHERE r.id IN (
           SELECT r2.id FROM registrations r2 JOIN events e2 ON e2.id = r2.event_id
           WHERE e2.status = 'published'
@@ -44,9 +45,9 @@ const CLAIM = `
           ORDER BY e2.starts_at
           LIMIT ${BATCH}
           FOR UPDATE OF r2 SKIP LOCKED)
-    AND e.id = r.event_id AND c.id = e.club_id AND u.id = r.user_id
+    AND e.id = r.event_id AND c.id = e.club_id AND u.id = r.user_id AND o.id = e.org_id
   RETURNING r.id AS registration_id, e.id AS event_id, e.title AS event_title, e.starts_at, e.ends_at,
-            e.location, c.name AS club_name, u.email, u.name, (u.password_hash IS NULL) AS guest`;
+            e.location, c.name AS club_name, u.email, u.name, (u.password_hash IS NULL) AS guest, o.time_zone`;
 
 /**
  * The day-before reminder (README: "Registration to check-in flow"): everyone
@@ -130,7 +131,7 @@ export class ReminderService implements OnApplicationBootstrap, OnModuleDestroy 
       name: row.name,
       eventTitle: row.event_title,
       clubName: row.club_name,
-      when: formatWhen(row.starts_at, row.ends_at),
+      when: formatWhen(row.starts_at, row.ends_at, row.time_zone),
       where: row.location,
       qrPng: await this.tickets.qrPng(token),
     });

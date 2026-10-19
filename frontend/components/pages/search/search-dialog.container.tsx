@@ -99,7 +99,7 @@ export default function SearchDialogContainer({
         })
       }
       onPickEvent={(hit) => {
-        const { day, month } = stubParts(hit.startsAt);
+        const { day, month } = stubParts(hit.startsAt, hit.timeZone);
         go({
           key: `event:${hit.id}`,
           kind: "event",

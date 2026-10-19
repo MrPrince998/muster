@@ -7,6 +7,7 @@ import { Field, FieldError, FieldLabel } from "@/components/ui/field";
 import { InputGroup, InputGroupInput } from "@/components/ui/input-group";
 import { cn } from "@/lib/utils";
 import type { PublicEvent } from "@/types";
+import { differsFromDevice, zoneCity, zoneName } from "@/lib/time-zone";
 import { formatFullDate, formatTimeRange } from "../../workspace/org-home/parts/format";
 import type { GuestPlaceValues } from "../validation/guest-place.schema";
 
@@ -43,10 +44,15 @@ export default function PublicEventView({ event, form, onSubmit, sentTo, onAskAg
         </h1>
         <dl className="mt-8 space-y-3 text-lg">
           <Detail icon={CalendarDays} label="Date">
-            {formatFullDate(event.startsAt)}
+            {formatFullDate(event.startsAt, event.timeZone)}
           </Detail>
           <Detail icon={Clock} label="Time">
-            {formatTimeRange(event.startsAt, event.endsAt)}
+            {formatTimeRange(event.startsAt, event.endsAt, event.timeZone)}
+            {differsFromDevice(event.timeZone) && (
+              <span className="ml-2 text-base text-muted-foreground">
+                {zoneCity(event.timeZone)} time ({zoneName(event.startsAt, event.timeZone)})
+              </span>
+            )}
           </Detail>
           {event.location && (
             <Detail icon={MapPin} label="Place">

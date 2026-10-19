@@ -218,6 +218,7 @@ const OrgHomeView = ({
                   {list.data.map((event) => (
                     <li key={event.id}>
                       <EventStub
+                        timeZone={organisation.timeZone}
                         event={event}
                         past={tab === "past"}
                         selected={openEvent?.id === event.id}
@@ -234,6 +235,7 @@ const OrgHomeView = ({
 
       {club && (
         <EventPanel
+          timeZone={organisation.timeZone}
           event={openEvent}
           clubName={club.name}
           canPublish={can.publishEvents}
@@ -247,6 +249,7 @@ const OrgHomeView = ({
 
       {club && (
         <EventFormDialog
+          timeZone={organisation.timeZone}
           open={dialog === "new-event" || dialog === "edit-event"}
           onOpenChange={closeDialog}
           clubId={club.id}

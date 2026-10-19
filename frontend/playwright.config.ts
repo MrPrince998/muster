@@ -29,6 +29,8 @@ export default defineConfig({
     // locally, the Chrome already installed; in CI, Playwright's own Chromium
     channel: ci ? undefined : "chrome",
     viewport: { width: 1440, height: 900 },
+    // a fixed device zone, so "this club is in another zone" reads the same everywhere (Northside is in Perth)
+    timezoneId: "Australia/Sydney",
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
     // video needs Playwright's ffmpeg: CI installs it; locally the trace has the same steps

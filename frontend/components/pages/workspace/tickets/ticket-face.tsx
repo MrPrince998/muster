@@ -52,9 +52,9 @@ export function TicketFace({
           {ticket.eventTitle}
         </Title>
         <Description className="mt-3 text-sm text-ink">
-          {formatFullDate(ticket.startsAt)}
+          {formatFullDate(ticket.startsAt, ticket.timeZone)}
           <br />
-          {formatTimeRange(ticket.startsAt, ticket.endsAt)}
+          {formatTimeRange(ticket.startsAt, ticket.endsAt, ticket.timeZone)}
           {ticket.location && (
             <>
               <br />
@@ -99,7 +99,7 @@ export function TicketFace({
                   Checked in
                 </p>
                 <p className="mt-1 text-sm font-semibold tabular-nums">
-                  {formatTime(ticket.checkedInAt)}
+                  {formatTime(ticket.checkedInAt, ticket.timeZone)}
                 </p>
               </div>
             </div>

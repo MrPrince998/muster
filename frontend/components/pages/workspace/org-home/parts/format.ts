@@ -1,24 +1,51 @@
-// Dates the way a ticket prints them: "Fri 24 Oct", "18:30".
-const day = new Intl.DateTimeFormat("en-GB", { day: "numeric" });
-const month = new Intl.DateTimeFormat("en-GB", { month: "short" });
-const weekday = new Intl.DateTimeFormat("en-GB", { weekday: "short" });
-const fullDate = new Intl.DateTimeFormat("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
-const time = new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit" });
+// Dates the way a ticket prints them: "Fri 24 Oct", "18:30". In the event's
+// workspace's zone when one is given (events happen where the club is),
+// otherwise the device's.
 
-export const stubParts = (iso: string) => {
-  const date = new Date(iso);
-  return { day: day.format(date), month: month.format(date), weekday: weekday.format(date) };
-};
+const formatters = new Map<string, Intl.DateTimeFormat>();
+function format(
+  iso: string,
+  options: Intl.DateTimeFormatOptions,
+  zone?: string,
+): string {
+  const key = `${zone ?? ""}|${JSON.stringify(options)}`;
+  let formatter = formatters.get(key);
+  if (!formatter) {
+    formatter = new Intl.DateTimeFormat("en-GB", {
+      ...options,
+      timeZone: zone,
+    });
+    formatters.set(key, formatter);
+  }
+  return formatter.format(new Date(iso));
+}
 
-export const formatTime = (iso: string) => time.format(new Date(iso));
+export const stubParts = (iso: string, zone?: string) => ({
+  day: format(iso, { day: "numeric" }, zone),
+  month: format(iso, { month: "short" }, zone),
+  weekday: format(iso, { weekday: "short" }, zone),
+});
 
-export const formatFullDate = (iso: string) => fullDate.format(new Date(iso));
+export const formatTime = (iso: string, zone?: string) =>
+  format(iso, { hour: "2-digit", minute: "2-digit" }, zone);
 
-/** "18:30 to 22:00", or with dates when it runs past midnight. */
-export function formatTimeRange(startIso: string, endIso: string) {
-  const start = new Date(startIso);
-  const end = new Date(endIso);
-  return start.toDateString() === end.toDateString()
-    ? `${formatTime(startIso)} to ${formatTime(endIso)}`
-    : `${formatTime(startIso)} to ${weekday.format(end)} ${day.format(end)} ${month.format(end)}, ${formatTime(endIso)}`;
+export const formatFullDate = (iso: string, zone?: string) =>
+  format(
+    iso,
+    { weekday: "long", day: "numeric", month: "long", year: "numeric" },
+    zone,
+  );
+
+/** "18:30 to 22:00", or with dates when it runs past midnight (in that zone). */
+export function formatTimeRange(
+  startIso: string,
+  endIso: string,
+  zone?: string,
+) {
+  const sameDay =
+    formatFullDate(startIso, zone) === formatFullDate(endIso, zone);
+  if (sameDay)
+    return `${formatTime(startIso, zone)} to ${formatTime(endIso, zone)}`;
+  const { weekday, day, month } = stubParts(endIso, zone);
+  return `${formatTime(startIso, zone)} to ${weekday} ${day} ${month}, ${formatTime(endIso, zone)}`;
 }

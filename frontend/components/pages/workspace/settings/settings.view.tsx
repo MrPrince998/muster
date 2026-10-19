@@ -3,6 +3,7 @@
 import { Check, LoaderCircle, Trash2 } from "lucide-react";
 import type { UseFormReturn } from "react-hook-form";
 import { Button } from "@/components/ui/button";
+import { TimeZoneSection } from "./parts/time-zone-section";
 import { Field, FieldDescription, FieldError, FieldLabel } from "@/components/ui/field";
 import { InputGroup, InputGroupAddon, InputGroupInput, InputGroupText } from "@/components/ui/input-group";
 import { cn } from "@/lib/utils";
@@ -22,6 +23,8 @@ interface SettingsViewProps {
   workspaceName: string;
   slug: string;
   form: UseFormReturn<WorkspaceSettingsValues>;
+  // the time zone section saves itself
+  timeZone: { orgId: string; current: string };
   onSaveDetails: (event?: React.BaseSyntheticEvent) => Promise<void>;
   saved: "details" | "policy" | null;
   policy: JoinPolicy | null;
@@ -101,6 +104,8 @@ const SettingsView = (props: SettingsViewProps) => {
           <SavedNote show={saved === "details"} />
         </div>
       </form>
+
+      <TimeZoneSection orgId={props.timeZone.orgId} current={props.timeZone.current} />
 
       <JoinPolicySection {...props} />
 

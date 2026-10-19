@@ -1,3 +1,4 @@
+import { isoToWallClock, wallClockToIso } from "@/lib/time-zone";
 import { z } from "zod";
 
 // Mirrors the API's CreateEventDto. Dates come from <input type="datetime-local">
@@ -23,21 +24,26 @@ export const eventFormSchema = z
 
 export type EventFormValues = z.infer<typeof eventFormSchema>;
 
-/** ISO -> the value a datetime-local input wants, in local time: "2026-10-24T18:30". */
-export function toLocalInput(iso: string): string {
+/**
+ * ISO -> the value a datetime-local input wants, on the clock in `zone` (the
+ * workspace's): "2026-10-24T18:30". Without a zone, the device's.
+ */
+export function toLocalInput(iso: string, zone?: string): string {
+  if (zone) return isoToWallClock(iso, zone);
   const date = new Date(iso);
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
-/** The form's values as the API takes them. */
-export function toEventInput(values: EventFormValues) {
+/** The form's values as the API takes them; the times read on the clock in `zone`. */
+export function toEventInput(values: EventFormValues, zone?: string) {
+  const instant = (local: string) => (zone ? wallClockToIso(local, zone) : new Date(local).toISOString());
   return {
     title: values.title,
     description: values.description,
     location: values.location,
-    startsAt: new Date(values.startsAt).toISOString(),
-    endsAt: new Date(values.endsAt).toISOString(),
+    startsAt: instant(values.startsAt),
+    endsAt: instant(values.endsAt),
     capacity: values.capacity === "" ? null : Number(values.capacity),
     visibility: values.visibility,
   };

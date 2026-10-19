@@ -8,6 +8,8 @@ export interface UserOrganisation {
   slug: string;
   role: string;
   joinedAt: Date;
+  // where its events happen: times are shown in it
+  timeZone: string;
 }
 
 /**
@@ -68,6 +70,7 @@ export class TenantService {
       slug: string;
       role: string;
       joined_at: Date;
+      time_zone: string;
     }[] = await this.dataSource.query(`SELECT * FROM user_organisations($1)`, [userId]);
     return rows.map((r) => ({
       orgId: r.org_id,
@@ -75,10 +78,19 @@ export class TenantService {
       slug: r.slug,
       role: r.role,
       joinedAt: r.joined_at,
+      timeZone: r.time_zone,
     }));
   }
 
   /** Workspaces where the user holds an active ticket, member or not (a guest at a public event). */
+  /** The current tenant's time zone (inside withTenant). */
+  static async timeZone(m: EntityManager): Promise<string> {
+    const [row]: { time_zone: string }[] = await m.query(
+      `SELECT time_zone FROM organisations WHERE id = current_org_id()`,
+    );
+    return row?.time_zone ?? 'UTC';
+  }
+
   async userTicketOrganisations(userId: string): Promise<string[]> {
     const rows: { org_id: string }[] = await this.dataSource.query(
       `SELECT user_ticket_organisations AS org_id FROM user_ticket_organisations($1)`,

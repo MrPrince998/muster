@@ -1,4 +1,4 @@
-import { DEMO, expect, RIVERSIDE, test } from "./helpers";
+import { DEMO, expect, openClub, openEvent, RIVERSIDE, test } from "./helpers";
 
 // Getting around: search, the account page, signing out and back in.
 
@@ -39,4 +39,19 @@ test("signing out, and a wrong password", async ({ browser }) => {
   // (Next keeps an empty route announcer with role alert on every page: look for ours)
   await expect(page.getByRole("alert").filter({ hasText: /email or password/i })).toBeVisible();
   await context.close();
+});
+
+test("a club in another time zone shows its own clock, and says so", async ({ page }) => {
+  // Northside Makers meets in Perth; the browser here isn't in Perth
+  await openClub(page, "3D Printing Guild", "northside-makers");
+  const panel = await openEvent(page, "Print Your First Part");
+  await expect(panel.getByText(/^10:00 to 13:00/)).toBeVisible();
+  await expect(panel.getByText(/Perth time \(AWST\)/)).toBeVisible();
+});
+
+test("owners choose the workspace's time zone in Settings", async ({ page }) => {
+  await page.goto(`/o/${RIVERSIDE}/settings`);
+  const section = page.getByRole("region", { name: "Time zone" });
+  await expect(section.getByRole("combobox", { name: "Time zone" })).toBeVisible();
+  await expect(section.getByRole("button", { name: "Save time zone" })).toBeDisabled();
 });

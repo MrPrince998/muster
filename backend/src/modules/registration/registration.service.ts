@@ -29,6 +29,7 @@ export interface TicketRow {
   event_status: EventStatus;
   attendee_name: string;
   checked_in_at: Date | null;
+  time_zone: string;
 }
 
 // Your active registrations with what a ticket shows. users is global (no
@@ -36,7 +37,7 @@ export interface TicketRow {
 const SELECT_TICKETS = `
   SELECT r.id AS registration_id, e.id AS event_id, c.id AS club_id, c.name AS club_name,
          o.name AS org_name, o.slug AS org_slug, e.title AS event_title, e.starts_at, e.ends_at,
-         e.location, e.status AS event_status, u.name AS attendee_name, r.checked_in_at
+         e.location, e.status AS event_status, u.name AS attendee_name, r.checked_in_at, o.time_zone
   FROM registrations r
   JOIN events e ON e.id = r.event_id
   JOIN clubs c ON c.id = e.club_id
@@ -58,6 +59,7 @@ export const toTicket = (row: TicketRow): TicketDto => ({
   eventCancelled: row.event_status === EventStatus.Cancelled,
   attendeeName: row.attendee_name,
   checkedInAt: row.checked_in_at,
+  timeZone: row.time_zone,
 });
 
 /**
@@ -358,7 +360,7 @@ export class RegistrationService {
       name: row.attendee_name,
       eventTitle: row.event_title,
       clubName: row.club_name,
-      when: formatWhen(row.starts_at, row.ends_at),
+      when: formatWhen(row.starts_at, row.ends_at, row.time_zone),
       where: row.location,
       qrPng: await this.tickets.qrPng(token),
     });

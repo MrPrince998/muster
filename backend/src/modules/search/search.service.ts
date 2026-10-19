@@ -43,6 +43,7 @@ export class SearchService {
       memberships.map((org) =>
         this.tenant.withTenant(org.orgId, async (m) => {
           const ref = { orgName: org.name, orgSlug: org.slug };
+          const zone = { timeZone: org.timeZone };
           // forgive one typo in a short word ("robtics" scores 0.55); this
           // transaction only, and results are ranked and capped anyway
           await m.query(`SELECT set_config('pg_trgm.word_similarity_threshold', '0.5', true)`);
@@ -54,7 +55,7 @@ export class SearchService {
           return {
             workspaces: workspace === null ? [] : [{ orgId: org.orgId, name: org.name, slug: org.slug, role: org.role, score: workspace }],
             clubs: clubs.map((c) => ({ ...c, ...ref })),
-            events: events.map((e) => ({ ...e, ...ref })),
+            events: events.map((e) => ({ ...e, ...ref, ...zone })),
             people: people.map((p) => ({ ...p, ...ref })),
           };
         }),
@@ -102,7 +103,11 @@ export class SearchService {
   }
 
   // events of your clubs; drafts only where you could edit them (as the event list decides)
-  private async events(m: EntityManager, params: string[], userId: string): Promise<Scored<Omit<EventHit, 'orgName' | 'orgSlug'>>[]> {
+  private async events(
+    m: EntityManager,
+    params: string[],
+    userId: string,
+  ): Promise<Scored<Omit<EventHit, 'orgName' | 'orgSlug' | 'timeZone'>>[]> {
     const rows: {
       id: string;
       title: string;

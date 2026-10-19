@@ -12,7 +12,7 @@ export class AttendanceSummaryDto {
 }
 
 export class AttendanceMonthDto {
-  @ApiProperty({ example: '2026-10', description: 'In the app time zone (APP_TIME_ZONE)' }) month: string;
+  @ApiProperty({ example: '2026-10', description: "In the workspace's time zone" }) month: string;
   @ApiProperty({ description: 'Events held that month' }) events: number;
   @ApiProperty() registered: number;
   @ApiProperty() attended: number;

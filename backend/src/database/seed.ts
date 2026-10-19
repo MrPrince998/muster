@@ -56,7 +56,10 @@ function sample<T>(items: T[], count: number): T[] {
 const DAY = 86_400_000;
 // events happen at sensible times where the club is: the app's time zone
 // (APP_TIME_ZONE, as emails use), not wherever this script runs
-const ZONE = process.env.APP_TIME_ZONE ?? 'UTC';
+// (each workspace has its own: Riverside uses APP_TIME_ZONE, Northside is in Perth)
+const RIVERSIDE_ZONE = process.env.APP_TIME_ZONE ?? 'UTC';
+const NORTHSIDE_ZONE = 'Australia/Perth';
+let ZONE = RIVERSIDE_ZONE;
 
 // the zone's offset from UTC at that moment, in minutes ("GMT+11:00" -> 660)
 function offsetMinutes(at: number): number {
@@ -253,14 +256,15 @@ async function makeEvent(m: Tx, orgId: string, clubId: string, by: Person, plan:
 // --- the demo -------------------------------------------------------------------
 
 async function riverside(ds: DataSource, people: Awaited<ReturnType<typeof makePeople>>) {
+  ZONE = RIVERSIDE_ZONE;
   const { demo, members, guests, applicants } = people;
   // members are named in FIRST's order: Ada, Priya, Marcus, ...
   const [, priya, marcus] = members;
   const orgId = randomUUID();
   await inTenant(ds, orgId, async (m) => {
     await m.query(
-      `INSERT INTO organisations (id, name, slug, join_policy, created_at) VALUES ($1, 'Riverside University', 'riverside-uni', 'request', now() - interval '400 days')`,
-      [orgId],
+      `INSERT INTO organisations (id, name, slug, join_policy, time_zone, created_at) VALUES ($1, 'Riverside University', 'riverside-uni', 'request', $2, now() - interval '400 days')`,
+      [orgId, RIVERSIDE_ZONE],
     );
     await m.query(`INSERT INTO org_members (org_id, user_id, role, joined_at) VALUES ($1, $2, 'owner', now() - interval '400 days')`, [
       orgId,
@@ -474,13 +478,15 @@ async function riverside(ds: DataSource, people: Awaited<ReturnType<typeof makeP
 }
 
 async function northside(ds: DataSource, people: Awaited<ReturnType<typeof makePeople>>) {
+  // a makerspace on the other side of the country: its times are Perth's
+  ZONE = NORTHSIDE_ZONE;
   const { demo, members, northsideOwner: alex } = people;
   const orgId = randomUUID();
   const crowd = members.slice(20, 32);
   await inTenant(ds, orgId, async (m) => {
     await m.query(
-      `INSERT INTO organisations (id, name, slug, join_policy, created_at) VALUES ($1, 'Northside Makers', 'northside-makers', 'open', now() - interval '300 days')`,
-      [orgId],
+      `INSERT INTO organisations (id, name, slug, join_policy, time_zone, created_at) VALUES ($1, 'Northside Makers', 'northside-makers', 'open', $2, now() - interval '300 days')`,
+      [orgId, NORTHSIDE_ZONE],
     );
     await m.query(`INSERT INTO org_members (org_id, user_id, role) VALUES ($1, $2, 'owner')`, [orgId, alex.id]);
     for (const person of [demo, ...crowd]) {
@@ -569,7 +575,7 @@ async function main() {
 
     console.log('Demo data ready.');
     console.log(`  Sign in as ${DEMO_EMAIL} / ${DEMO_PASSWORD}`);
-    console.log('  Riverside University (you own it) and Northside Makers (you are a member).');
+    console.log(`  Riverside University (you own it, ${RIVERSIDE_ZONE}) and Northside Makers (you are a member, ${NORTHSIDE_ZONE}).`);
     console.log(`  Every other demo account has the same password; all addresses end in @${DOMAIN}.`);
   } finally {
     await ds.destroy();

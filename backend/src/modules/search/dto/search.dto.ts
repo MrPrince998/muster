@@ -36,6 +36,7 @@ export class EventHit extends WorkspaceRef {
   @ApiProperty() endsAt: Date;
   @ApiProperty({ enum: Object.values(EventStatus) }) status: EventStatus;
   @ApiProperty({ description: 'Already over' }) ended: boolean;
+  @ApiProperty({ example: 'Australia/Sydney', description: "Its workspace's time zone" }) timeZone: string;
   @ApiProperty({ format: 'uuid' }) clubId: string;
   @ApiProperty() clubName: string;
 }

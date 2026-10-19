@@ -27,6 +27,7 @@ interface PromotedRow {
   email: string;
   name: string;
   guest: boolean;
+  time_zone: string;
 }
 
 /** Locks the event row (the same lock taking a place uses) and reads what decides who gets in. */
@@ -154,9 +155,9 @@ export class WaitlistService {
         await m.query(`UPDATE waitlist_entries SET promoted_at = now() WHERE id = $1`, [entry.id]);
         const [row]: PromotedRow[] = await m.query(
           `SELECT r.id AS registration_id, e.id AS event_id, e.title AS event_title, e.starts_at, e.ends_at,
-                  e.location, c.name AS club_name, u.email, u.name, (u.password_hash IS NULL) AS guest
+                  e.location, c.name AS club_name, u.email, u.name, (u.password_hash IS NULL) AS guest, o.time_zone
            FROM registrations r JOIN events e ON e.id = r.event_id JOIN clubs c ON c.id = e.club_id
-           JOIN users u ON u.id = r.user_id
+           JOIN users u ON u.id = r.user_id JOIN organisations o ON o.id = r.org_id
            WHERE r.id = $1`,
           [registration.id],
         );
@@ -185,7 +186,7 @@ export class WaitlistService {
           name: row.name,
           eventTitle: row.event_title,
           clubName: row.club_name,
-          when: formatWhen(row.starts_at, row.ends_at),
+          when: formatWhen(row.starts_at, row.ends_at, row.time_zone),
           where: row.location,
           qrPng: await this.tickets.qrPng(token),
         });

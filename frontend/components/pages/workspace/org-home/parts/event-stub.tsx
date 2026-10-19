@@ -20,13 +20,16 @@ export function EventStub({
   selected,
   past,
   onOpen,
+  timeZone,
 }: {
   event: ClubEvent;
+  // the workspace's: the event happens there
+  timeZone?: string;
   selected: boolean;
   past: boolean;
   onOpen: () => void;
 }) {
-  const { day, month, weekday } = stubParts(event.startsAt);
+  const { day, month, weekday } = stubParts(event.startsAt, timeZone);
   // capacity null means no limit: never full, no bar
   const full = event.capacity !== null && event.registeredCount >= event.capacity;
   const draft = event.status === "draft";
@@ -77,7 +80,7 @@ export function EventStub({
               {event.title}
             </p>
             <p className="mt-1 truncate text-sm text-muted-foreground">
-              {formatTime(event.startsAt)}
+              {formatTime(event.startsAt, timeZone)}
               {event.location ? `, ${event.location}` : ""}
             </p>
             <div className="mt-2 flex flex-wrap gap-1.5">

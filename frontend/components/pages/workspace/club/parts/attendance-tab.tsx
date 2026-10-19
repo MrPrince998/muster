@@ -19,10 +19,12 @@ export interface AttendanceTabProps {
   onRetry: () => void;
   // where an event opens: the club's events page with it selected
   eventHref: (eventId: string) => string;
+  // the workspace's
+  timeZone?: string;
 }
 
 /** How many came: the headline, the last 12 months, and each event. Presentational. */
-export function AttendanceTab({ data, loading, failed, onRetry, eventHref }: AttendanceTabProps) {
+export function AttendanceTab({ data, loading, failed, onRetry, eventHref, timeZone }: AttendanceTabProps) {
   if (loading) return <div className="h-72 animate-pulse rounded-xl bg-muted/60 motion-reduce:animate-none" aria-hidden />;
   if (failed || !data) {
     return (
@@ -41,7 +43,7 @@ export function AttendanceTab({ data, loading, failed, onRetry, eventHref }: Att
     <div className="space-y-12">
       <Headline summary={summary} />
       <Months months={months} />
-      <Events events={events} eventHref={eventHref} />
+      <Events events={events} eventHref={eventHref} timeZone={timeZone} />
     </div>
   );
 }
@@ -151,7 +153,15 @@ function Months({ months }: { months: ClubAttendance["months"] }) {
   );
 }
 
-function Events({ events, eventHref }: { events: ClubAttendance["events"]; eventHref: (id: string) => string }) {
+function Events({
+  events,
+  eventHref,
+  timeZone,
+}: {
+  events: ClubAttendance["events"];
+  eventHref: (id: string) => string;
+  timeZone?: string;
+}) {
   return (
     <section aria-labelledby="events-heading">
       <h2 id="events-heading" className="text-2xl font-extrabold font-stretch-70%">
@@ -162,7 +172,7 @@ function Events({ events, eventHref }: { events: ClubAttendance["events"]; event
       ) : (
         <ul className="mt-4 divide-y rounded-xl border">
           {events.map((e) => {
-            const { day, month } = stubParts(e.startsAt);
+            const { day, month } = stubParts(e.startsAt, timeZone);
             const cancelled = e.status === "cancelled";
             const rate = e.registered > 0 ? e.attended / e.registered : 0;
             return (

@@ -26,6 +26,8 @@ export interface EventHit extends InWorkspace {
   status: EventStatus;
   // already over
   ended: boolean;
+  // its workspace's time zone
+  timeZone: string;
   clubId: string;
   clubName: string;
 }

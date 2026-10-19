@@ -19,6 +19,8 @@ interface CheckInViewProps {
   canScan: boolean;
   clubName: string;
   event: ClubEvent | null;
+  // the workspace's zone: the door's times are shown in it
+  timeZone?: string;
   eventLoading: boolean;
   eventFailed: boolean;
   attended: number;
@@ -68,7 +70,7 @@ const CheckInView = (props: CheckInViewProps) => {
       <header>
         <p className="text-sm font-semibold text-cobalt">{props.clubName}</p>
         <h1 className="text-4xl leading-none font-extrabold font-stretch-70%">{event.title}</h1>
-        <p className="mt-1 text-sm text-muted-foreground">{formatTimeRange(event.startsAt, event.endsAt)}</p>
+        <p className="mt-1 text-sm text-muted-foreground">{formatTimeRange(event.startsAt, event.endsAt, props.timeZone)}</p>
         {/* the door's running count */}
         <div className="mt-4" aria-live="polite">
           <p className="flex items-baseline gap-1.5">
@@ -94,7 +96,7 @@ const CheckInView = (props: CheckInViewProps) => {
 
       <div className="mt-4 space-y-4">
         {mode === "scan" ? <CameraScanner onCode={props.onCode} /> : <NameSearch {...props} />}
-        <ResultCard result={props.result} />
+        <ResultCard result={props.result} timeZone={props.timeZone} />
       </div>
     </section>
   );
@@ -104,7 +106,7 @@ const CheckInView = (props: CheckInViewProps) => {
  * The answer for the person at the door, readable at a glance: green to let
  * them in, amber when the ticket was already used, red to stop.
  */
-function ResultCard({ result }: { result: DoorResult | null }) {
+function ResultCard({ result, timeZone }: { result: DoorResult | null; timeZone?: string }) {
   if (!result) {
     return (
       <p className="rounded-2xl border border-dashed p-5 text-center text-muted-foreground" role="status">
@@ -125,7 +127,7 @@ function ResultCard({ result }: { result: DoorResult | null }) {
           tone: "warn",
           icon: TriangleAlert,
           title: "Already checked in",
-          detail: `${result.attendeeName ?? "This ticket"} got in at ${result.checkedInAt ? formatTime(result.checkedInAt) : "an earlier scan"}${
+          detail: `${result.attendeeName ?? "This ticket"} got in at ${result.checkedInAt ? formatTime(result.checkedInAt, timeZone) : "an earlier scan"}${
             result.checkedInByName ? `, scanned by ${result.checkedInByName}` : ""
           }.`,
         };
@@ -167,7 +169,7 @@ function ResultCard({ result }: { result: DoorResult | null }) {
   );
 }
 
-function NameSearch({ attendees, attendeesLoading, manualPending, onManual }: CheckInViewProps) {
+function NameSearch({ attendees, attendeesLoading, manualPending, onManual, timeZone }: CheckInViewProps) {
   const [query, setQuery] = useState("");
   const needle = query.trim().toLowerCase();
   const matches = needle ? attendees.filter((a) => a.name.toLowerCase().includes(needle)) : attendees;
@@ -201,7 +203,7 @@ function NameSearch({ attendees, attendeesLoading, manualPending, onManual }: Ch
             <li key={person.userId} className="flex items-center gap-3 px-4 py-3">
               <span className="min-w-0 flex-1 truncate font-medium">{person.name}</span>
               {person.checkedInAt ? (
-                <span className="text-sm text-muted-foreground">In at {formatTime(person.checkedInAt)}</span>
+                <span className="text-sm text-muted-foreground">In at {formatTime(person.checkedInAt, timeZone)}</span>
               ) : (
                 <Button size="sm" onClick={() => onManual(person.userId)} disabled={!!manualPending}>
                   {manualPending === person.userId && <LoaderCircle className="animate-spin" aria-hidden />}

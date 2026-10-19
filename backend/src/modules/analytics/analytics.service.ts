@@ -1,7 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import type { EntityManager } from 'typeorm';
 import { HttpError } from '../../common/errors/http-error.js';
-import { config } from '../../config/config.js';
 import { TenantService } from '../../database/tenant.service.js';
 import type { ClubAccess } from '../permission/club-access.js';
 import type { AttendanceEventDto, AttendanceMonthDto, ClubAttendanceDto } from './dto/analytics.dto.js';
@@ -63,7 +62,7 @@ export class AnalyticsService {
           AND pe.status = 'published' AND pe.ended
          GROUP BY span.month
          ORDER BY span.month`,
-        [access.clubId, config.timeZone],
+        [access.clubId, await TenantService.timeZone(m)],
       );
 
       // held: published and over (a cancelled event never happened)

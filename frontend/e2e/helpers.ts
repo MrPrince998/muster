@@ -24,9 +24,9 @@ export const test = base.extend({
 });
 export { expect };
 
-/** Opens a club's events in Riverside University. */
-export async function openClub(page: Page, club: string): Promise<void> {
-  await page.goto(`/o/${RIVERSIDE}`);
+/** Opens a club's events in a workspace (Riverside University unless said). */
+export async function openClub(page: Page, club: string, workspace = RIVERSIDE): Promise<void> {
+  await page.goto(`/o/${workspace}`);
   // the sidebar link reads "Robotics Society 2 upcoming events"; match on the name it starts with
   const name = new RegExp(`^${club.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}( |$)`);
   await page.getByRole("link", { name }).first().click();

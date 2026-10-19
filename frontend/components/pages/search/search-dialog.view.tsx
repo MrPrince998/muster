@@ -243,7 +243,7 @@ function Body(props: SearchDialogViewProps) {
 
 /** An event, led by its date as a tiny ticket stub prints it. */
 function EventRow({ hit, detail, onSelect }: { hit: EventHit; detail: string; onSelect: () => void }) {
-  const { day, month } = stubParts(hit.startsAt);
+  const { day, month } = stubParts(hit.startsAt, hit.timeZone);
   const cancelled = hit.status === "cancelled";
   const over = hit.ended;
   const note = cancelled ? "Cancelled" : hit.status === "draft" ? "Draft" : over ? "Ended" : null;

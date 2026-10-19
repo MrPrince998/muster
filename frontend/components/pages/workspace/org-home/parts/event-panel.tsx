@@ -27,6 +27,7 @@ import type { ClubEvent, EventAttendee } from "@/types/event.interface";
 import { eventsKey } from "../../services/event.service";
 import { ConfirmDialog } from "../../shared/confirm-dialog";
 import { TicketDialog } from "../../tickets/ticket-dialog";
+import { differsFromDevice, zoneCity, zoneName } from "@/lib/time-zone";
 import { formatFullDate, formatTimeRange } from "./format";
 
 // The panel is a column beside the events from xl up, a sheet below that.
@@ -47,6 +48,8 @@ export type PanelAction = "register" | "cancel" | "publish" | "registration" | "
 
 export interface EventPanelProps {
   event: ClubEvent | null;
+  // the workspace's zone: times are shown in it
+  timeZone?: string;
   clubName: string;
   canPublish: boolean;
   canViewAttendees: boolean;
@@ -118,10 +121,15 @@ function PanelBody(props: EventPanelProps & { event: ClubEvent }) {
 
       <dl className="space-y-2.5 text-sm">
         <Detail icon={CalendarDays} label="Date">
-          {formatFullDate(event.startsAt)}
+          {formatFullDate(event.startsAt, props.timeZone)}
         </Detail>
         <Detail icon={Clock} label="Time">
-          {formatTimeRange(event.startsAt, event.endsAt)}
+          {formatTimeRange(event.startsAt, event.endsAt, props.timeZone)}
+          {differsFromDevice(props.timeZone) && (
+            <span className="block text-xs text-muted-foreground">
+              {zoneCity(props.timeZone!)} time ({zoneName(event.startsAt, props.timeZone!)})
+            </span>
+          )}
         </Detail>
         {event.location && (
           <Detail icon={MapPin} label="Place">
@@ -137,7 +145,7 @@ function PanelBody(props: EventPanelProps & { event: ClubEvent }) {
       {event.description && <p className="text-sm whitespace-pre-line">{event.description}</p>}
 
       {/* how full: the number organisers and members both look for first */}
-      {cancelled && <CancelledNotice event={event} />}
+      {cancelled && <CancelledNotice event={event} timeZone={props.timeZone} />}
       {!draft && !cancelled && (
         <section aria-label="Places" className="rounded-xl bg-muted/60 p-4">
           {ended ? (
@@ -367,14 +375,14 @@ function OrganiserActions({
 }
 
 /** A cancelled event's stamp, the organisers' note, and what it means for you. */
-function CancelledNotice({ event }: { event: ClubEvent }) {
+function CancelledNotice({ event, timeZone }: { event: ClubEvent; timeZone?: string }) {
   return (
     <section aria-label="Cancelled" className="rounded-xl bg-destructive/5 p-4">
       <p className="inline-block -rotate-3 rounded-lg border-[3px] border-stamp px-3 py-1 text-2xl leading-none font-extrabold text-stamp font-stretch-70%">
         Cancelled
       </p>
       {event.cancelledAt && (
-        <p className="mt-3 text-sm text-muted-foreground">on {formatFullDate(event.cancelledAt)}</p>
+        <p className="mt-3 text-sm text-muted-foreground">on {formatFullDate(event.cancelledAt, timeZone)}</p>
       )}
       {event.cancelReason && <p className="mt-2 text-sm whitespace-pre-line">&ldquo;{event.cancelReason}&rdquo;</p>}
       {event.youreGoing && (

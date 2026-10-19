@@ -1,7 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import type { EntityManager } from 'typeorm';
 import { HttpError } from '../../common/errors/http-error.js';
-import { config } from '../../config/config.js';
 import { TenantService } from '../../database/tenant.service.js';
 import { EmailService } from '../email/email.service.js';
 import { formatWhen } from '../email/format-when.js';
@@ -34,6 +33,7 @@ interface PublicEventRow {
   waiting: number;
   club_name: string;
   org_name: string;
+  time_zone: string;
 }
 
 // a public event (never a draft or a members-only one); $1 the event
@@ -42,7 +42,7 @@ const SELECT_PUBLIC_EVENT = `
          e.ends_at <= now() AS ended, e.registration_closed_at, e.capacity,
          (SELECT count(*) FROM registrations r WHERE r.event_id = e.id AND r.cancelled_at IS NULL)::int AS registered,
          (SELECT count(*) FROM waitlist_entries w WHERE w.event_id = e.id AND w.promoted_at IS NULL)::int AS waiting,
-         c.name AS club_name, o.name AS org_name
+         c.name AS club_name, o.name AS org_name, o.time_zone
   FROM events e
   JOIN clubs c ON c.id = e.club_id
   JOIN organisations o ON o.id = e.org_id
@@ -52,7 +52,7 @@ const SELECT_PUBLIC_EVENT = `
 const SELECT_TICKET = `
   SELECT r.id AS registration_id, e.id AS event_id, c.id AS club_id, c.name AS club_name,
          o.name AS org_name, o.slug AS org_slug, e.title AS event_title, e.starts_at, e.ends_at,
-         e.location, e.status AS event_status, u.name AS attendee_name, r.checked_in_at, u.email
+         e.location, e.status AS event_status, u.name AS attendee_name, r.checked_in_at, u.email, o.time_zone
   FROM registrations r
   JOIN events e ON e.id = r.event_id
   JOIN clubs c ON c.id = e.club_id
@@ -104,7 +104,7 @@ export class GuestService {
         name: guest.name,
         eventTitle: event.title,
         clubName: event.club_name,
-        when: formatWhen(event.starts_at, event.ends_at),
+        when: formatWhen(event.starts_at, event.ends_at, event.time_zone),
         waitlist: full,
       }),
     );
@@ -229,7 +229,7 @@ export class GuestService {
       name: row.attendee_name,
       eventTitle: row.event_title,
       clubName: row.club_name,
-      when: formatWhen(row.starts_at, row.ends_at),
+      when: formatWhen(row.starts_at, row.ends_at, row.time_zone),
       where: row.location,
       qrPng: await this.tickets.qrPng(token),
     });
@@ -253,8 +253,8 @@ function toPublicEvent(row: PublicEventRow): PublicEventDto {
     waitlistCount: row.waiting,
     clubName: row.club_name,
     workspaceName: row.org_name,
-    // one zone for the whole app for now (APP_TIME_ZONE)
-    timeZone: config.timeZone,
+    // the workspace's: where the event happens
+    timeZone: row.time_zone,
   };
 }
 

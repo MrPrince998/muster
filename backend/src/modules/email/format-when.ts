@@ -1,8 +1,6 @@
-import { config } from '../../config/config.js';
-
-// "Saturday 24 October 2026, 18:30 to 22:00 (AEDT)", in the configured zone
-export function formatWhen(startsAt: Date, endsAt: Date): string {
-  const zone = config.timeZone;
+// "Saturday 24 October 2026, 18:30 to 22:00 (AEDT)", in the event's
+// workspace's zone: where it happens, wherever the reader is
+export function formatWhen(startsAt: Date, endsAt: Date, zone: string): string {
   const day = new Intl.DateTimeFormat('en-GB', { timeZone: zone, weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
   const time = new Intl.DateTimeFormat('en-GB', { timeZone: zone, hour: '2-digit', minute: '2-digit' });
   const zoneName =

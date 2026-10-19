@@ -13,6 +13,8 @@ export interface Ticket {
   // the event was called off: the ticket gets nobody in
   eventCancelled: boolean;
   attendeeName: string;
+  // the event's workspace's zone: its times are shown in it
+  timeZone: string;
   // scanned at the door
   checkedInAt: string | null;
 }

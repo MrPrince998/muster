@@ -30,7 +30,7 @@ function failureMessage(code: string): string {
 /** /o/[slug]/check-in/[clubId]/[eventId]: the door. */
 export default function CheckInContainer() {
   const { clubId, eventId } = useParams<{ clubId: string; eventId: string }>();
-  const { clubs } = useWorkspace();
+  const { clubs, organisation } = useWorkspace();
   const club = clubs.data.find((c) => c.id === clubId);
   const canScan = !!club?.permissions.includes("checkin.scan");
   const canListAttendees = !!club?.permissions.includes("registration.view");
@@ -80,6 +80,7 @@ export default function CheckInContainer() {
 
   return (
     <CheckInView
+      timeZone={organisation.timeZone}
       clubLoading={clubs.loading}
       canScan={canScan}
       clubName={club?.name ?? ""}

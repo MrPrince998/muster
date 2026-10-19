@@ -164,6 +164,7 @@ export default function ClubAdminContainer() {
             failed={attendance.isError}
             onRetry={() => attendance.refetch()}
             eventHref={(eventId) => `/o/${organisation.slug}?club=${clubId}&event=${eventId}`}
+            timeZone={organisation.timeZone}
           />
         ) : tab === "members" ? (
           <MembersTab

@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { randomBytes, randomUUID } from 'node:crypto';
 import type { EntityManager } from 'typeorm';
+import { config } from '../../config/config.js';
 import { HttpError } from '../../common/errors/http-error.js';
 import type { AuthUser } from '../../common/types/auth-user.js';
 import { isUniqueViolation } from '../../common/utils/pg-errors.js';
@@ -28,6 +29,7 @@ interface OrganisationRow {
   name: string;
   slug: string;
   join_policy: JoinPolicy;
+  time_zone: string;
   created_at: Date;
   updated_at: Date;
 }
@@ -37,6 +39,7 @@ const toDto = (row: OrganisationRow, role: OrgRole): OrganisationDto => ({
   name: row.name,
   slug: row.slug,
   joinPolicy: row.join_policy,
+  timeZone: row.time_zone,
   role,
   createdAt: row.created_at,
   updatedAt: row.updated_at,
@@ -81,10 +84,10 @@ export class OrganisationService {
     const orgId = randomUUID();
     return this.tenant.withTenant(orgId, async (m) => {
       const [row]: OrganisationRow[] = await m.query(
-        `INSERT INTO organisations (id, name, slug, join_policy)
-         VALUES ($1, $2, $3, $4)
-         RETURNING id, name, slug, join_policy, created_at, updated_at`,
-        [orgId, dto.name, slug, dto.joinPolicy ?? JoinPolicy.Invite],
+        `INSERT INTO organisations (id, name, slug, join_policy, time_zone)
+         VALUES ($1, $2, $3, $4, $5)
+         RETURNING id, name, slug, join_policy, time_zone, created_at, updated_at`,
+        [orgId, dto.name, slug, dto.joinPolicy ?? JoinPolicy.Invite, dto.timeZone ?? config.timeZone],
       );
       await m.query(`INSERT INTO org_members (org_id, user_id, role) VALUES ($1, $2, 'owner')`, [
         orgId,
@@ -144,10 +147,11 @@ export class OrganisationService {
            SET name = COALESCE($2, name),
                slug = COALESCE($3, slug),
                join_policy = COALESCE($4, join_policy),
+               time_zone = COALESCE($5, time_zone),
                updated_at = now()
            WHERE id = $1
-           RETURNING id, name, slug, join_policy, created_at, updated_at`,
-          [me.orgId, dto.name ?? null, dto.slug ?? null, dto.joinPolicy ?? null],
+           RETURNING id, name, slug, join_policy, time_zone, created_at, updated_at`,
+          [me.orgId, dto.name ?? null, dto.slug ?? null, dto.joinPolicy ?? null, dto.timeZone ?? null],
         );
         return toDto(rows[0], me.role);
       });
@@ -248,7 +252,7 @@ export class OrganisationService {
 
   private async load(m: EntityManager, orgId: string): Promise<OrganisationRow> {
     const [row]: OrganisationRow[] = await m.query(
-      `SELECT id, name, slug, join_policy, created_at, updated_at FROM organisations WHERE id = $1`,
+      `SELECT id, name, slug, join_policy, time_zone, created_at, updated_at FROM organisations WHERE id = $1`,
       [orgId],
     );
     if (!row) throw orgNotFound();

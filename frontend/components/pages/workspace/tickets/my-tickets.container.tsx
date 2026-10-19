@@ -104,7 +104,7 @@ const notches = [
 ].join(", ");
 
 function TicketRow({ ticket, onOpen }: { ticket: Ticket; onOpen: () => void }) {
-  const { day, month, weekday } = stubParts(ticket.startsAt);
+  const { day, month, weekday } = stubParts(ticket.startsAt, ticket.timeZone);
   return (
     <button type="button" onClick={onOpen} className="group block w-full text-left focus-visible:outline-none">
       <div
@@ -124,7 +124,7 @@ function TicketRow({ ticket, onOpen }: { ticket: Ticket; onOpen: () => void }) {
         <div className="min-w-0 p-4">
           <p className="truncate text-lg leading-tight font-bold font-stretch-80%">{ticket.eventTitle}</p>
           <p className="mt-1 truncate text-sm text-muted-foreground">
-            {formatTime(ticket.startsAt)}
+            {formatTime(ticket.startsAt, ticket.timeZone)}
             {ticket.location ? `, ${ticket.location}` : ""}
           </p>
           <p className="mt-1 truncate text-sm text-muted-foreground">
@@ -137,7 +137,7 @@ function TicketRow({ ticket, onOpen }: { ticket: Ticket; onOpen: () => void }) {
                 ticket.eventCancelled ? "bg-destructive/10 text-destructive" : "bg-cobalt-50 text-cobalt-800",
               )}
             >
-              {ticket.eventCancelled ? "Event cancelled" : `Checked in at ${formatTime(ticket.checkedInAt!)}`}
+              {ticket.eventCancelled ? "Event cancelled" : `Checked in at ${formatTime(ticket.checkedInAt!, ticket.timeZone)}`}
             </span>
           )}
         </div>

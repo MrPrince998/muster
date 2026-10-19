@@ -80,6 +80,7 @@ export default function SettingsContainer() {
       workspaceName={organisation.name}
       slug={organisation.slug}
       form={form}
+      timeZone={{ orgId, current: organisation.timeZone }}
       onSaveDetails={onSaveDetails}
       saved={saved}
       policy={policy}

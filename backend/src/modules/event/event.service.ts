@@ -210,17 +210,17 @@ export class EventService {
       const moved =
         startsAt.getTime() !== event.starts_at.getTime() || endsAt.getTime() !== event.ends_at.getTime();
       const relocated = location !== event.location;
-      const notify =
-        event.status === EventStatus.Published && (moved || relocated)
-          ? {
-              recipients: await this.recipients(m, eventId),
-              club: await this.clubDetails(m, access.clubId),
-              before: {
-                ...(moved && { when: formatWhen(event.starts_at, event.ends_at) }),
-                ...(relocated && { where: event.location }),
-              },
-            }
-          : null;
+      const club = event.status === EventStatus.Published && (moved || relocated) ? await this.clubDetails(m, access.clubId) : null;
+      const notify = club
+        ? {
+            recipients: await this.recipients(m, eventId),
+            club,
+            before: {
+              ...(moved && { when: formatWhen(event.starts_at, event.ends_at, club.timeZone) }),
+              ...(relocated && { where: event.location }),
+            },
+          }
+        : null;
       // more room (a higher or no limit, or registration open again): the waitlist goes first
       const morePlaces =
         (event.capacity !== null && (capacity === null || capacity > event.capacity)) ||
@@ -243,7 +243,7 @@ export class EventService {
           orgSlug: notify.club.orgSlug,
           clubId: access.clubId,
           eventId,
-          when: formatWhen(new Date(event.startsAt), new Date(event.endsAt)),
+          when: formatWhen(new Date(event.startsAt), new Date(event.endsAt), notify.club.timeZone),
           where: event.location,
           before: notify.before,
         }),
@@ -274,11 +274,12 @@ export class EventService {
         `UPDATE events SET status = 'cancelled', cancelled_at = now(), cancel_reason = $2 WHERE id = $1`,
         [eventId, note],
       );
+      const club = await this.clubDetails(m, access.clubId);
       return {
         event: await this.findOne(m, access, eventId),
         recipients: [...(await this.recipients(m, eventId)), ...(await this.waiting(m, eventId))],
-        club: await this.clubDetails(m, access.clubId),
-        when: formatWhen(event.starts_at, event.ends_at),
+        club,
+        when: formatWhen(event.starts_at, event.ends_at, club.timeZone),
       };
     });
 
@@ -389,12 +390,15 @@ export class EventService {
     return rows.map((r) => ({ registrationId: r.id, to: r.email, name: r.name }));
   }
 
-  private async clubDetails(m: EntityManager, clubId: string): Promise<{ name: string; orgSlug: string }> {
-    const [row]: { name: string; slug: string }[] = await m.query(
-      `SELECT c.name, o.slug FROM clubs c JOIN organisations o ON o.id = c.org_id WHERE c.id = $1`,
+  private async clubDetails(
+    m: EntityManager,
+    clubId: string,
+  ): Promise<{ name: string; orgSlug: string; timeZone: string }> {
+    const [row]: { name: string; slug: string; time_zone: string }[] = await m.query(
+      `SELECT c.name, o.slug, o.time_zone FROM clubs c JOIN organisations o ON o.id = c.org_id WHERE c.id = $1`,
       [clubId],
     );
-    return { name: row.name, orgSlug: row.slug };
+    return { name: row.name, orgSlug: row.slug, timeZone: row.time_zone };
   }
 
   // Locks the event row for the rest of the transaction and checks the caller

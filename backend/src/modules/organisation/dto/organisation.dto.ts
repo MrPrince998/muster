@@ -2,6 +2,7 @@ import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
 import { IsIn, IsNotEmpty, IsOptional, IsString, Matches, MaxLength, MinLength } from 'class-validator';
 import { JoinPolicy } from '../entities/organisation.entity.js';
 import { OrgRole } from '../entities/org-member.entity.js';
+import { IsTimeZone } from '../../../common/validators/is-time-zone.js';
 import { SLUG_MAX_LENGTH, SLUG_MIN_LENGTH, SLUG_PATTERN } from '../slug.js';
 
 const JOIN_POLICIES = Object.values(JoinPolicy);
@@ -28,6 +29,14 @@ export class CreateOrganisationDto {
   @IsOptional()
   @IsIn(JOIN_POLICIES)
   joinPolicy?: JoinPolicy;
+
+  /**
+   * Where the clubs meet: event times are shown and emailed in it. Defaults
+   * to the server's APP_TIME_ZONE. @example Australia/Sydney
+   */
+  @IsOptional()
+  @IsTimeZone()
+  timeZone?: string;
 }
 
 export class UpdateOrganisationDto extends PartialType(CreateOrganisationDto) {}
@@ -51,6 +60,9 @@ export class OrganisationDto {
 
   @ApiProperty({ enum: JOIN_POLICIES })
   joinPolicy: JoinPolicy;
+
+  @ApiProperty({ example: 'Australia/Sydney', description: 'Event times are in this zone' })
+  timeZone: string;
 
   @ApiProperty({ enum: Object.values(OrgRole), description: 'Your role in this workspace' })
   role: OrgRole;
@@ -83,4 +95,7 @@ export class MyOrganisationDto {
 
   @ApiProperty()
   joinedAt: Date;
+
+  @ApiProperty({ example: 'Australia/Sydney', description: 'Event times are in this zone' })
+  timeZone: string;
 }

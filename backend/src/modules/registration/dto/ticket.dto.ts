@@ -41,6 +41,9 @@ export class TicketDto {
 
   @ApiPropertyOptional({ type: Date, nullable: true, description: 'When it was scanned at the door' })
   checkedInAt: Date | null;
+
+  @ApiProperty({ example: 'Australia/Sydney', description: "The event's workspace's time zone: show its times in it" })
+  timeZone: string;
 }
 
 /** One ticket with what the door needs: the signed token and its QR code. */

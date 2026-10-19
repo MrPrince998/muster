@@ -20,6 +20,7 @@ import { asApiError } from "@/lib/api/client";
 import { cn } from "@/lib/utils";
 import type { ClubEvent } from "@/types/event.interface";
 import { useCreateEvent, useUpdateEvent } from "../services/event.service";
+import { differsFromDevice, zoneCity } from "@/lib/time-zone";
 import { eventFormSchema, type EventFormValues, toEventInput, toLocalInput } from "../validation/event.schema";
 
 function messageFor(code: string): string {
@@ -60,6 +61,7 @@ export default function EventFormDialog({
   canPublish,
   event,
   onSaved,
+  timeZone,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -69,6 +71,8 @@ export default function EventFormDialog({
   canPublish: boolean;
   event?: ClubEvent | null;
   onSaved?: (event: ClubEvent) => void;
+  // the workspace's: what's typed into the times is its clock
+  timeZone?: string;
 }) {
   const editing = !!event;
   const createEvent = useCreateEvent(clubId, orgId);
@@ -88,21 +92,21 @@ export default function EventFormDialog({
             title: event.title,
             description: event.description ?? "",
             location: event.location ?? "",
-            startsAt: toLocalInput(event.startsAt),
-            endsAt: toLocalInput(event.endsAt),
+            startsAt: toLocalInput(event.startsAt, timeZone),
+            endsAt: toLocalInput(event.endsAt, timeZone),
             capacity: event.capacity === null ? "" : String(event.capacity),
             visibility: event.visibility === "public" ? "public" : "members",
           }
         : emptyValues,
     );
-  }, [open, event, form]);
+  }, [open, event, form, timeZone]);
 
   const save = (publish: boolean) =>
     form.handleSubmit(async (values) => {
       try {
         const saved = editing
-          ? await updateEvent.mutateAsync({ eventId: event!.id, ...toEventInput(values) })
-          : await createEvent.mutateAsync({ ...toEventInput(values), publish });
+          ? await updateEvent.mutateAsync({ eventId: event!.id, ...toEventInput(values, timeZone) })
+          : await createEvent.mutateAsync({ ...toEventInput(values, timeZone), publish });
         onOpenChange(false);
         onSaved?.(saved);
       } catch (error) {
@@ -151,6 +155,11 @@ export default function EventFormDialog({
               <FieldError errors={[errors.endsAt]} />
             </Field>
           </div>
+          {differsFromDevice(timeZone) && (
+            <p className="-mt-2 text-sm text-muted-foreground">
+              Times are in {zoneCity(timeZone!)} time, where {clubName} meets, not your device&rsquo;s.
+            </p>
+          )}
 
           <Field data-invalid={!!errors.location}>
             <FieldLabel htmlFor="event-location">Place</FieldLabel>

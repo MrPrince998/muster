@@ -8,6 +8,8 @@ export interface MyOrganisation {
   slug: string;
   role: OrgRole;
   joinedAt: string;
+  // where its events happen: their times are shown in it (IANA name)
+  timeZone: string;
 }
 
 /** A workspace in full, as POST /orgs and GET /orgs/:id return it. */
@@ -16,6 +18,7 @@ export interface Organisation {
   name: string;
   slug: string;
   joinPolicy: JoinPolicy;
+  timeZone: string;
   role: OrgRole;
   // moderators and above only: how many are waiting
   pendingJoinRequests?: number;
@@ -62,4 +65,6 @@ export interface UpdateOrganisationInput {
   name?: string;
   slug?: string;
   joinPolicy?: JoinPolicy;
+  // an IANA name, e.g. "Australia/Perth"
+  timeZone?: string;
 }
