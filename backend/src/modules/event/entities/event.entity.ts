@@ -54,8 +54,6 @@ export type RepeatEvery = (typeof REPEAT_EVERY)[number];
 // cancelled exactly when it has a cancellation time; only a cancelled event has a reason
 @Check('events_cancelled_at', `("status" = 'cancelled') = ("cancelled_at" IS NOT NULL)`)
 @Check('events_cancel_reason', `"cancel_reason" IS NULL OR "status" = 'cancelled'`)
-@Check('events_price_check', `"price_cents" IS NULL OR "price_cents" >= 50`)
-@Check('events_currency_check', `("price_cents" IS NULL) = ("currency" IS NULL)`)
 @Check('events_refund_cutoff_check', `"refund_cutoff_hours" >= 0`)
 @Check('events_repeat_every_check', `"repeat_every" IN ('week', 'fortnight', 'month')`)
 // in a series exactly when it has a rule
@@ -129,10 +127,7 @@ export class Event {
   @Column({ name: 'cancel_reason', type: 'varchar', length: 500, nullable: true })
   cancelReason: string | null;
 
-  // a ticket's price in the currency's smallest unit (cents); null: free
-  @Column({ name: 'price_cents', type: 'integer', nullable: true })
-  priceCents: number | null;
-
+  // what its paid ticket types are priced in (the workspace's, when they were set)
   @Column({ type: 'varchar', length: 3, nullable: true })
   currency: string | null;
 

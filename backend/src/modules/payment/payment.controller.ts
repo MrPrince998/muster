@@ -10,7 +10,7 @@ import type { OrgMembership } from '../organisation/org-roles.js';
 import type { ClubAccess } from '../permission/club-access.js';
 import { CurrentClubAccess } from '../permission/decorators/current-club-access.decorator.js';
 import { RequirePermission } from '../permission/decorators/require-permission.decorator.js';
-import { AnswersDto } from '../event/dto/event.dto.js';
+import { GetTicketDto } from '../event/dto/event.dto.js';
 import { PaymentService } from './payment.service.js';
 
 class PaymentStatusDto {
@@ -30,6 +30,14 @@ class PaymentStatusDto {
 class RedirectDto {
   @ApiProperty({ description: 'Where to send the browser' })
   url: string;
+}
+
+class GetTicketResultDto {
+  @ApiPropertyOptional({ type: String, nullable: true, description: "Stripe's checkout page; null when the place is already yours" })
+  url: string | null;
+
+  @ApiProperty({ description: 'It came to nothing (a free ticket, or a code), so the place is yours now' })
+  registered: boolean;
 }
 
 const error = (description: string) => ({ description, type: ErrorResponseDto });
@@ -80,22 +88,26 @@ export class PaymentController {
   }
 
   /**
-   * Buy a place at a paid event
+   * Get a ticket at an event with ticket types
    *
-   * @remarks Holds a place for half an hour and returns Stripe's checkout
-   * page; the ticket comes once Stripe says it's paid.
+   * @remarks Picks the type (ticketTypeId, needed when more than one is on
+   * offer) and any discount code. If it costs something, holds a place for
+   * half an hour and returns Stripe's checkout page; the ticket comes once
+   * Stripe says it's paid. If it comes to nothing, the place is yours now.
    */
   @Post('clubs/:clubId/events/:eventId/checkout')
   @RequirePermission()
   @HttpCode(HttpStatus.OK)
-  @ApiOkResponse({ type: RedirectDto })
-  @ApiConflictResponse(error('Full (EVENT_FULL), free (EVENT_IS_FREE), registered already, not open, or payments not set up'))
+  @ApiOkResponse({ type: GetTicketResultDto })
+  @ApiConflictResponse(
+    error('Full (EVENT_FULL, TICKET_TYPE_SOLD_OUT), sales over (TICKET_SALES_ENDED), no types (EVENT_IS_FREE), registered already, or payments not set up'),
+  )
   checkout(
     @CurrentClubAccess() access: ClubAccess,
     @Param('eventId', ParseUUIDPipe) eventId: string,
-    @Body() { answers }: AnswersDto,
-  ): Promise<RedirectDto> {
-    return this.payments.memberCheckout(access, eventId, answers);
+    @Body() { answers, ticketTypeId, code }: GetTicketDto,
+  ): Promise<GetTicketResultDto> {
+    return this.payments.memberCheckout(access, eventId, answers, { ticketTypeId, code });
   }
 
   /** Stripe's webhooks: signed, so only Stripe's are acted on */

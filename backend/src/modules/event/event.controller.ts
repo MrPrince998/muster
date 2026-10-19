@@ -32,8 +32,11 @@ import {
   CreateEventDto,
   EventAttendeeDto,
   EventDto,
+  CreateDiscountCodeDto,
+  DiscountCodeDto,
   EventMessageDto,
   ListEventsQuery,
+  UpdateDiscountCodeDto,
   SendEventMessageDto,
   SeriesScopeQuery,
   UpdateEventDto,
@@ -178,6 +181,50 @@ export class EventController {
     @Body() dto: SendEventMessageDto,
   ): Promise<EventMessageDto> {
     return this.events.message(access, eventId, dto);
+  }
+
+  /** An event's discount codes, with their uses */
+  @Get(':eventId/discount-codes')
+  @RequirePermission()
+  @ApiOkResponse({ type: [DiscountCodeDto] })
+  @ApiNotFoundResponse(error('No such event (EVENT_NOT_FOUND)'))
+  discountCodes(
+    @CurrentClubAccess() access: ClubAccess,
+    @Param('eventId', ParseUUIDPipe) eventId: string,
+  ): Promise<DiscountCodeDto[]> {
+    return this.events.discountCodes(access, eventId);
+  }
+
+  /**
+   * Make a discount code
+   *
+   * @remarks Same permission as editing the event. A percentage or an
+   * amount off its paid tickets, with an optional limit and end.
+   */
+  @Post(':eventId/discount-codes')
+  @RequirePermission()
+  @ApiCreatedResponse({ type: [DiscountCodeDto] })
+  @ApiConflictResponse(error('The event has that code already (CODE_TAKEN)'))
+  createDiscountCode(
+    @CurrentClubAccess() access: ClubAccess,
+    @Param('eventId', ParseUUIDPipe) eventId: string,
+    @Body() dto: CreateDiscountCodeDto,
+  ): Promise<DiscountCodeDto[]> {
+    return this.events.createDiscountCode(access, eventId, dto);
+  }
+
+  /** Turn a discount code on or off */
+  @Patch(':eventId/discount-codes/:codeId')
+  @RequirePermission()
+  @ApiOkResponse({ type: [DiscountCodeDto] })
+  @ApiNotFoundResponse(error('No such code (CODE_NOT_FOUND)'))
+  setDiscountCode(
+    @CurrentClubAccess() access: ClubAccess,
+    @Param('eventId', ParseUUIDPipe) eventId: string,
+    @Param('codeId', ParseUUIDPipe) codeId: string,
+    @Body() { active }: UpdateDiscountCodeDto,
+  ): Promise<DiscountCodeDto[]> {
+    return this.events.setDiscountCodeActive(access, eventId, codeId, active);
   }
 
   /** What's been sent to the people going, newest first */

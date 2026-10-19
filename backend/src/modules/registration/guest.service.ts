@@ -16,6 +16,7 @@ import { TicketService } from '../ticket/ticket.service.js';
 import { freePlaces, lockEvent, waitingCount, WaitlistService } from '../waitlist/waitlist.service.js';
 import { PaymentService } from '../payment/payment.service.js';
 import { checkAnswers, type Question } from '../event/questions.js';
+import { PAID_EVENT, resolveTicket } from '../event/tickets.js';
 
 const ticketNotFound = () =>
   HttpError.notFound('This ticket was cancelled, or the link is wrong', 'TICKET_NOT_FOUND');
@@ -38,9 +39,21 @@ interface PublicEventRow {
   // places held by people paying for them right now
   held: number;
   waiting: number;
-  price_cents: number | null;
+  // any ticket type costs money: places are bought (no waitlist)
+  paid: boolean;
   currency: string | null;
   questions: Question[];
+  // the public's ticket types (members-only ones aren't offered here), with how many are taken
+  ticket_types: {
+    id: string;
+    name: string;
+    price_cents: number;
+    capacity: number | null;
+    sales_end_at: string | null;
+    taken: number;
+  }[];
+  // the event has a discount code people can use
+  has_codes: boolean;
   club_name: string;
   org_name: string;
   time_zone: string;
@@ -54,7 +67,18 @@ const SELECT_PUBLIC_EVENT = `
          (SELECT count(*) FROM checkouts h
            WHERE h.event_id = e.id AND h.status = 'pending' AND h.expires_at > now())::int AS held,
          (SELECT count(*) FROM waitlist_entries w WHERE w.event_id = e.id AND w.promoted_at IS NULL)::int AS waiting,
-         e.price_cents, e.currency, e.questions, c.name AS club_name, o.name AS org_name, o.time_zone
+         ${PAID_EVENT('e')} AS paid, e.currency, e.questions,
+         (SELECT coalesce(json_agg(json_build_object(
+                   'id', t.id, 'name', t.name, 'price_cents', t.price_cents, 'capacity', t.capacity,
+                   'sales_end_at', t.sales_end_at,
+                   'taken', (SELECT count(*) FROM registrations r WHERE r.ticket_type_id = t.id AND r.cancelled_at IS NULL)
+                          + (SELECT count(*) FROM checkouts h
+                             WHERE h.ticket_type_id = t.id AND h.status = 'pending' AND h.expires_at > now()))
+                 ORDER BY t.position, t.created_at), '[]')
+          FROM ticket_types t WHERE t.event_id = e.id AND NOT t.members_only) AS ticket_types,
+         EXISTS (SELECT 1 FROM discount_codes d
+                 WHERE d.event_id = e.id AND d.active AND (d.expires_at IS NULL OR d.expires_at > now())) AS has_codes,
+         c.name AS club_name, o.name AS org_name, o.time_zone
   FROM events e
   JOIN clubs c ON c.id = e.club_id
   JOIN organisations o ON o.id = e.org_id
@@ -122,17 +146,36 @@ export class GuestService {
    * confirm it. Nothing is held until the link is used. The answer is the
    * same whether or not the address has an account or a place already.
    */
-  async requestPlace(eventId: string, guest: { name: string; email: string; answers?: Record<string, string> }): Promise<void> {
-    const event = await this.inEvent(eventId, (m) => this.publicEvent(m, eventId));
-    assertTakingPlaces(event);
+  async requestPlace(
+    eventId: string,
+    guest: { name: string; email: string; answers?: Record<string, string>; ticketTypeId?: string; code?: string },
+  ): Promise<void> {
+    // the ticket and code checked now (nobody's place yet), so a wrong one is said before the email goes
+    const { event, ticket } = await this.inEvent(eventId, async (m) => {
+      const event = await this.publicEvent(m, eventId);
+      assertTakingPlaces(event);
+      const ticket = await resolveTicket(m, {
+        eventId,
+        userId: NOBODY,
+        member: false,
+        choice: { ticketTypeId: guest.ticketTypeId, code: guest.code },
+      });
+      return { event, ticket };
+    });
     // full (or people already waiting): the link joins the waitlist instead
     const full = (event.capacity !== null && event.registered + event.held >= event.capacity) || event.waiting > 0;
     // a paid event has no waitlist: a place frees up for whoever buys it first
-    if (full && event.price_cents !== null) throw HttpError.conflict('This event is sold out', 'SOLD_OUT');
-    // checked now, so a wrong answer is said before the email goes, not after
+    if (full && event.paid) throw HttpError.conflict('This event is sold out', 'SOLD_OUT');
     const answers = checkAnswers(event.questions ?? [], guest.answers);
     const email = normalizeEmail(guest.email);
-    const token = await this.tickets.signGuestConfirmation({ eventId, email, name: guest.name, answers });
+    const token = await this.tickets.signGuestConfirmation({
+      eventId,
+      email,
+      name: guest.name,
+      answers,
+      ticketTypeId: ticket.type?.id,
+      code: ticket.discountCodeId ? guest.code?.trim() : undefined,
+    });
     this.email.inBackground(
       'guest confirmation',
       this.email.sendGuestConfirmation({
@@ -169,24 +212,45 @@ export class GuestService {
         already.length === 0 &&
         ((await freePlaces(m, eventId, event.capacity)) === 0 || (await waitingCount(m, eventId)) > 0);
       if (full && event.visibility === 'public' && event.status === 'published' && event.ends_at > new Date() && event.registration_closed_at === null) {
-        if (event.price_cents !== null) throw HttpError.conflict('This event is sold out', 'SOLD_OUT');
-        return { waitlistPosition: await this.waitlist.join(m, { orgId, eventId, userId, answers: claims.answers }) };
+        if (event.paid) throw HttpError.conflict('This event is sold out', 'SOLD_OUT');
+        return {
+          waitlistPosition: await this.waitlist.join(m, {
+            orgId,
+            eventId,
+            userId,
+            answers: claims.answers,
+            ticketTypeId: claims.ticketTypeId,
+          }),
+        };
       }
-      // a paid event: the place is held while they pay, and the ticket comes once Stripe says so
-      if (event?.price_cents != null && already.length === 0) {
+      const choice = { ticketTypeId: claims.ticketTypeId, code: claims.code };
+      // an event with ticket types: bought if it costs anything (the place held while they pay,
+      // the ticket once Stripe says so), or theirs now if it comes to nothing
+      const typed: { count: number }[] = await m.query(`SELECT count(*)::int AS count FROM ticket_types WHERE event_id = $1`, [eventId]);
+      if (typed[0].count > 0 && already.length === 0) {
         const page = new URL(`/e/${eventId}`, config.appUrl);
         const back = (paid: '1' | '0') => {
           page.searchParams.set('paid', paid);
           return page.toString();
         };
-        const { url, checkoutId } = await this.payments.startCheckout(
+        const result = await this.payments.startCheckout(
           m,
-          { orgId, eventId, userId, publicOnly: true, answers: claims.answers },
+          { orgId, eventId, userId, publicOnly: true, answers: claims.answers, choice },
           { successUrl: back('1'), cancelUrl: back('0') },
         );
-        return { checkoutUrl: url, checkoutId, orgId };
+        if ('url' in result) return { checkoutUrl: result.url, checkoutId: result.checkoutId, orgId };
+        const [row]: (TicketRow & { email: string })[] = await m.query(SELECT_TICKET, [result.registrationId, eventId]);
+        return { ticket: row, isNew: true };
       }
-      const place = await takePlace(m, { orgId, eventId, userId, publicOnly: true, alreadyOk: true, answers: claims.answers });
+      const place = await takePlace(m, {
+        orgId,
+        eventId,
+        userId,
+        publicOnly: true,
+        alreadyOk: true,
+        answers: claims.answers,
+        choice,
+      });
       const [row]: (TicketRow & { email: string })[] = await m.query(SELECT_TICKET, [place.id, eventId]);
       return { ticket: row, isNew: place.isNew };
     });
@@ -316,7 +380,7 @@ function toPublicEvent(row: PublicEventRow): PublicEventDto {
     workspaceName: row.org_name,
     // the workspace's: where the event happens
     timeZone: row.time_zone,
-    price: row.price_cents !== null && row.currency ? { amountCents: row.price_cents, currency: row.currency } : null,
+    ...publicTickets(row),
     questions: row.questions ?? [],
   };
 }
@@ -330,4 +394,34 @@ function assertTakingPlaces(event: PublicEventRow): void {
   if (event.registration_closed_at !== null) {
     throw HttpError.conflict('Registration for this event is closed', 'REGISTRATION_CLOSED');
   }
+}
+
+// no one in particular: checking a guest's ticket before they have an account here
+const NOBODY = '00000000-0000-0000-0000-000000000000';
+
+// a public event's ticket types as the public sees them, and the cheapest paid one ("from")
+function publicTickets(row: PublicEventRow): Pick<PublicEventDto, 'ticketTypes' | 'price' | 'hasCodes'> {
+  const now = Date.now();
+  const types = (row.ticket_types ?? []).map((t) => {
+    const remaining = t.capacity === null ? null : Math.max(0, t.capacity - t.taken);
+    const salesEndAt = t.sales_end_at ? new Date(t.sales_end_at) : null;
+    return {
+      id: t.id,
+      name: t.name,
+      priceCents: t.price_cents,
+      currency: t.price_cents > 0 ? row.currency : null,
+      capacity: t.capacity,
+      remaining,
+      membersOnly: false,
+      salesEndAt,
+      onSale: (salesEndAt === null || salesEndAt.getTime() > now) && remaining !== 0,
+    };
+  });
+  const paid = types.filter((t) => t.priceCents > 0);
+  const cheapest = paid.reduce<(typeof paid)[number] | null>((a, t) => (!a || t.priceCents < a.priceCents ? t : a), null);
+  return {
+    ticketTypes: types,
+    price: cheapest && row.currency ? { amountCents: cheapest.priceCents, currency: row.currency } : null,
+    hasCodes: row.has_codes,
+  };
 }

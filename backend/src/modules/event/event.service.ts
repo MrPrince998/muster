@@ -5,6 +5,7 @@ import { HttpError } from '../../common/errors/http-error.js';
 import { fileSlug, toCsv } from '../../common/utils/csv.js';
 import { buildIcs } from '../../common/utils/ics.js';
 import { prepareQuestions, type Question } from './questions.js';
+import { checkTicketTypes, saveTicketTypes, ticketTypes } from './tickets.js';
 import { occurrences, shiftLike } from '../../common/utils/recurrence.js';
 import { config } from '../../config/config.js';
 import { TenantService } from '../../database/tenant.service.js';
@@ -21,12 +22,15 @@ import type {
   EventDto,
   EventMessageDto,
   SendEventMessageDto,
+  CreateDiscountCodeDto,
+  DiscountCodeDto,
   EventScope,
   SeriesScope,
   UpdateEventDto,
 } from './dto/event.dto.js';
 import { EventStatus, EventVisibility, type RepeatEvery } from './entities/event.entity.js';
 import { audit, AuditAction } from '../audit/audit.js';
+import { isUniqueViolation } from '../../common/utils/pg-errors.js';
 
 // an organiser's messages per event per day
 const MESSAGES_PER_DAY = 10;
@@ -59,8 +63,17 @@ interface EventRow {
   repeat_every: RepeatEvery | null;
   series_index: number;
   series_count: number;
-  price_cents: number | null;
   currency: string | null;
+  ticket_types: {
+    id: string;
+    name: string;
+    price_cents: number;
+    capacity: number | null;
+    members_only: boolean;
+    sales_end_at: string | null;
+    taken: number;
+  }[];
+  your_ticket_type: string | null;
   refund_cutoff_hours: number;
   held_count: number;
   your_paid_cents: number | null;
@@ -94,7 +107,17 @@ const SELECT_EVENTS = `
     (SELECT count(*) FROM events s
       WHERE s.series_id = e.series_id AND (s.starts_at, s.id) <= (e.starts_at, e.id))::int AS series_index,
     (SELECT count(*) FROM events s WHERE s.series_id = e.series_id)::int AS series_count,
-    e.price_cents, e.currency, e.refund_cutoff_hours, e.questions,
+    e.currency, e.refund_cutoff_hours, e.questions,
+    (SELECT coalesce(json_agg(json_build_object(
+              'id', t.id, 'name', t.name, 'price_cents', t.price_cents, 'capacity', t.capacity,
+              'members_only', t.members_only, 'sales_end_at', t.sales_end_at,
+              'taken', (SELECT count(*) FROM registrations r WHERE r.ticket_type_id = t.id AND r.cancelled_at IS NULL)
+                     + (SELECT count(*) FROM checkouts h
+                        WHERE h.ticket_type_id = t.id AND h.status = 'pending' AND h.expires_at > now()))
+            ORDER BY t.position, t.created_at), '[]')
+     FROM ticket_types t WHERE t.event_id = e.id) AS ticket_types,
+    (SELECT t.name FROM registrations r JOIN ticket_types t ON t.id = r.ticket_type_id
+      WHERE r.event_id = e.id AND r.user_id = $2 AND r.cancelled_at IS NULL) AS your_ticket_type,
     (SELECT count(*) FROM checkouts h
       WHERE h.event_id = e.id AND h.status = 'pending' AND h.expires_at > now())::int AS held_count,
     (SELECT r.amount_paid_cents FROM registrations r
@@ -180,7 +203,8 @@ export class EventService {
     assertEndsAfterStart(startsAt, endsAt);
 
     return this.inClub(access, async (m, orgId) => {
-      const price = await this.payments.priceFor(m, orgId, dto.priceCents ?? null);
+      const types = checkTicketTypes(wantedTypes(dto) ?? []);
+      const currency = await this.payments.currencyFor(m, orgId, types.some((t) => t.priceCents > 0));
       const questions = prepareQuestions(dto.questions ?? []);
       const dates = dto.repeat
         ? occurrences(startsAt, endsAt, dto.repeat.every, dto.repeat.count, await TenantService.timeZone(m))
@@ -192,8 +216,8 @@ export class EventService {
           `INSERT INTO events
              (org_id, club_id, created_by, title, description, location,
               starts_at, ends_at, capacity, visibility, status, published_at, series_id, repeat_every,
-              price_cents, currency, refund_cutoff_hours, questions)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+              currency, refund_cutoff_hours, questions)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
            RETURNING id`,
           [
             orgId,
@@ -210,12 +234,13 @@ export class EventService {
             dto.publish ? new Date() : null,
             seriesId,
             dto.repeat?.every ?? null,
-            price.priceCents,
-            price.currency,
+            currency,
             dto.refundCutoffHours ?? 48,
             JSON.stringify(questions),
           ],
         );
+        // each occurrence sells its own tickets
+        await saveTicketTypes(m, orgId, id, types);
         ids.push(id);
       }
       await audit(m, {
@@ -250,9 +275,14 @@ export class EventService {
       };
       assertEndsAfterStart(edited.startsAt, edited.endsAt);
       const club = await this.clubDetails(m, access.clubId);
-      const price = dto.priceCents === undefined ? undefined : await this.payments.priceFor(m, orgId, dto.priceCents);
+      const asked = wantedTypes(dto);
+      const types = asked === undefined ? undefined : checkTicketTypes(asked);
+      const tickets =
+        types === undefined
+          ? undefined
+          : { types, currency: await this.payments.currencyFor(m, orgId, types.some((t) => t.priceCents > 0)), orgId };
 
-      const changes = [await this.applyUpdate(m, event, dto, edited, club, price)];
+      const changes = [await this.applyUpdate(m, event, dto, edited, club, tickets)];
       const moving = dto.startsAt !== undefined || dto.endsAt !== undefined;
       for (const other of later) {
         if (other.status === EventStatus.Cancelled) continue;
@@ -260,7 +290,7 @@ export class EventService {
         const times = moving
           ? shiftLike(own, { before: { startsAt: event.starts_at, endsAt: event.ends_at }, after: edited }, club.timeZone)
           : own;
-        changes.push(await this.applyUpdate(m, other, dto, times, club, price));
+        changes.push(await this.applyUpdate(m, other, dto, times, club, tickets));
       }
       // opening or closing registration reads as its own thing; anything else is an edit
       const fields = Object.keys(dto).filter((key) => dto[key as keyof UpdateEventDto] !== undefined);
@@ -316,8 +346,8 @@ export class EventService {
     dto: UpdateEventDto,
     { startsAt, endsAt }: { startsAt: Date; endsAt: Date },
     club: ClubDetails,
-    // a new price (and its currency), or undefined to keep it
-    price?: { priceCents: number | null; currency: string | null },
+    // new ticket types (and their currency), or undefined to keep them
+    tickets?: { types: ReturnType<typeof checkTicketTypes>; currency: string | null; orgId: string },
   ): Promise<EventChange> {
     const capacity = dto.capacity === undefined ? event.capacity : dto.capacity;
     if (capacity !== null) {
@@ -348,7 +378,7 @@ export class EventService {
       `UPDATE events SET
          title = $2, description = $3, location = $4,
          starts_at = $5, ends_at = $6, capacity = $7, visibility = $8, registration_closed_at = $9,
-         price_cents = $10, currency = $11, refund_cutoff_hours = $12, questions = $13
+         currency = $10, refund_cutoff_hours = $11, questions = $12
        WHERE id = $1`,
       [
         event.id,
@@ -360,13 +390,24 @@ export class EventService {
         capacity,
         dto.visibility ?? event.visibility,
         closedAt,
-        price ? price.priceCents : event.price_cents,
-        price ? price.currency : event.currency,
+        tickets ? (tickets.currency ?? event.currency) : event.currency,
         dto.refundCutoffHours ?? event.refund_cutoff_hours,
         // each event keeps its own ids for questions it already asked
         JSON.stringify(dto.questions === undefined ? event.questions : prepareQuestions(dto.questions, event.questions)),
       ],
     );
+
+    if (tickets) {
+      // another event of a series has its own ids: its types are matched by name
+      const own = await ticketTypes(m, event.id);
+      const ownIds = new Set(own.map((t) => t.id));
+      const byName = new Map(own.map((t) => [t.name.toLowerCase(), t.id]));
+      const types = tickets.types.map((t) => {
+        const id = t.id && ownIds.has(t.id) ? t.id : byName.get(t.name.toLowerCase());
+        return { ...t, id };
+      });
+      await saveTicketTypes(m, tickets.orgId, event.id, types);
+    }
 
     // drafts have nobody registered; a published event tells its people
     const moved = startsAt.getTime() !== event.starts_at.getTime() || endsAt.getTime() !== event.ends_at.getTime();
@@ -587,6 +628,89 @@ export class EventService {
     };
   }
 
+  // --- discount codes (people who can edit the event) ------------------------------------
+
+  /** An event's discount codes, with how many times each has been used. */
+  discountCodes(access: ClubAccess, eventId: string): Promise<DiscountCodeDto[]> {
+    return this.inClub(access, async (m) => {
+      await this.lockForManage(m, access, eventId);
+      return this.codeList(m, eventId);
+    });
+  }
+
+  /** A new code: a percentage or an amount off the event's paid tickets. */
+  createDiscountCode(access: ClubAccess, eventId: string, dto: CreateDiscountCodeDto): Promise<DiscountCodeDto[]> {
+    if ((dto.percentOff === undefined) === (dto.amountOffCents === undefined)) {
+      throw HttpError.badRequest('Give a percentage off or an amount off, not both', 'CODE_NEEDS_ONE_DISCOUNT');
+    }
+    return this.inClub(access, async (m, orgId) => {
+      const event = await this.lockForManage(m, access, eventId);
+      try {
+        await m.query(
+          `INSERT INTO discount_codes (org_id, event_id, code, percent_off, amount_off_cents, max_uses, expires_at, created_by)
+           VALUES ($1, $2, upper($3), $4, $5, $6, $7, $8)`,
+          [orgId, eventId, dto.code, dto.percentOff ?? null, dto.amountOffCents ?? null, dto.maxUses ?? null, dto.expiresAt ?? null, access.userId],
+        );
+      } catch (error) {
+        if (isUniqueViolation(error, 'discount_codes_event_id_code_key')) {
+          throw HttpError.conflict('This event already has that code', 'CODE_TAKEN');
+        }
+        throw error;
+      }
+      await audit(m, {
+        actorId: access.userId,
+        action: AuditAction.EventCodeCreated,
+        clubId: access.clubId,
+        eventId,
+        details: { title: event.title, code: dto.code.toUpperCase() },
+      });
+      return this.codeList(m, eventId);
+    });
+  }
+
+  /** Turns a code on or off; the tickets bought with it stay as they are. */
+  setDiscountCodeActive(access: ClubAccess, eventId: string, codeId: string, active: boolean): Promise<DiscountCodeDto[]> {
+    return this.inClub(access, async (m) => {
+      await this.lockForManage(m, access, eventId);
+      const [rows]: [unknown[], number] = await m.query(
+        `UPDATE discount_codes SET active = $3 WHERE id = $1 AND event_id = $2 RETURNING id`,
+        [codeId, eventId, active],
+      );
+      if (rows.length === 0) throw HttpError.notFound('No such code', 'CODE_NOT_FOUND');
+      return this.codeList(m, eventId);
+    });
+  }
+
+  private async codeList(m: EntityManager, eventId: string): Promise<DiscountCodeDto[]> {
+    const rows: {
+      id: string;
+      code: string;
+      percent_off: number | null;
+      amount_off_cents: number | null;
+      max_uses: number | null;
+      expires_at: Date | null;
+      active: boolean;
+      uses: number;
+    }[] = await m.query(
+      `SELECT d.id, d.code, d.percent_off, d.amount_off_cents, d.max_uses, d.expires_at, d.active,
+              ((SELECT count(*) FROM registrations r WHERE r.discount_code_id = d.id AND r.cancelled_at IS NULL)
+             + (SELECT count(*) FROM checkouts c
+                WHERE c.discount_code_id = d.id AND c.status = 'pending' AND c.expires_at > now()))::int AS uses
+       FROM discount_codes d WHERE d.event_id = $1 ORDER BY d.created_at`,
+      [eventId],
+    );
+    return rows.map((r) => ({
+      id: r.id,
+      code: r.code,
+      percentOff: r.percent_off,
+      amountOffCents: r.amount_off_cents,
+      maxUses: r.max_uses,
+      uses: r.uses,
+      expiresAt: r.expires_at,
+      active: r.active,
+    }));
+  }
+
   /** What's been sent about an event, newest first (people who can edit it). */
   messages(access: ClubAccess, eventId: string): Promise<EventMessageDto[]> {
     return this.inClub(access, async (m) => {
@@ -670,16 +794,30 @@ export class EventService {
       const zone = await TenantService.timeZone(m);
       const stamp = (at: Date | null) => (at ? wallClock(at, zone) : '');
 
-      const going: { name: string; created_at: Date; checked_in_at: Date | null; outsider: boolean; answers: Record<string, string> }[] = await m.query(
+      const going: {
+        name: string;
+        created_at: Date;
+        checked_in_at: Date | null;
+        outsider: boolean;
+        answers: Record<string, string>;
+        ticket: string | null;
+        paid_cents: number | null;
+        refunded: boolean;
+        code: string | null;
+      }[] = await m.query(
         `SELECT u.name, r.created_at, r.checked_in_at, r.answers,
+                (SELECT t.name FROM ticket_types t WHERE t.id = r.ticket_type_id) AS ticket,
+                r.amount_paid_cents AS paid_cents, (r.refunded_at IS NOT NULL) AS refunded,
+                (SELECT d.code FROM discount_codes d WHERE d.id = r.discount_code_id) AS code,
                 NOT EXISTS (SELECT 1 FROM org_members om WHERE om.org_id = r.org_id AND om.user_id = r.user_id) AS outsider
          FROM registrations r JOIN users u ON u.id = r.user_id
          WHERE r.event_id = $1 AND r.cancelled_at IS NULL
          ORDER BY lower(u.name)`,
         [eventId],
       );
-      const waiting: { name: string; created_at: Date; outsider: boolean; answers: Record<string, string> }[] = await m.query(
+      const waiting: { name: string; created_at: Date; outsider: boolean; answers: Record<string, string>; ticket: string | null }[] = await m.query(
         `SELECT u.name, w.created_at, w.answers,
+                (SELECT t.name FROM ticket_types t WHERE t.id = w.ticket_type_id) AS ticket,
                 NOT EXISTS (SELECT 1 FROM org_members om WHERE om.org_id = w.org_id AND om.user_id = w.user_id) AS outsider
          FROM waitlist_entries w JOIN users u ON u.id = w.user_id
          WHERE w.event_id = $1 AND w.promoted_at IS NULL
@@ -690,17 +828,42 @@ export class EventService {
       // a column per question the event asks, after the rest
       const questions = event.questions;
       const answersOf = (answers: Record<string, string> | null) => questions.map((q) => answers?.[q.id] ?? '');
+      // with ticket types, which one each person has; with paid ones, what they paid and any code
+      const typed = event.ticketTypes.length > 0;
+      const paid = event.ticketTypes.some((t) => t.priceCents > 0);
+      const money = (cents: number | null, refunded: boolean) =>
+        cents === null ? '' : `${(cents / 100).toFixed(2)} ${event.price?.currency.toUpperCase() ?? ''}${refunded ? ' (refunded)' : ''}`.trim();
       const csv = toCsv([
-        ['Name', 'Status', `Registered (${zone})`, `Checked in (${zone})`, 'From outside the workspace', ...questions.map((q) => q.label)],
+        [
+          'Name',
+          'Status',
+          `Registered (${zone})`,
+          `Checked in (${zone})`,
+          'From outside the workspace',
+          ...(typed ? ['Ticket'] : []),
+          ...(paid ? ['Paid', 'Code'] : []),
+          ...questions.map((q) => q.label),
+        ],
         ...going.map((p) => [
           p.name,
           p.checked_in_at ? 'Checked in' : 'Going',
           stamp(p.created_at),
           stamp(p.checked_in_at),
           p.outsider ? 'Yes' : 'No',
+          ...(typed ? [p.ticket ?? ''] : []),
+          ...(paid ? [money(p.paid_cents, p.refunded), p.code ?? ''] : []),
           ...answersOf(p.answers),
         ]),
-        ...waiting.map((p, i) => [p.name, `Waitlist ${i + 1}`, stamp(p.created_at), '', p.outsider ? 'Yes' : 'No', ...answersOf(p.answers)]),
+        ...waiting.map((p, i) => [
+          p.name,
+          `Waitlist ${i + 1}`,
+          stamp(p.created_at),
+          '',
+          p.outsider ? 'Yes' : 'No',
+          ...(typed ? [p.ticket ?? ''] : []),
+          ...(paid ? ['', ''] : []),
+          ...answersOf(p.answers),
+        ]),
       ]);
       // a list of people left the app: worth knowing who took it
       await audit(m, {
@@ -825,7 +988,7 @@ export class EventService {
       series: row.series_id
         ? { id: row.series_id, every: row.repeat_every!, index: row.series_index, count: row.series_count }
         : null,
-      price: row.price_cents !== null && row.currency ? { amountCents: row.price_cents, currency: row.currency } : null,
+      ...ticketsOf(row),
       refundCutoffHours: row.refund_cutoff_hours ?? 48,
       heldCount: row.held_count ?? 0,
       yourPayment:
@@ -836,7 +999,8 @@ export class EventService {
               refundable: Date.now() < row.starts_at.getTime() - (row.refund_cutoff_hours ?? 48) * 3_600_000,
             }
           : null,
-      salesCents: canManage(access, row.created_by) && row.price_cents !== null ? (row.sales_cents ?? 0) : null,
+      salesCents:
+        canManage(access, row.created_by) && (row.ticket_types ?? []).some((t) => t.price_cents > 0) ? (row.sales_cents ?? 0) : null,
       questions: row.questions ?? [],
     };
   }
@@ -864,4 +1028,39 @@ function assertEndsAfterStart(startsAt: Date, endsAt: Date) {
   if (endsAt <= startsAt) {
     throw HttpError.badRequest('The event must end after it starts', 'EVENT_ENDS_BEFORE_START');
   }
+}
+
+// What the request says the ticket types should be: the list, the one-price
+// shorthand ("General admission"; null: free), or undefined to leave them.
+function wantedTypes(dto: CreateEventDto | UpdateEventDto) {
+  if (dto.ticketTypes !== undefined) return dto.ticketTypes;
+  if (dto.priceCents === undefined) return undefined;
+  return dto.priceCents === null ? [] : [{ name: 'General admission', priceCents: dto.priceCents }];
+}
+
+// An event's ticket types as people see them, the cheapest paid one ("from"), and theirs.
+function ticketsOf(row: EventRow): Pick<EventDto, 'ticketTypes' | 'price' | 'yourTicketType'> {
+  const now = Date.now();
+  const types = (row.ticket_types ?? []).map((t) => {
+    const remaining = t.capacity === null ? null : Math.max(0, t.capacity - t.taken);
+    const salesEndAt = t.sales_end_at ? new Date(t.sales_end_at) : null;
+    return {
+      id: t.id,
+      name: t.name,
+      priceCents: t.price_cents,
+      currency: t.price_cents > 0 ? row.currency : null,
+      capacity: t.capacity,
+      remaining,
+      membersOnly: t.members_only,
+      salesEndAt,
+      onSale: (salesEndAt === null || salesEndAt.getTime() > now) && remaining !== 0,
+    };
+  });
+  const paid = types.filter((t) => t.priceCents > 0);
+  const cheapest = paid.reduce<(typeof paid)[number] | null>((a, t) => (!a || t.priceCents < a.priceCents ? t : a), null);
+  return {
+    ticketTypes: types,
+    price: cheapest && row.currency ? { amountCents: cheapest.priceCents, currency: row.currency } : null,
+    yourTicketType: row.your_ticket_type ?? null,
+  };
 }

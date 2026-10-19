@@ -7,7 +7,8 @@ import { TenantService } from '../../database/tenant.service.js';
 import type { ClubAccess } from '../permission/club-access.js';
 import { CurrentClubAccess } from '../permission/decorators/current-club-access.decorator.js';
 import { RequirePermission } from '../permission/decorators/require-permission.decorator.js';
-import { AnswersDto } from '../event/dto/event.dto.js';
+import { GetTicketDto } from '../event/dto/event.dto.js';
+import { resolveTicket } from '../event/tickets.js';
 import { checkAnswers } from '../event/questions.js';
 import { freePlaces, lockEvent, waitingCount, WaitlistService } from './waitlist.service.js';
 
@@ -46,7 +47,7 @@ export class WaitlistController {
   join(
     @CurrentClubAccess() access: ClubAccess,
     @Param('eventId', ParseUUIDPipe) eventId: string,
-    @Body() { answers }: AnswersDto,
+    @Body() { answers, ticketTypeId }: GetTicketDto,
   ): Promise<WaitlistPositionDto> {
     return this.inClub(access, async (m, orgId) => {
       const event = await lockEvent(m, eventId, access.clubId);
@@ -61,9 +62,25 @@ export class WaitlistController {
         throw HttpError.conflict('There is a place free: register instead', 'PLACES_AVAILABLE');
       }
       // a place freed at a paid event is bought by whoever's first, not handed down a queue
-      if (event.price_cents !== null) throw HttpError.conflict('This event is sold out', 'SOLD_OUT');
+      if (event.paid) throw HttpError.conflict('This event is sold out', 'SOLD_OUT');
       const checked = checkAnswers(event.questions ?? [], answers);
-      return { position: await this.waitlist.join(m, { orgId, eventId, userId: access.userId, answers: checked }) };
+      // a free ticket type (if the event has them): theirs when the place comes
+      const ticket = await resolveTicket(m, {
+        eventId,
+        userId: access.userId,
+        member: true,
+        choice: { ticketTypeId },
+        ignoreCapacity: true,
+      });
+      return {
+        position: await this.waitlist.join(m, {
+          orgId,
+          eventId,
+          userId: access.userId,
+          answers: checked,
+          ticketTypeId: ticket.type?.id,
+        }),
+      };
     });
   }
 

@@ -7,7 +7,7 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { ErrorResponseDto } from '../../common/errors/error-response.dto.js';
-import { AnswersDto, MyRegistrationDto } from '../event/dto/event.dto.js';
+import { GetTicketDto, MyRegistrationDto } from '../event/dto/event.dto.js';
 import type { ClubAccess } from '../permission/club-access.js';
 import { CurrentClubAccess } from '../permission/decorators/current-club-access.decorator.js';
 import { RequirePermission } from '../permission/decorators/require-permission.decorator.js';
@@ -36,9 +36,9 @@ export class RegistrationController {
   register(
     @CurrentClubAccess() access: ClubAccess,
     @Param('eventId', ParseUUIDPipe) eventId: string,
-    @Body() { answers }: AnswersDto,
+    @Body() { answers, ticketTypeId, code }: GetTicketDto,
   ): Promise<MyRegistrationDto> {
-    return this.registrations.register(access, eventId, answers);
+    return this.registrations.register(access, eventId, answers, { ticketTypeId, code });
   }
 
   /** Cancel your registration and free the place */

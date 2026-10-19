@@ -7,6 +7,8 @@ import {
   IsInt,
   ArrayMaxSize,
   IsArray,
+  IsUUID,
+  Matches,
   IsNotEmpty,
   IsObject,
   IsOptional,
@@ -101,6 +103,152 @@ export class AnswersDto {
   answers?: Record<string, string>;
 }
 
+export class TicketTypeInputDto {
+  /** Keep a type's id when editing it, so its sales stay with it; leave out for a new one */
+  @IsOptional()
+  @IsUUID()
+  id?: string;
+
+  /** @example 'Members' */
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(60)
+  name: string;
+
+  /** In the currency's smallest unit; 0 for free. @example 1000 */
+  @IsInt()
+  @Min(0)
+  @Max(1_000_000)
+  priceCents: number;
+
+  /** At most this many of this type; null or left out: only the event's capacity */
+  @IsOptional()
+  @ValidateIf((_o, value) => value !== null)
+  @IsInt()
+  @Min(1)
+  @Max(100_000)
+  capacity?: number | null;
+
+  /** Only for the club's members: not offered on the public page */
+  @IsOptional()
+  @IsBoolean()
+  membersOnly?: boolean;
+
+  /** On sale until then (early bird); null or left out: until the event */
+  @IsOptional()
+  @ValidateIf((_o, value) => value !== null)
+  @IsDateString({ strict: true })
+  salesEndAt?: string | null;
+}
+
+export class TicketTypeDto {
+  @ApiProperty({ format: 'uuid' })
+  id: string;
+
+  @ApiProperty()
+  name: string;
+
+  @ApiProperty({ description: '0: free' })
+  priceCents: number;
+
+  @ApiPropertyOptional({ type: String, nullable: true })
+  currency: string | null;
+
+  @ApiPropertyOptional({ type: Number, nullable: true })
+  capacity: number | null;
+
+  @ApiPropertyOptional({ type: Number, nullable: true, description: 'Left of this type; null: no limit of its own' })
+  remaining: number | null;
+
+  @ApiProperty()
+  membersOnly: boolean;
+
+  @ApiPropertyOptional({ type: Date, nullable: true })
+  salesEndAt: Date | null;
+
+  @ApiProperty({ description: "On sale now: before its end, and some left" })
+  onSale: boolean;
+}
+
+/** Getting a ticket: which one, a discount code, and the answers to the event's questions. */
+export class GetTicketDto extends AnswersDto {
+  /** Needed when more than one ticket is on offer */
+  @IsOptional()
+  @IsUUID()
+  ticketTypeId?: string;
+
+  /** @example 'EARLYBIRD' */
+  @IsOptional()
+  @IsString()
+  @MaxLength(30)
+  code?: string;
+}
+
+export class CreateDiscountCodeDto {
+  /** Letters, digits, dashes; matched ignoring case. @example 'EARLYBIRD' */
+  @IsString()
+  @Matches(/^[A-Za-z0-9-]{3,30}$/, { message: 'code is 3 to 30 letters, digits or dashes' })
+  code: string;
+
+  /** A percentage off (1 to 100); give this or amountOffCents */
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  percentOff?: number;
+
+  /** An amount off, in the currency's smallest unit */
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(1_000_000)
+  amountOffCents?: number;
+
+  /** At most this many uses; left out: no limit */
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(100_000)
+  maxUses?: number;
+
+  /** Works until then; left out: until the event */
+  @IsOptional()
+  @IsDateString({ strict: true })
+  expiresAt?: string;
+}
+
+export class DiscountCodeDto {
+  @ApiProperty({ format: 'uuid' })
+  id: string;
+
+  @ApiProperty()
+  code: string;
+
+  @ApiPropertyOptional({ type: Number, nullable: true })
+  percentOff: number | null;
+
+  @ApiPropertyOptional({ type: Number, nullable: true })
+  amountOffCents: number | null;
+
+  @ApiPropertyOptional({ type: Number, nullable: true })
+  maxUses: number | null;
+
+  @ApiProperty({ description: 'Places taken with it (and checkouts open)' })
+  uses: number;
+
+  @ApiPropertyOptional({ type: Date, nullable: true })
+  expiresAt: Date | null;
+
+  @ApiProperty()
+  active: boolean;
+}
+
+export class UpdateDiscountCodeDto {
+  /** false turns it off (people who used it keep their tickets) */
+  @IsBoolean()
+  active: boolean;
+}
+
 export class RepeatDto {
   @ApiProperty({ enum: REPEAT_EVERY })
   @IsIn(REPEAT_EVERY)
@@ -153,9 +301,10 @@ export class CreateEventDto {
   visibility?: EventVisibility;
 
   /**
-   * A ticket's price, in the currency's smallest unit (1500 is $15.00); null
-   * or left out: free. Needs the workspace's Stripe account to be ready; the
-   * currency is the account's. @example 1500
+   * A shorthand for one ticket type, "General admission", at this price (in
+   * the currency's smallest unit: 1500 is $15.00); null or left out with no
+   * ticketTypes: free. Paid tickets need the workspace's Stripe account
+   * ready; the currency is the account's. @example 1500
    */
   @IsOptional()
   @ValidateIf((_o, value) => value !== null)
@@ -170,6 +319,15 @@ export class CreateEventDto {
   @Min(0)
   @Max(720)
   refundCutoffHours?: number;
+
+  /** The ways in: up to ten ticket types (prices, limits, members-only, early bird). Replaces priceCents. */
+  @ApiPropertyOptional({ type: [TicketTypeInputDto] })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(10)
+  @ValidateNested({ each: true })
+  @Type(() => TicketTypeInputDto)
+  ticketTypes?: TicketTypeInputDto[];
 
   /** What to ask people taking a place: up to five questions */
   @ApiPropertyOptional({ type: [QuestionInputDto] })
@@ -307,8 +465,14 @@ export class EventDto {
   @ApiPropertyOptional({ type: EventSeriesDto, nullable: true, description: 'The series it repeats in; null for a one-off' })
   series: EventSeriesDto | null;
 
-  @ApiPropertyOptional({ type: PriceDto, nullable: true, description: 'A ticket costs this; null: free' })
+  @ApiPropertyOptional({ type: PriceDto, nullable: true, description: 'The cheapest paid ticket ("from"); null: all free' })
   price: PriceDto | null;
+
+  @ApiProperty({ type: [TicketTypeDto], description: 'The ways in; none: free for everyone' })
+  ticketTypes: TicketTypeDto[];
+
+  @ApiPropertyOptional({ type: String, nullable: true, description: 'Which ticket you have' })
+  yourTicketType: string | null;
 
   @ApiProperty({ description: 'A paid place given back at least this many hours before the start is refunded' })
   refundCutoffHours: number;

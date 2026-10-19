@@ -5,14 +5,15 @@ import { TenantService } from '../../database/tenant.service.js';
 import { BULK_PACE_MS, EmailService } from '../email/email.service.js';
 import { formatWhen } from '../email/format-when.js';
 import type { Question } from '../event/questions.js';
+import { PAID_EVENT } from '../event/tickets.js';
 import { TicketService } from '../ticket/ticket.service.js';
 
 const eventNotFound = () => HttpError.notFound('Event not found', 'EVENT_NOT_FOUND');
 
 interface LockedEvent {
   status: 'draft' | 'published' | 'cancelled';
-  // set: a paid event, whose places are bought (no waitlist)
-  price_cents: number | null;
+  // any ticket type costs money: places are bought (no waitlist)
+  paid: boolean;
   questions: Question[];
   ends_at: Date;
   capacity: number | null;
@@ -41,8 +42,9 @@ export async function lockEvent(
   clubId?: string,
 ): Promise<LockedEvent | undefined> {
   const [event]: LockedEvent[] = await m.query(
-    `SELECT status, ends_at, capacity, registration_closed_at, visibility, price_cents, questions FROM events
-     WHERE id = $1 AND ($2::uuid IS NULL OR club_id = $2) FOR UPDATE`,
+    `SELECT e.status, e.ends_at, e.capacity, e.registration_closed_at, e.visibility, e.questions, ${PAID_EVENT('e')} AS paid
+     FROM events e
+     WHERE e.id = $1 AND ($2::uuid IS NULL OR e.club_id = $2) FOR UPDATE OF e`,
     [eventId, clubId ?? null],
   );
   return event;
@@ -118,7 +120,7 @@ export class WaitlistService {
    */
   async join(
     m: EntityManager,
-    place: { orgId: string; eventId: string; userId: string; answers?: Record<string, string> },
+    place: { orgId: string; eventId: string; userId: string; answers?: Record<string, string>; ticketTypeId?: string | null },
   ): Promise<number> {
     const registered: unknown[] = await m.query(
       `SELECT 1 FROM registrations WHERE event_id = $1 AND user_id = $2 AND cancelled_at IS NULL`,
@@ -126,9 +128,9 @@ export class WaitlistService {
     );
     if (registered.length > 0) throw HttpError.conflict("You're already registered", 'ALREADY_REGISTERED');
     await m.query(
-      `INSERT INTO waitlist_entries (org_id, event_id, user_id, answers) VALUES ($1, $2, $3, $4)
-       ON CONFLICT (event_id, user_id) WHERE promoted_at IS NULL DO UPDATE SET answers = $4`,
-      [place.orgId, place.eventId, place.userId, JSON.stringify(place.answers ?? {})],
+      `INSERT INTO waitlist_entries (org_id, event_id, user_id, answers, ticket_type_id) VALUES ($1, $2, $3, $4, $5)
+       ON CONFLICT (event_id, user_id) WHERE promoted_at IS NULL DO UPDATE SET answers = $4, ticket_type_id = $5`,
+      [place.orgId, place.eventId, place.userId, JSON.stringify(place.answers ?? {}), place.ticketTypeId ?? null],
     );
     return (await waitlistPosition(m, place.eventId, place.userId))!;
   }
@@ -159,25 +161,26 @@ export class WaitlistService {
         event.status !== 'published' ||
         event.ends_at <= new Date() ||
         event.registration_closed_at !== null ||
-        event.price_cents !== null
+        event.paid
       ) {
         return [];
       }
       const free = await freePlaces(m, eventId, event.capacity);
       if (free === 0) return [];
 
-      const next: { id: string; user_id: string; answers: Record<string, string> }[] = await m.query(
-        `SELECT id, user_id, answers FROM waitlist_entries WHERE event_id = $1 AND promoted_at IS NULL
+      const next: { id: string; user_id: string; answers: Record<string, string>; ticket_type_id: string | null }[] = await m.query(
+        `SELECT id, user_id, answers, ticket_type_id FROM waitlist_entries WHERE event_id = $1 AND promoted_at IS NULL
          ORDER BY created_at, id ${free === null ? '' : 'LIMIT $2'}`,
         free === null ? [eventId] : [eventId, free],
       );
       const rows: PromotedRow[] = [];
       for (const entry of next) {
         const [registration]: { id: string }[] = await m.query(
-          `INSERT INTO registrations (org_id, event_id, user_id, answers) VALUES ($1, $2, $3, $4)
-           ON CONFLICT ON CONSTRAINT registrations_event_id_user_id_key DO UPDATE SET cancelled_at = NULL, answers = $4
+          `INSERT INTO registrations (org_id, event_id, user_id, answers, ticket_type_id) VALUES ($1, $2, $3, $4, $5)
+           ON CONFLICT ON CONSTRAINT registrations_event_id_user_id_key
+           DO UPDATE SET cancelled_at = NULL, answers = $4, ticket_type_id = $5
            RETURNING id`,
-          [orgId, eventId, entry.user_id, JSON.stringify(entry.answers ?? {})],
+          [orgId, eventId, entry.user_id, JSON.stringify(entry.answers ?? {}), entry.ticket_type_id],
         );
         await m.query(`UPDATE waitlist_entries SET promoted_at = now() WHERE id = $1`, [entry.id]);
         const [row]: PromotedRow[] = await m.query(

@@ -9,7 +9,8 @@ import { formatWhen } from '../email/format-when.js';
 import type { OrgMembership } from '../organisation/org-roles.js';
 import type { ClubAccess } from '../permission/club-access.js';
 import { checkAnswers } from '../event/questions.js';
-import { checkPlace } from '../registration/place.js';
+import { checkPlace, insertPlace } from '../registration/place.js';
+import { resolveTicket, type TicketChoice } from '../event/tickets.js';
 import { TicketService } from '../ticket/ticket.service.js';
 import { PaymentGateway, type PaymentEvent } from './payment-gateway.js';
 
@@ -141,38 +142,58 @@ export class PaymentService {
     return { url: await this.gateway.dashboardLink(accountId) };
   }
 
-  /** The price an event can be given: only in a workspace that can take payments, in its currency. */
-  async priceFor(m: EntityManager, orgId: string, priceCents: number | null): Promise<{ priceCents: number | null; currency: string | null }> {
-    if (priceCents === null) return { priceCents: null, currency: null };
+  /**
+   * The currency for an event's tickets: none if they're all free; if any
+   * costs money, the workspace must be able to take payments, and it's the
+   * workspace's currency.
+   */
+  async currencyFor(m: EntityManager, orgId: string, paid: boolean): Promise<string | null> {
+    if (!paid) return null;
     const status = await this.statusIn(m, orgId);
     if (!status.available || !status.ready || !status.currency) throw notReady();
-    return { priceCents, currency: status.currency };
+    return status.currency;
   }
 
   // --- buying a place ----------------------------------------------------------------
 
   /**
-   * Starts paying for a place, inside the caller's tenant transaction:
-   * checks a place is free (the event locked), holds it, and returns
-   * Stripe's checkout page. Asking again while a checkout is still open
-   * returns the same one.
+   * Starts buying a place, inside the caller's tenant transaction: checks a
+   * place (and that ticket) is free, the event locked, works out the price
+   * with any code, holds the place, and returns Stripe's checkout page.
+   * Asking again while a checkout is still open returns the same one. A
+   * ticket that comes to nothing (a free type, or a 100% code) is simply
+   * theirs: `registrationId`, no Stripe.
    */
   async startCheckout(
     m: EntityManager,
-    place: { orgId: string; eventId: string; userId: string; clubId?: string; publicOnly?: boolean; answers?: Record<string, unknown> },
+    place: {
+      orgId: string;
+      eventId: string;
+      userId: string;
+      clubId?: string;
+      publicOnly?: boolean;
+      answers?: Record<string, unknown>;
+      choice?: TicketChoice;
+    },
     back: { successUrl: string; cancelUrl: string },
-  ): Promise<{ url: string; checkoutId?: string }> {
+  ): Promise<{ url: string; checkoutId?: string } | { registrationId: string }> {
     const { event, existing } = await checkPlace(m, place);
     if (existing) throw HttpError.conflict("You're already registered", 'ALREADY_REGISTERED');
-    if (event.price_cents === null || !event.currency) throw HttpError.conflict('This event is free: register instead', 'EVENT_IS_FREE');
+    const ticket = await resolveTicket(m, { ...place, member: !place.publicOnly });
+    if (!ticket.type) throw HttpError.conflict('This event is free: register instead', 'EVENT_IS_FREE');
     const answers = checkAnswers(event.questions ?? [], place.answers);
+    if (ticket.priceCents === 0) {
+      const row = await insertPlace(m, place, { ticket, answers });
+      return { registrationId: row.id };
+    }
+    if (!event.currency) throw notReady();
 
     const [open]: { id: string; url: string | null }[] = await m.query(
       `SELECT id, url FROM checkouts WHERE event_id = $1 AND user_id = $2 AND status = 'pending' AND expires_at > now() + interval '2 minutes'`,
       [place.eventId, place.userId],
     );
     if (open?.url) {
-      // the same checkout, with the latest answers
+      // the same checkout (and price), with the latest answers
       await m.query(`UPDATE checkouts SET answers = $2 WHERE id = $1`, [open.id, JSON.stringify(answers)]);
       return { url: open.url };
     }
@@ -188,18 +209,29 @@ export class PaymentService {
 
     const expiresAt = new Date(Date.now() + HOLD_MINUTES * 60_000);
     const [{ id }]: { id: string }[] = await m.query(
-      `INSERT INTO checkouts (org_id, event_id, user_id, amount_cents, currency, expires_at, answers)
-       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
-      [place.orgId, place.eventId, place.userId, event.price_cents, event.currency, expiresAt, JSON.stringify(answers)],
+      `INSERT INTO checkouts
+         (org_id, event_id, user_id, amount_cents, currency, expires_at, answers, ticket_type_id, discount_code_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
+      [
+        place.orgId,
+        place.eventId,
+        place.userId,
+        ticket.priceCents,
+        event.currency,
+        expiresAt,
+        JSON.stringify(answers),
+        ticket.type.id,
+        ticket.discountCodeId,
+      ],
     );
     const session = await this.gateway.createCheckout({
       checkoutId: id,
       orgId: place.orgId,
       accountId: details.stripe_account_id,
       currency: event.currency,
-      amountCents: event.price_cents,
-      feeCents: Math.round((event.price_cents * config.payments.platformFeePercent) / 100),
-      title: details.title,
+      amountCents: ticket.priceCents,
+      feeCents: Math.round((ticket.priceCents * config.payments.platformFeePercent) / 100),
+      title: `${details.title}: ${ticket.type.name}`,
       description: `${details.club_name}, ${formatWhen(details.starts_at, details.ends_at, details.time_zone)}`,
       email: details.email,
       successUrl: back.successUrl,
@@ -210,8 +242,16 @@ export class PaymentService {
     return { url: session.url, checkoutId: id };
   }
 
-  /** A member buying a place: Stripe's checkout page, coming back to the event. */
-  async memberCheckout(access: ClubAccess, eventId: string, answers?: Record<string, unknown>): Promise<{ url: string }> {
+  /**
+   * A member getting a ticket: Stripe's checkout page, coming back to the
+   * event; or, if it comes to nothing, the place straight away (and its ticket by email).
+   */
+  async memberCheckout(
+    access: ClubAccess,
+    eventId: string,
+    answers?: Record<string, unknown>,
+    choice?: TicketChoice,
+  ): Promise<{ url: string | null; registered: boolean }> {
     const orgId = await this.tenant.orgIdForClub(access.clubId);
     if (!orgId) throw HttpError.notFound('Club not found', 'CLUB_NOT_FOUND');
     return this.tenant.withTenant(orgId, async (m) => {
@@ -225,13 +265,23 @@ export class PaymentService {
       };
       return this.startCheckout(
         m,
-        { orgId, eventId, userId: access.userId, clubId: access.clubId, answers },
+        { orgId, eventId, userId: access.userId, clubId: access.clubId, answers, choice },
         { successUrl: back('1'), cancelUrl: back('0') },
       );
-    }).then(async ({ url, checkoutId }) => {
-      await this.afterCheckout(orgId, checkoutId);
-      return { url };
+    }).then(async (outcome) => {
+      if ('registrationId' in outcome) {
+        await this.ticketFor(orgId, outcome.registrationId);
+        return { url: null, registered: true };
+      }
+      await this.afterCheckout(orgId, outcome.checkoutId);
+      return { url: outcome.url, registered: false };
     });
+  }
+
+  /** Emails the ticket for a place just taken (one a code made free), once it's committed. */
+  async ticketFor(orgId: string, registrationId: string): Promise<void> {
+    const [ticket]: PaidRow[] = await this.tenant.withTenant(orgId, (m) => m.query(`${SELECT_PAID} WHERE r.id = $1`, [registrationId]));
+    if (ticket) this.email.inBackground('ticket', this.emailTicket(ticket));
   }
 
   /**
@@ -287,8 +337,19 @@ export class PaymentService {
   // Paid: the held place becomes theirs (or, if the event can't have them any more, the money goes back)
   private async completed(event: Extract<PaymentEvent, { type: 'checkout.completed' }>): Promise<void> {
     const outcome = await this.tenant.withTenant(event.orgId, async (m) => {
-      const [checkout]: { event_id: string; user_id: string; amount_cents: number; currency: string; status: string; answers: Record<string, string> }[] =
-        await m.query(`SELECT event_id, user_id, amount_cents, currency, status, answers FROM checkouts WHERE id = $1 FOR UPDATE`, [
+      const [checkout]: {
+        event_id: string;
+        user_id: string;
+        amount_cents: number;
+        currency: string;
+        status: string;
+        answers: Record<string, string>;
+        ticket_type_id: string | null;
+        discount_code_id: string | null;
+      }[] = await m.query(
+        `SELECT event_id, user_id, amount_cents, currency, status, answers, ticket_type_id, discount_code_id
+         FROM checkouts WHERE id = $1 FOR UPDATE`,
+        [
           event.checkoutId,
         ]);
       // a repeat (or not ours): nothing more to do
@@ -302,13 +363,17 @@ export class PaymentService {
         return { refund: true as const };
       }
       // the place was held for them (even if the hold just ran out: they paid in Stripe's time)
-      const [row]: { id: string }[] = await m.query(
-        `INSERT INTO registrations (org_id, event_id, user_id, amount_paid_cents, currency, payment_intent_id, answers)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)
-         ON CONFLICT ON CONSTRAINT registrations_event_id_user_id_key
-         DO UPDATE SET cancelled_at = NULL, amount_paid_cents = $4, currency = $5, payment_intent_id = $6, refunded_at = NULL, answers = $7
-         RETURNING id`,
-        [event.orgId, checkout.event_id, checkout.user_id, checkout.amount_cents, checkout.currency, event.paymentIntentId, JSON.stringify(checkout.answers ?? {})],
+      const row = await insertPlace(
+        m,
+        { orgId: event.orgId, eventId: checkout.event_id, userId: checkout.user_id },
+        {
+          ticket: {
+            type: checkout.ticket_type_id ? { id: checkout.ticket_type_id } : null,
+            discountCodeId: checkout.discount_code_id,
+          },
+          answers: checkout.answers ?? {},
+          payment: { amountCents: checkout.amount_cents, currency: checkout.currency, paymentIntentId: event.paymentIntentId },
+        },
       );
       await m.query(`UPDATE checkouts SET status = 'paid', registration_id = $2 WHERE id = $1`, [event.checkoutId, row.id]);
       const [ticket]: PaidRow[] = await m.query(`${SELECT_PAID} WHERE r.id = $1`, [row.id]);

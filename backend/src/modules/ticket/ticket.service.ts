@@ -14,6 +14,9 @@ export interface GuestConfirmation {
   name: string;
   // their answers to the event's questions, checked when they asked
   answers?: Record<string, string>;
+  // the ticket they chose, and any discount code
+  ticketTypeId?: string;
+  code?: string;
 }
 
 interface TicketClaims {
@@ -73,6 +76,8 @@ export class TicketService {
       email: claims.email,
       name: claims.name,
       ...(claims.answers && Object.keys(claims.answers).length > 0 && { ans: claims.answers }),
+      ...(claims.ticketTypeId && { tt: claims.ticketTypeId }),
+      ...(claims.code && { dc: claims.code }),
     });
   }
 
@@ -81,11 +86,23 @@ export class TicketService {
     // answers make it longer: five of them, up to 300 characters each
     if (typeof token !== 'string' || token.length > 8000) return null;
     try {
-      const claims = await this.confirmations.verifyAsync<{ evt: string; email: string; name: string; ans?: Record<string, string> }>(
-        token,
-      );
+      const claims = await this.confirmations.verifyAsync<{
+        evt: string;
+        email: string;
+        name: string;
+        ans?: Record<string, string>;
+        tt?: string;
+        dc?: string;
+      }>(token);
       if (!isUUID(claims.evt) || typeof claims.email !== 'string' || typeof claims.name !== 'string') return null;
-      return { eventId: claims.evt, email: claims.email, name: claims.name, answers: claims.ans ?? {} };
+      return {
+        eventId: claims.evt,
+        email: claims.email,
+        name: claims.name,
+        answers: claims.ans ?? {},
+        ticketTypeId: claims.tt,
+        code: claims.dc,
+      };
     } catch {
       return null;
     }

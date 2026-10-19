@@ -72,6 +72,7 @@ export const toTicket = (row: TicketRow): TicketDto => ({
 });
 
 import { takePlace } from './place.js';
+import type { TicketChoice } from '../event/tickets.js';
 
 export { checkPlace, paymentRequired, takePlace } from './place.js';
 
@@ -96,9 +97,14 @@ export class RegistrationService {
    * Once committed, the ticket is emailed in the background: a provider
    * outage never undoes a registration (the ticket is in the app anyway).
    */
-  async register(access: ClubAccess, eventId: string, answers?: Record<string, unknown>): Promise<MyRegistrationDto> {
+  async register(
+    access: ClubAccess,
+    eventId: string,
+    answers?: Record<string, unknown>,
+    choice?: TicketChoice,
+  ): Promise<MyRegistrationDto> {
     const { registration, ticket, email } = await this.events.inClub(access, async (m, orgId) => {
-      const row = await takePlace(m, { orgId, eventId, userId: access.userId, clubId: access.clubId, answers });
+      const row = await takePlace(m, { orgId, eventId, userId: access.userId, clubId: access.clubId, answers, choice });
       const [details]: (TicketRow & { email: string })[] = await m.query(
         `${SELECT_TICKETS.replace('u.name AS attendee_name', 'u.name AS attendee_name, u.email')} AND r.id = $2`,
         [access.userId, row.id],

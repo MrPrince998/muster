@@ -7,12 +7,14 @@ import { Event } from './entities/event.entity.js';
 import { EventController } from './event.controller.js';
 import { EventService } from './event.service.js';
 import { PaymentModule } from '../payment/payment.module.js';
+import { DiscountCode } from './entities/discount-code.entity.js';
+import { TicketType } from './entities/ticket-type.entity.js';
 
 @Module({
   // PermissionModule: every route here is guarded by @RequirePermission();
   // EmailModule: cancellations and changes are emailed to the people registered;
   // WaitlistModule: more places (a higher capacity) go to the people waiting
-  imports: [TypeOrmModule.forFeature([Event]), PermissionModule, EmailModule, WaitlistModule, PaymentModule],
+  imports: [TypeOrmModule.forFeature([Event, TicketType, DiscountCode]), PermissionModule, EmailModule, WaitlistModule, PaymentModule],
   controllers: [EventController],
   providers: [EventService],
   // registrations reuse its tenant scoping and event lookups

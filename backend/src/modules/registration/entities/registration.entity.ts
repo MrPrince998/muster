@@ -13,6 +13,8 @@ import {
 } from 'typeorm';
 import { Event } from '../../event/entities/event.entity.js';
 import { User } from '../../user/entities/user.entity.js';
+import { TicketType } from '../../event/entities/ticket-type.entity.js';
+import { DiscountCode } from '../../event/entities/discount-code.entity.js';
 
 /**
  * A user's sign-up for an event, and the source of their ticket. Tenant-
@@ -85,6 +87,24 @@ export class Registration {
 
   @Column({ name: 'refunded_at', type: 'timestamptz', nullable: true })
   refundedAt: Date | null;
+
+  // the ticket type it is (ticket_types); null for an event without types
+  @Index('registrations_ticket_type_id_idx', { where: '"ticket_type_id" IS NOT NULL' })
+  @ManyToOne(() => TicketType, { onDelete: 'RESTRICT', nullable: true })
+  @JoinColumn({ name: 'ticket_type_id', foreignKeyConstraintName: 'registrations_ticket_type_id_fkey' })
+  ticketType?: TicketType | null;
+
+  @Column({ name: 'ticket_type_id', type: 'uuid', nullable: true })
+  ticketTypeId: string | null;
+
+  // the discount code it was bought with
+  @Index('registrations_discount_code_id_idx', { where: '"discount_code_id" IS NOT NULL' })
+  @ManyToOne(() => DiscountCode, { onDelete: 'RESTRICT', nullable: true })
+  @JoinColumn({ name: 'discount_code_id', foreignKeyConstraintName: 'registrations_discount_code_id_fkey' })
+  discountCode?: DiscountCode | null;
+
+  @Column({ name: 'discount_code_id', type: 'uuid', nullable: true })
+  discountCodeId: string | null;
 
   // their answers to the event's questions, by question id
   @Column({ type: 'jsonb', default: {} })

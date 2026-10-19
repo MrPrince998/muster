@@ -201,8 +201,9 @@ interface EventPlan {
   waiting?: Person[];
   // one of a recurring series
   series?: { id: string; every: 'week' | 'fortnight' | 'month' };
-  // a paid event: a ticket's price in cents (in AUD)
-  priceCents?: number;
+  // ticket types (prices in AUD cents) and discount codes; none: free
+  tickets?: { name: string; priceCents: number; membersOnly?: boolean; capacity?: number }[];
+  codes?: { code: string; percentOff: number; maxUses?: number }[];
   // what it asks people taking a place (event/questions.ts)
   questions?: { id: string; label: string; kind: 'text' | 'choice'; options: string[]; required: boolean }[];
 }
@@ -213,8 +214,8 @@ async function makeEvent(m: Tx, orgId: string, clubId: string, by: Person, plan:
   const [{ id }]: { id: string }[] = await m.query(
     `INSERT INTO events (org_id, club_id, created_by, title, description, location, starts_at, ends_at, capacity,
                          visibility, status, published_at, cancelled_at, cancel_reason, registration_closed_at,
-                         series_id, repeat_every, price_cents, currency, questions)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20) RETURNING id`,
+                         series_id, repeat_every, currency, questions)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19) RETURNING id`,
     [
       orgId,
       clubId,
@@ -233,11 +234,23 @@ async function makeEvent(m: Tx, orgId: string, clubId: string, by: Person, plan:
       plan.registrationClosed ? new Date(Date.now() - DAY) : null,
       plan.series?.id ?? null,
       plan.series?.every ?? null,
-      plan.priceCents ?? null,
-      plan.priceCents ? 'aud' : null,
+      plan.tickets?.some((t) => t.priceCents > 0) ? 'aud' : null,
       JSON.stringify(plan.questions ?? []),
     ],
   );
+  for (const [position, t] of (plan.tickets ?? []).entries()) {
+    await m.query(
+      `INSERT INTO ticket_types (org_id, event_id, name, price_cents, members_only, capacity, position)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [orgId, id, t.name, t.priceCents, !!t.membersOnly, t.capacity ?? null, position],
+    );
+  }
+  for (const c of plan.codes ?? []) {
+    await m.query(
+      `INSERT INTO discount_codes (org_id, event_id, code, percent_off, max_uses, created_by) VALUES ($1, $2, $3, $4, $5, $6)`,
+      [orgId, id, c.code, c.percentOff, c.maxUses ?? null, by.id],
+    );
+  }
   const over = end.getTime() < Date.now();
   for (const person of plan.going) {
     const came = over && random() < (plan.turnout ?? 0.8);
@@ -414,7 +427,11 @@ async function riverside(ds: DataSource, people: Awaited<ReturnType<typeof makeP
       hours: 4,
       capacity: 40,
       visibility: 'public',
-      priceCents: 4500,
+      tickets: [
+        { name: 'Members', priceCents: 3500, membersOnly: true },
+        { name: 'General', priceCents: 4500 },
+      ],
+      codes: [{ code: 'ROBOT10', percentOff: 10, maxUses: 20 }],
       questions: [
         { id: 'diet', label: 'Dietary needs', kind: 'choice', options: ['None', 'Vegetarian', 'Vegan', 'Gluten free'], required: true },
         { id: 'note', label: 'Anything the kitchen should know?', kind: 'text', options: [], required: false },
