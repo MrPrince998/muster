@@ -32,6 +32,8 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+# the example holds no secrets: it's committed
+!.env.example
 
 # vercel
 .vercel
