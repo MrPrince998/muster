@@ -1,8 +1,10 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { LoaderCircle, Plus, Trash2 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { ImagePlus, LoaderCircle, Plus, Trash2 } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { apiUrl, resizeImage } from "@/lib/image";
 import { useFieldArray, useForm, useWatch } from "react-hook-form";
 import { Button } from "@/components/ui/button";
 import {
@@ -19,7 +21,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { asApiError } from "@/lib/api/client";
 import { cn } from "@/lib/utils";
 import type { ClubEvent, SeriesScope } from "@/types/event.interface";
-import { useCreateEvent, useUpdateEvent } from "../services/event.service";
+import { eventsKey, removeCover, uploadCover, useCreateEvent, useUpdateEvent } from "../services/event.service";
 import { differsFromDevice, zoneCity } from "@/lib/time-zone";
 import { hasLaterInSeries, SeriesScopeChoice } from "../shared/series-scope-choice";
 import { usePaymentStatus } from "../services/payment.service";
@@ -116,10 +118,38 @@ export default function EventFormDialog({
   const inSeries = editing && hasLaterInSeries(event);
   const [scope, setScope] = useState<SeriesScope>("this");
   // each time it opens, back to just this one
+  // a new cover image waiting to upload once the event's saved, or the current one going
+  const [cover, setCover] = useState<{ file: Blob | null; removed: boolean }>({ file: null, removed: false });
+  const [preparing, setPreparing] = useState(false);
+  const [coverError, setCoverError] = useState<string | null>(null);
+  const preview = useMemo(() => (cover.file ? URL.createObjectURL(cover.file) : null), [cover.file]);
+  useEffect(() => () => void (preview && URL.revokeObjectURL(preview)), [preview]);
+  const shownCover = preview ?? (!cover.removed && event?.coverUrl ? apiUrl(event.coverUrl) : null);
+  const queryClient = useQueryClient();
+  const coverInput = useRef<HTMLInputElement>(null);
+
+  const chooseCover = async (file: File | undefined) => {
+    if (!file) return;
+    setCoverError(null);
+    setPreparing(true);
+    try {
+      const image = await resizeImage(file);
+      if (image.size > 2 * 1024 * 1024) throw new Error("too large");
+      setCover({ file: image, removed: false });
+    } catch {
+      setCoverError("That image couldn't be used. Try a JPEG, PNG or WebP photo.");
+    } finally {
+      setPreparing(false);
+    }
+  };
+
   const [wasOpen, setWasOpen] = useState(open);
   if (open !== wasOpen) {
     setWasOpen(open);
-    if (open) setScope("this");
+    if (open) {
+      setScope("this");
+      setCover({ file: null, removed: false });
+    }
   }
 
   // fill the form each time it opens: the event being edited, or blank
@@ -174,6 +204,18 @@ export default function EventFormDialog({
                 repeat: { every: values.repeatEvery, count: Number(values.repeatCount) },
               }),
             });
+        // the image goes once the event exists; the lists then show it
+        try {
+          if (cover.file) await uploadCover(clubId, saved.id, cover.file);
+          else if (cover.removed && event?.coverUrl) await removeCover(clubId, saved.id);
+          if (cover.file || cover.removed) await queryClient.invalidateQueries({ queryKey: eventsKey(clubId) });
+        } catch {
+          // the event is saved either way; editing it again can add the image
+          if (editing) {
+            form.setError("root", { message: "Saved, but the image didn't upload. Try choosing it again." });
+            return;
+          }
+        }
         onOpenChange(false);
         onSaved?.(saved);
       } catch (error) {
@@ -507,6 +549,55 @@ export default function EventFormDialog({
               </Button>
             )}
           </fieldset>
+
+          <div className="space-y-2">
+            <p className="text-sm font-medium">Cover image</p>
+            {shownCover ? (
+              <div className="space-y-2">
+                {/* eslint-disable-next-line @next/next/no-img-element -- a preview, or the API's file: nothing for next/image to optimise */}
+                <img src={shownCover} alt="" className="aspect-[16/9] w-full rounded-lg border object-cover" />
+                <div className="flex gap-2">
+                  <Button type="button" variant="outline" size="sm" onClick={() => coverInput.current?.click()}>
+                    <ImagePlus aria-hidden />
+                    Change
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="text-muted-foreground"
+                    onClick={() => setCover({ file: null, removed: true })}
+                  >
+                    Remove
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => coverInput.current?.click()}
+                disabled={preparing}
+                className="flex w-full flex-col items-center gap-1 rounded-lg border border-dashed p-5 text-sm text-muted-foreground transition-colors hover:bg-muted/50 focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+              >
+                {preparing ? <LoaderCircle className="size-5 animate-spin" aria-hidden /> : <ImagePlus className="size-5" aria-hidden />}
+                {preparing ? "Preparing the image…" : "Add a cover image"}
+                <span className="text-xs">Shown on the event, its public page and link previews</span>
+              </button>
+            )}
+            <input
+              ref={coverInput}
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              className="sr-only"
+              aria-label="Cover image file"
+              tabIndex={-1}
+              onChange={(e) => {
+                void chooseCover(e.target.files?.[0]);
+                e.target.value = "";
+              }}
+            />
+            {coverError && <p className="text-sm text-destructive">{coverError}</p>}
+          </div>
 
           <Field data-invalid={!!errors.description}>
             <FieldLabel htmlFor="event-description">About</FieldLabel>

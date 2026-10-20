@@ -207,3 +207,16 @@ export const useSetDiscountCode = (clubId: string, eventId: string) =>
     }),
     { invalidates: [codesKey(clubId, eventId)] },
   );
+
+/** Puts a cover image on an event: the (resized) image itself, 2 MB at most. */
+export const uploadCover = (clubId: string, eventId: string, image: Blob) =>
+  request<ClubEvent>({
+    method: "put",
+    url: `/clubs/${clubId}/events/${eventId}/cover`,
+    data: image,
+    headers: { "Content-Type": image.type },
+  });
+
+/** Takes an event's cover image off. */
+export const removeCover = (clubId: string, eventId: string) =>
+  request<ClubEvent>({ method: "delete", url: `/clubs/${clubId}/events/${eventId}/cover` });

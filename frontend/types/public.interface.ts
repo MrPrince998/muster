@@ -26,6 +26,8 @@ export interface PublicEvent {
   ticketTypes: import("./event.interface").TicketType[];
   // discount codes work for this event
   hasCodes: boolean;
+  // its cover image, a path on the API; null for none
+  coverUrl: string | null;
 }
 
 export interface GuestPlaceInput {

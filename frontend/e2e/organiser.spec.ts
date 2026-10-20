@@ -213,3 +213,28 @@ test("ask a question when people register", async ({ page }) => {
   await expect(panel.getByText("You’re going.")).toBeVisible();
   await expect(panel.getByRole("region", { name: "Answers" }).getByRole("listitem").filter({ hasText: "Sweet" })).toHaveText(/Sweet\s*1/);
 });
+
+test("give an event a cover image", async ({ page }) => {
+  await openClub(page, "Robotics Society");
+  await page.getByRole("button", { name: "New event" }).click();
+  const form = page.getByRole("dialog");
+  await form.getByLabel("Name", { exact: true }).fill("Cover Walk");
+  await form.locator("#event-starts").fill(localDateTime(27, 9));
+  await form.locator("#event-ends").fill(localDateTime(27, 12));
+  // a 1x1 PNG: the browser re-encodes it (WebP, or JPEG) before it goes
+  await form.getByLabel("Cover image file").setInputFiles({
+    name: "walk.png",
+    mimeType: "image/png",
+    buffer: Buffer.from(
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+      "base64",
+    ),
+  });
+  await expect(form.getByRole("button", { name: "Change" })).toBeVisible();
+  await form.getByRole("button", { name: "Publish" }).click();
+
+  const panel = page.getByRole("complementary", { name: "Cover Walk" });
+  const cover = panel.locator("img").first();
+  await expect(cover).toHaveAttribute("src", /\/files\/covers\/[0-9a-f-]{36}\.(webp|jpg)$/);
+  await expect.poll(() => cover.evaluate((img: HTMLImageElement) => img.complete && img.naturalWidth > 0)).toBe(true);
+});

@@ -52,6 +52,7 @@ import { DiscountCodesDialog } from "../../dialogs/discount-codes-dialog";
 import { MessageDialog } from "../../dialogs/message-dialog";
 import { TicketDialog } from "../../tickets/ticket-dialog";
 import { differsFromDevice, zoneCity, zoneName } from "@/lib/time-zone";
+import { apiUrl } from "@/lib/image";
 import { formatMoney } from "@/lib/money";
 import { AnswersSummary } from "./answers-summary";
 import { FeedbackSection } from "./feedback-section";
@@ -159,6 +160,14 @@ function PanelBody(props: EventPanelProps & { event: ClubEvent }) {
 
   return (
     <div className="flex flex-col gap-6 p-6">
+      {event.coverUrl && (
+        // eslint-disable-next-line @next/next/no-img-element -- the API's file: nothing for next/image to optimise
+        <img
+          src={apiUrl(event.coverUrl)}
+          alt=""
+          className="-mx-6 -mt-6 aspect-[16/9] w-[calc(100%+3rem)] max-w-none object-cover"
+        />
+      )}
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="text-sm font-semibold text-cobalt">

@@ -59,6 +59,8 @@ export interface ClubEvent {
   ticketTypes: TicketType[];
   // which ticket you have
   yourTicketType: string | null;
+  // its cover image, a path on the API (apiUrl() makes it a link); null for none
+  coverUrl: string | null;
 }
 
 /** One way into an event: "General $15", "Members free", "Early bird". */

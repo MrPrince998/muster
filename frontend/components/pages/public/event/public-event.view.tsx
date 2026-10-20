@@ -5,6 +5,7 @@ import type { UseFormReturn } from "react-hook-form";
 import { Button } from "@/components/ui/button";
 import { Field, FieldError, FieldLabel } from "@/components/ui/field";
 import { InputGroup, InputGroupInput } from "@/components/ui/input-group";
+import { apiUrl } from "@/lib/image";
 import { formatMoney } from "@/lib/money";
 import type { Answers } from "@/types/event.interface";
 import { QuestionFields } from "../../workspace/shared/question-fields";
@@ -43,6 +44,14 @@ export default function PublicEventView({ event, form, onSubmit, sentTo, onAskAg
   return (
     <div className="mx-auto grid w-full max-w-5xl gap-10 px-5 py-10 sm:px-8 lg:grid-cols-[minmax(0,1fr)_22rem] lg:gap-16 lg:py-16">
       <article className="min-w-0">
+        {event.coverUrl && (
+          // eslint-disable-next-line @next/next/no-img-element -- the API's file: nothing for next/image to optimise
+          <img
+            src={apiUrl(event.coverUrl)}
+            alt=""
+            className="mb-8 aspect-[16/9] w-full rounded-2xl object-cover"
+          />
+        )}
         <p className="font-semibold text-cobalt">
           {event.clubName}, {event.workspaceName}
         </p>

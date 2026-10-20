@@ -54,6 +54,10 @@ const SECTIONS: { title: string; answers: Answer[] }[] = [
         a: "A workspace's owner or an admin connects its Stripe account in Settings; ticket money goes straight to that account. Then any event can have a price. Buying holds your place while you pay, and your ticket arrives as soon as the payment goes through. Give a ticket back before the event's refund cut-off (48 hours by default) and you get the money back; if the organisers cancel, everyone is refunded.",
       },
       {
+        q: "Can an event have a picture?",
+        a: "Yes. In the event's form, choose Add a cover image: a JPEG, PNG or WebP photo. It's made smaller in your browser before it uploads, and shows on the event and its public page.",
+      },
+      {
         q: "Can an event have different tickets, or discount codes?",
         a: "Yes. In the event's form, add tickets: each has a name and a price (empty for free), and can be for members only, limited in number, or on sale until a date (an early bird). With no tickets, the event is free. For paid tickets, Discount codes on the event makes codes for a percentage or an amount off, with a limit if you like. A code that makes a ticket free skips payment altogether.",
       },
