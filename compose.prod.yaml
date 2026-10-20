@@ -38,6 +38,14 @@ services:
       RESEND_API_KEY: ${RESEND_API_KEY:?set RESEND_API_KEY}
       EMAIL_FROM: ${EMAIL_FROM:?set EMAIL_FROM}
       APP_TIME_ZONE: ${APP_TIME_ZONE:-UTC}
+      # paid tickets (optional): empty keys leave payments off, every event free
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+      PLATFORM_FEE_PERCENT: ${PLATFORM_FEE_PERCENT:-0}
+      UPLOADS_DIR: /app/uploads
+    volumes:
+      # event cover images: kept across rebuilds and restarts
+      - uploads:/app/uploads
     depends_on:
       db:
         condition: service_healthy
@@ -77,5 +85,6 @@ services:
 
 volumes:
   postgres_data:
+  uploads:
   caddy_data:
   caddy_config:

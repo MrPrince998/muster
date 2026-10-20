@@ -54,6 +54,7 @@ interface PublicEventRow {
   }[];
   // the event has a discount code people can use
   has_codes: boolean;
+  cover_image_key: string | null;
   club_name: string;
   org_name: string;
   time_zone: string;
@@ -78,7 +79,7 @@ const SELECT_PUBLIC_EVENT = `
           FROM ticket_types t WHERE t.event_id = e.id AND NOT t.members_only) AS ticket_types,
          EXISTS (SELECT 1 FROM discount_codes d
                  WHERE d.event_id = e.id AND d.active AND (d.expires_at IS NULL OR d.expires_at > now())) AS has_codes,
-         c.name AS club_name, o.name AS org_name, o.time_zone
+         e.cover_image_key, c.name AS club_name, o.name AS org_name, o.time_zone
   FROM events e
   JOIN clubs c ON c.id = e.club_id
   JOIN organisations o ON o.id = e.org_id
@@ -381,6 +382,7 @@ function toPublicEvent(row: PublicEventRow): PublicEventDto {
     // the workspace's: where the event happens
     timeZone: row.time_zone,
     ...publicTickets(row),
+    coverUrl: row.cover_image_key ? `/files/${row.cover_image_key}` : null,
     questions: row.questions ?? [],
   };
 }

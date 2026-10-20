@@ -103,6 +103,12 @@ export const config = {
     platformFeePercent: Math.min(Math.max(Number(process.env.PLATFORM_FEE_PERCENT ?? 0) || 0, 0), 20),
   },
 
+  // uploaded files (event cover images): a directory that outlives the
+  // container (a volume in production)
+  uploads: {
+    dir: process.env.UPLOADS_DIR || `${process.cwd()}/uploads`,
+  },
+
   email: {
     // unset in development: emails are logged instead of sent
     resendApiKey:

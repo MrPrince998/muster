@@ -488,6 +488,9 @@ export class EventDto {
 
   @ApiProperty({ type: [QuestionDto], description: 'What people taking a place are asked' })
   questions: QuestionDto[];
+
+  @ApiPropertyOptional({ type: String, nullable: true, description: "Its cover image, a path on the API (/files/...)" })
+  coverUrl: string | null;
 }
 
 export class SendEventMessageDto {

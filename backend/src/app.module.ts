@@ -19,6 +19,7 @@ import { NotificationModule } from './modules/notification/notification.module.j
 import { FeedbackModule } from './modules/feedback/feedback.module.js';
 import { AuditModule } from './modules/audit/audit.module.js';
 import { PaymentModule } from './modules/payment/payment.module.js';
+import { FilesModule } from './modules/files/files.module.js';
 
 @Module({
   imports: [
@@ -38,6 +39,7 @@ import { PaymentModule } from './modules/payment/payment.module.js';
     FeedbackModule,
     AuditModule,
     PaymentModule,
+    FilesModule,
   ],
   controllers: [AppController],
   providers: [

@@ -2,6 +2,7 @@ import type { TenantService } from '../../database/tenant.service.js';
 import type { EmailService } from '../email/email.service.js';
 import { ClubAccess } from '../permission/club-access.js';
 import type { PaymentService } from '../payment/payment.service.js';
+import type { FileStorage } from '../files/file-storage.js';
 import type { WaitlistService } from '../waitlist/waitlist.service.js';
 import { Permission } from '../permission/permissions.js';
 import { EventService } from './event.service.js';
@@ -72,6 +73,7 @@ function setup(event: ReturnType<typeof row>, after: ReturnType<typeof row> = ev
     email as unknown as EmailService,
     waitlist as unknown as WaitlistService,
     payments as unknown as PaymentService,
+    {} as FileStorage,
   );
   return { service, email, waitlist, ran: (fragment: string) => calls.filter((c) => c.sql.includes(fragment)) };
 }

@@ -66,6 +66,16 @@ export class AllExceptionsFilter implements ExceptionFilter {
       return exception;
     }
 
+    // the body parser's own refusals (a body too large, malformed JSON): http-errors with a 4xx
+    // status meant for the client ("expose"); anything else stays a 500
+    if (exception instanceof Error && 'expose' in exception && exception.expose === true && 'status' in exception) {
+      const status = Number(exception.status);
+      if (status === HttpStatus.PAYLOAD_TOO_LARGE) {
+        return new HttpError(status, 'That is too large to send', 'PAYLOAD_TOO_LARGE');
+      }
+      if (status >= 400 && status < 500) return new HttpError(status, exception.message);
+    }
+
     // Nest's built-in exceptions (NotFoundException, ValidationPipe errors, unknown routes, ...)
     if (exception instanceof HttpException) {
       const statusCode = exception.getStatus();

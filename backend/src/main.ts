@@ -12,6 +12,8 @@ async function bootstrap() {
   if (config.trustProxy > 0) app.set('trust proxy', config.trustProxy);
   // on SIGTERM (a deploy, a scale-down): finish requests and close the database pool
   app.enableShutdownHooks();
+  // an event's cover image arrives as the request body itself (already resized by the browser)
+  app.useBodyParser('raw', { type: ['image/webp', 'image/jpeg', 'image/png'], limit: '2mb' });
   // reads the refresh token cookie
   app.use(cookieParser());
   // the frontend calls the API from another origin, with cookies

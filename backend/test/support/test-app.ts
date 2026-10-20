@@ -1,15 +1,18 @@
-import type { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { ThrottlerGuard } from '@nestjs/throttler';
 import cookieParser from 'cookie-parser';
 import { randomUUID } from 'node:crypto';
 import request from 'supertest';
-import type { App } from 'supertest/types.js';
 import 'dotenv/config';
 import { DataSource } from 'typeorm';
 import { AppModule } from '../../src/app.module.js';
 import { EmailSender, type OutgoingEmail } from '../../src/modules/email/email-sender.js';
 import { FakeGateway, PaymentGateway } from '../../src/modules/payment/payment-gateway.js';
+import type { NestExpressApplication } from '@nestjs/platform-express';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { DiskStorage, FileStorage } from '../../src/modules/files/file-storage.js';
 
 /** Captures emails instead of sending them. */
 export class CapturingSender extends EmailSender {
@@ -44,15 +47,20 @@ export async function createTestApp() {
   const mail = new CapturingSender();
   // a stand-in for Stripe: accounts ready at once, webhooks signed "test"
   const payments = new FakeGateway();
+  const uploads = await mkdtemp(join(tmpdir(), 'muster-uploads-'));
   const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
     .overrideProvider(EmailSender)
     .useValue(mail)
     .overrideProvider(PaymentGateway)
     .useValue(payments)
+    // uploads go to a folder of their own, gone when the tests are
+    .overrideProvider(FileStorage)
+    .useValue(new DiskStorage(uploads))
     .overrideGuard(ThrottlerGuard)
     .useValue({ canActivate: () => true })
     .compile();
-  const app: INestApplication<App> = moduleRef.createNestApplication({ rawBody: true });
+  const app = moduleRef.createNestApplication<NestExpressApplication>({ rawBody: true });
+  app.useBodyParser('raw', { type: ['image/webp', 'image/jpeg', 'image/png'], limit: '2mb' });
   app.use(cookieParser());
   await app.init();
 
@@ -89,6 +97,7 @@ export async function createTestApp() {
     } finally {
       await owner.destroy();
       await app.close();
+      await rm(uploads, { recursive: true, force: true });
     }
   }
 

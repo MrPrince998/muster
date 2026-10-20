@@ -127,6 +127,10 @@ export class Event {
   @Column({ name: 'cancel_reason', type: 'varchar', length: 500, nullable: true })
   cancelReason: string | null;
 
+  // its cover image's key in file storage (files module); null for none
+  @Column({ name: 'cover_image_key', type: 'varchar', length: 200, nullable: true })
+  coverImageKey: string | null;
+
   // what its paid ticket types are priced in (the workspace's, when they were set)
   @Column({ type: 'varchar', length: 3, nullable: true })
   currency: string | null;

@@ -37,6 +37,9 @@ export class PublicEventDto {
 
   @ApiProperty({ description: 'Discount codes work for this event: offer a box for one' })
   hasCodes: boolean;
+
+  @ApiPropertyOptional({ type: String, nullable: true, description: 'Its cover image, a path on the API (/files/...)' })
+  coverUrl: string | null;
 }
 
 export class GuestPlaceDto {

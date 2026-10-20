@@ -17,6 +17,8 @@ ENV NODE_ENV=production
 COPY --from=build /app/package.json ./
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
+# uploaded files (a volume in compose.prod.yaml), writable by the app
+RUN mkdir -p /app/uploads && chown node:node /app/uploads
 USER node
 EXPOSE 5001
 # Pending migrations first (as the schema owner, MIGRATION_DATABASE_URL), then

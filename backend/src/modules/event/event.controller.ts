@@ -9,12 +9,15 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Put,
   Query,
   Res,
 } from '@nestjs/common';
 import {
   ApiBadRequestResponse,
+  ApiBody,
   ApiConflictResponse,
+  ApiConsumes,
   ApiCreatedResponse,
   ApiNoContentResponse,
   ApiNotFoundResponse,
@@ -181,6 +184,37 @@ export class EventController {
     @Body() dto: SendEventMessageDto,
   ): Promise<EventMessageDto> {
     return this.events.message(access, eventId, dto);
+  }
+
+  /**
+   * Set the event's cover image
+   *
+   * @remarks Same permission as editing it. The request body is the image
+   * itself (Content-Type image/webp, image/jpeg or image/png), 2 MB at most.
+   */
+  @Put(':eventId/cover')
+  @RequirePermission()
+  @ApiConsumes('image/webp', 'image/jpeg', 'image/png')
+  @ApiBody({ schema: { type: 'string', format: 'binary' } })
+  @ApiOkResponse({ type: EventDto })
+  @ApiBadRequestResponse(error('Not an image we take (IMAGE_NOT_SUPPORTED), or over 2 MB (IMAGE_TOO_LARGE)'))
+  setCover(
+    @CurrentClubAccess() access: ClubAccess,
+    @Param('eventId', ParseUUIDPipe) eventId: string,
+    @Body() image: unknown,
+  ): Promise<EventDto> {
+    return this.events.setCover(access, eventId, image);
+  }
+
+  /** Take the cover image off */
+  @Delete(':eventId/cover')
+  @RequirePermission()
+  @ApiOkResponse({ type: EventDto })
+  removeCover(
+    @CurrentClubAccess() access: ClubAccess,
+    @Param('eventId', ParseUUIDPipe) eventId: string,
+  ): Promise<EventDto> {
+    return this.events.removeCover(access, eventId);
   }
 
   /** An event's discount codes, with their uses */

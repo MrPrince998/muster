@@ -13,6 +13,7 @@ import { EmailService, type EventRecipient } from '../email/email.service.js';
 import { formatWhen } from '../email/format-when.js';
 import type { ClubAccess } from '../permission/club-access.js';
 import { WaitlistService } from '../waitlist/waitlist.service.js';
+import { FileStorage, imageKind } from '../files/file-storage.js';
 import { PaymentService } from '../payment/payment.service.js';
 import { Permission } from '../permission/permissions.js';
 import type {
@@ -31,6 +32,9 @@ import type {
 import { EventStatus, EventVisibility, type RepeatEvery } from './entities/event.entity.js';
 import { audit, AuditAction } from '../audit/audit.js';
 import { isUniqueViolation } from '../../common/utils/pg-errors.js';
+
+// a cover image, after the browser has resized it
+const MAX_COVER_BYTES = 2 * 1024 * 1024;
 
 // an organiser's messages per event per day
 const MESSAGES_PER_DAY = 10;
@@ -74,6 +78,7 @@ interface EventRow {
     taken: number;
   }[];
   your_ticket_type: string | null;
+  cover_image_key: string | null;
   refund_cutoff_hours: number;
   held_count: number;
   your_paid_cents: number | null;
@@ -107,7 +112,7 @@ const SELECT_EVENTS = `
     (SELECT count(*) FROM events s
       WHERE s.series_id = e.series_id AND (s.starts_at, s.id) <= (e.starts_at, e.id))::int AS series_index,
     (SELECT count(*) FROM events s WHERE s.series_id = e.series_id)::int AS series_count,
-    e.currency, e.refund_cutoff_hours, e.questions,
+    e.currency, e.refund_cutoff_hours, e.questions, e.cover_image_key,
     (SELECT coalesce(json_agg(json_build_object(
               'id', t.id, 'name', t.name, 'price_cents', t.price_cents, 'capacity', t.capacity,
               'members_only', t.members_only, 'sales_end_at', t.sales_end_at,
@@ -156,6 +161,7 @@ export class EventService {
     private readonly email: EmailService,
     private readonly waitlist: WaitlistService,
     private readonly payments: PaymentService,
+    private readonly files: FileStorage,
   ) {}
 
   /**
@@ -628,6 +634,49 @@ export class EventService {
     };
   }
 
+  // --- cover image (people who can edit the event) ---------------------------------------
+
+  /**
+   * Sets the event's cover image: a JPEG, PNG or WebP (told by its bytes,
+   * not its name) of 2 MB at most; the browser resizes it first. Kept under
+   * a new random name each time, so caches never show an old one; the old
+   * file goes once the new one is in place.
+   */
+  async setCover(access: ClubAccess, eventId: string, data: unknown): Promise<EventDto> {
+    if (!Buffer.isBuffer(data) || data.length === 0) {
+      throw HttpError.badRequest('Send the image itself, as image/webp, image/jpeg or image/png', 'IMAGE_REQUIRED');
+    }
+    if (data.length > MAX_COVER_BYTES) throw HttpError.badRequest('Images can be 2 MB at most', 'IMAGE_TOO_LARGE');
+    const kind = imageKind(data);
+    if (!kind) throw HttpError.badRequest('That isn\'t a JPEG, PNG or WebP image', 'IMAGE_NOT_SUPPORTED');
+    const key = `covers/${randomUUID()}.${kind}`;
+    await this.files.put(key, data);
+    try {
+      const { event, old } = await this.inClub(access, async (m) => {
+        const event = await this.lockForManage(m, access, eventId);
+        await m.query(`UPDATE events SET cover_image_key = $2 WHERE id = $1`, [eventId, key]);
+        return { event: await this.findOne(m, access, eventId), old: event.cover_image_key };
+      });
+      if (old) await this.files.delete(old);
+      return event;
+    } catch (error) {
+      // not allowed, or no such event: the file goes again
+      await this.files.delete(key);
+      throw error;
+    }
+  }
+
+  /** Takes the cover image off. */
+  async removeCover(access: ClubAccess, eventId: string): Promise<EventDto> {
+    const { event, old } = await this.inClub(access, async (m) => {
+      const event = await this.lockForManage(m, access, eventId);
+      await m.query(`UPDATE events SET cover_image_key = NULL WHERE id = $1`, [eventId]);
+      return { event: await this.findOne(m, access, eventId), old: event.cover_image_key };
+    });
+    if (old) await this.files.delete(old);
+    return event;
+  }
+
   // --- discount codes (people who can edit the event) ------------------------------------
 
   /** An event's discount codes, with how many times each has been used. */
@@ -1002,6 +1051,7 @@ export class EventService {
       salesCents:
         canManage(access, row.created_by) && (row.ticket_types ?? []).some((t) => t.price_cents > 0) ? (row.sales_cents ?? 0) : null,
       questions: row.questions ?? [],
+      coverUrl: row.cover_image_key ? `/files/${row.cover_image_key}` : null,
     };
   }
 }
