@@ -1,21 +1,15 @@
 "use client";
 
+import { useDebouncedValue } from "@tanstack/react-pacer";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { stubParts } from "../workspace/org-home/parts/format";
 import { forgetRecent, readRecent, rememberPick, type RecentPick } from "./parts/recent-searches";
 import SearchDialogView, { firstRowValue, type SearchState } from "./search-dialog.view";
 import { SEARCH_MIN_LENGTH, useSearch } from "./services/search.service";
 
-// a request per pause in typing, not per keypress
-function useDebounced(value: string, ms: number): string {
-  const [debounced, setDebounced] = useState(value);
-  useEffect(() => {
-    const timer = setTimeout(() => setDebounced(value), ms);
-    return () => clearTimeout(timer);
-  }, [value, ms]);
-  return debounced;
-}
+// a request once typing pauses, not per keypress (most people type faster than this between keys)
+const SEARCH_WAIT_MS = 300;
 
 /** Search (⌘K): owns the text, the request, the recent picks, and where each result goes. */
 export default function SearchDialogContainer({
@@ -28,7 +22,9 @@ export default function SearchDialogContainer({
   const router = useRouter();
   const [text, setText] = useState("");
   const [recent, setRecent] = useState<RecentPick[]>([]);
-  const query = useDebounced(text, 180);
+  const trimmed = text.trim();
+  // debounce the trimmed text: spaces alone never send a request
+  const [query] = useDebouncedValue(trimmed, { wait: SEARCH_WAIT_MS });
   const search = useSearch(query);
 
   const [selected, setSelected] = useState("");
@@ -46,14 +42,13 @@ export default function SearchDialogContainer({
     }
   }
 
-  const trimmed = text.trim();
   const state: SearchState =
     trimmed.length === 0
       ? { kind: "idle" }
       : trimmed.length < SEARCH_MIN_LENGTH
         ? { kind: "too-short" }
         : search.data
-          ? { kind: "results", result: search.data, refreshing: search.isFetching || query.trim() !== trimmed }
+          ? { kind: "results", result: search.data, refreshing: search.isFetching || query !== trimmed }
           : search.isError
             ? { kind: "failed" }
             : { kind: "loading" };
