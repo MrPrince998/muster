@@ -24,12 +24,21 @@ import { ClubService } from '../modules/club/club.service.js';
 
 const DOMAIN = 'muster.test';
 const DEMO_EMAIL = `demo@${DOMAIN}`;
-const DEMO_PASSWORD = 'muster-demo-2026';
+const ADMIN_EMAIL = `admin@${DOMAIN}`;
+const production = process.env.NODE_ENV === 'production';
 
-if (process.env.NODE_ENV === 'production' && !process.argv.includes('--force')) {
+if (production && !process.argv.includes('--force')) {
   console.error('Refusing to seed demo data in production (pass --force if you really mean it).');
   process.exit(1);
 }
+// the documented password is fine on a laptop; on a public site anyone could sign in with it
+if (production && (process.env.SEED_PASSWORD ?? '').length < 12) {
+  console.error('In production, set SEED_PASSWORD (12 characters or more) for the demo accounts.');
+  process.exit(1);
+}
+const DEMO_PASSWORD = process.env.SEED_PASSWORD || 'muster-demo-2026';
+// development's pretend Stripe account: never on a real deployment, where it would break real payments
+const PRETEND_STRIPE = !production;
 const url = process.env.MIGRATION_DATABASE_URL;
 if (!url) throw new Error('Missing environment variable: MIGRATION_DATABASE_URL');
 
@@ -132,7 +141,9 @@ async function makePeople(ds: DataSource, passwordHash: string) {
     applicants.push(await insert(name, `${slugify(name)}@${DOMAIN}`, passwordHash, 5));
   }
   const northsideOwner = await insert('Alex Chen', `alex.chen@${DOMAIN}`, passwordHash, 300);
-  return { demo, members, guests, applicants, northsideOwner };
+  // Riverside's workspace admin: manages members and settings, runs Robotics with the owner
+  const admin = await insert('Avery Admin', ADMIN_EMAIL, passwordHash, 380);
+  return { demo, members, guests, applicants, northsideOwner, admin };
 }
 
 // --- one workspace, in its own tenant -------------------------------------------
@@ -298,16 +309,16 @@ async function makeEvent(m: Tx, orgId: string, clubId: string, by: Person, plan:
 
 async function riverside(ds: DataSource, people: Awaited<ReturnType<typeof makePeople>>) {
   ZONE = RIVERSIDE_ZONE;
-  const { demo, members, guests, applicants } = people;
+  const { demo, members, guests, applicants, admin } = people;
   // members are named in FIRST's order: Ada, Priya, Marcus, ...
   const [, priya, marcus] = members;
   const orgId = randomUUID();
   await inTenant(ds, orgId, async (m) => {
     await m.query(
-      // its Stripe account is a pretend one: it sells tickets only where PAYMENTS_FAKE is on
+      // its Stripe account is a pretend one, in development only: it sells tickets where PAYMENTS_FAKE is on
       `INSERT INTO organisations (id, name, slug, join_policy, time_zone, created_at, stripe_account_id, payments_enabled, currency)
-       VALUES ($1, 'Riverside University', 'riverside-uni', 'request', $2, now() - interval '400 days', 'acct_demo_riverside', true, 'aud')`,
-      [orgId, RIVERSIDE_ZONE],
+       VALUES ($1, 'Riverside University', 'riverside-uni', 'request', $2, now() - interval '400 days', $3, $4, 'aud')`,
+      [orgId, RIVERSIDE_ZONE, PRETEND_STRIPE ? 'acct_demo_riverside' : null, PRETEND_STRIPE],
     );
     await m.query(`INSERT INTO org_members (org_id, user_id, role, joined_at) VALUES ($1, $2, 'owner', now() - interval '400 days')`, [
       orgId,
@@ -321,6 +332,10 @@ async function riverside(ds: DataSource, people: Awaited<ReturnType<typeof makeP
         between(20, 380),
       ]);
     }
+    await m.query(`INSERT INTO org_members (org_id, user_id, role, joined_at) VALUES ($1, $2, 'admin', now() - interval '380 days')`, [
+      orgId,
+      admin.id,
+    ]);
 
     // everyone's in General; you run Robotics, help run Film, and just go to Hiking
     const general = await makeClub(m, orgId, {
@@ -330,7 +345,7 @@ async function riverside(ds: DataSource, people: Awaited<ReturnType<typeof makeP
       owner: demo,
       isDefault: true,
     });
-    await join(m, orgId, general, members);
+    await join(m, orgId, general, [...members, admin]);
     const robotics = await makeClub(m, orgId, {
       name: 'Robotics Society',
       slug: 'robotics',
@@ -338,7 +353,7 @@ async function riverside(ds: DataSource, people: Awaited<ReturnType<typeof makeP
       owner: demo,
     });
     const roboticsCrew = members.slice(0, 24);
-    await join(m, orgId, robotics, [priya], 'Admin');
+    await join(m, orgId, robotics, [priya, admin], 'Admin');
     await join(m, orgId, robotics, roboticsCrew.slice(2, 5), 'Organizer');
     await join(m, orgId, robotics, roboticsCrew.slice(5, 7), 'Scanner');
     await join(m, orgId, robotics, roboticsCrew.slice(7));
@@ -635,7 +650,7 @@ async function main() {
       DEMO_EMAIL,
     ]);
     if (exists && !process.argv.includes('--reset')) {
-      console.log(`The demo data is already there. Sign in as ${DEMO_EMAIL} / ${DEMO_PASSWORD}`);
+      console.log(`The demo data is already there. Sign in as ${DEMO_EMAIL}${production ? '' : ` / ${DEMO_PASSWORD}`}`);
       console.log('Run `pnpm seed --reset` to delete it and create it afresh.');
       return;
     }
@@ -650,8 +665,11 @@ async function main() {
     await riverside(ds, people);
     await northside(ds, people);
 
+    // the password isn't printed in production: it's the one you set
+    const password = production ? '(your SEED_PASSWORD)' : DEMO_PASSWORD;
     console.log('Demo data ready.');
-    console.log(`  Sign in as ${DEMO_EMAIL} / ${DEMO_PASSWORD}`);
+    console.log(`  Owner:           ${DEMO_EMAIL} / ${password}`);
+    console.log(`  Workspace admin: ${ADMIN_EMAIL} / ${password}`);
     console.log(`  Riverside University (you own it, ${RIVERSIDE_ZONE}) and Northside Makers (you are a member, ${NORTHSIDE_ZONE}).`);
     console.log(`  Every other demo account has the same password; all addresses end in @${DOMAIN}.`);
   } finally {
