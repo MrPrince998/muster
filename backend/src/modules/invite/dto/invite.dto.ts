@@ -161,6 +161,9 @@ export class ClubDirectoryEntryDto {
   @ApiProperty()
   name: string;
 
+  @ApiProperty({ description: "In the club's link: /c/{workspace}/{club}" })
+  slug: string;
+
   @ApiPropertyOptional({ type: String, nullable: true })
   description: string | null;
 
@@ -191,5 +194,63 @@ export class JoinClubDto {
 export class JoinClubResultDto {
   @ApiProperty({ enum: ['joined', 'requested'], description: "joined: you're in. requested: the club's approvers decide." })
   status: 'joined' | 'requested';
+}
+
+/** GET /club-links/:orgSlug/:clubSlug: where a club's link leads, before joining. */
+export class ClubLinkPreviewDto {
+  @ApiProperty()
+  workspaceName: string;
+
+  @ApiProperty()
+  workspaceSlug: string;
+
+  @ApiProperty({ enum: ['open', 'request', 'invite'] })
+  workspaceJoinPolicy: 'open' | 'request' | 'invite';
+
+  @ApiProperty({ description: "You're in the workspace" })
+  inWorkspace: boolean;
+
+  @ApiProperty({ description: "You've asked to join the workspace, and nobody has decided yet" })
+  workspaceRequested: boolean;
+
+  @ApiProperty({ format: 'uuid' })
+  clubId: string;
+
+  @ApiProperty()
+  clubName: string;
+
+  @ApiPropertyOptional({ type: String, nullable: true })
+  description: string | null;
+
+  @ApiProperty({ description: "The workspace's General club: joining it is joining the workspace" })
+  isDefault: boolean;
+
+  @ApiProperty({ enum: ['open', 'request', 'invite'] })
+  joinPolicy: 'open' | 'request' | 'invite';
+
+  @ApiProperty()
+  memberCount: number;
+
+  @ApiProperty({ description: "You're in the club" })
+  isMember: boolean;
+
+  @ApiProperty({ description: "You've asked to join the club, and nobody has decided yet" })
+  requested: boolean;
+}
+
+export class ClubLinkJoinResultDto {
+  @ApiProperty({
+    enum: ['joined', 'requested', 'workspace_requested'],
+    description:
+      "joined: you're in (and in the workspace). requested: the club's approvers decide. " +
+      "workspace_requested: the workspace asks first; its moderators decide, then open the link again.",
+  })
+  status: 'joined' | 'requested' | 'workspace_requested';
+
+  @ApiProperty()
+  workspaceSlug: string;
+
+  @ApiProperty({ format: 'uuid' })
+  clubId: string;
 }
 

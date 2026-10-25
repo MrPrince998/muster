@@ -9,12 +9,15 @@ import type {
   AcceptInviteResultDto,
   ClubJoinRequestDto,
   ClubDirectoryEntryDto,
+  ClubLinkJoinResultDto,
+  ClubLinkPreviewDto,
   CreateInviteDto,
   InviteDto,
   InvitePreviewDto,
   InviteStatus,
 } from './dto/invite.dto.js';
 import { audit, AuditAction } from '../audit/audit.js';
+import { OrgJoinRequestService } from '../organisation/join-requests/org-join-request.service.js';
 import type { OrgMembership } from '../organisation/org-roles.js';
 
 const inviteNotFound = () => HttpError.notFound('This invite link does not exist', 'INVITE_NOT_FOUND');
@@ -74,7 +77,10 @@ const SELECT_INVITES = `
 
 @Injectable()
 export class InviteService {
-  constructor(private readonly tenant: TenantService) {}
+  constructor(
+    private readonly tenant: TenantService,
+    private readonly orgJoinRequests: OrgJoinRequestService,
+  ) {}
 
   // --- managing a club's links (invite.manage) --------------------------------
 
@@ -311,6 +317,7 @@ export class InviteService {
       const rows: {
         id: string;
         name: string;
+        slug: string;
         description: string | null;
         join_policy: 'open' | 'request' | 'invite';
         member_count: number;
@@ -318,7 +325,7 @@ export class InviteService {
         is_member: boolean;
         requested: boolean;
       }[] = await m.query(
-        `SELECT c.id, c.name, c.description, c.join_policy,
+        `SELECT c.id, c.name, c.slug, c.description, c.join_policy,
                 (SELECT count(*) FROM club_members x WHERE x.club_id = c.id)::int AS member_count,
                 (SELECT count(*) FROM events e
                   WHERE e.club_id = c.id AND e.status = 'published' AND e.starts_at > now())::int AS upcoming_count,
@@ -335,6 +342,7 @@ export class InviteService {
       return rows.map((r) => ({
         id: r.id,
         name: r.name,
+        slug: r.slug,
         description: r.description,
         joinPolicy: r.join_policy,
         memberCount: r.member_count,
@@ -352,30 +360,65 @@ export class InviteService {
    */
   joinFromDirectory(me: OrgMembership, clubId: string, message?: string): Promise<{ status: 'joined' | 'requested' }> {
     return this.tenant.withTenant(me.orgId, async (m) => {
-      const [club]: { join_policy: 'open' | 'request' | 'invite'; is_default: boolean }[] = await m.query(
-        `SELECT join_policy, is_default FROM clubs WHERE id = $1 FOR UPDATE`,
+      const [club]: ClubJoinRow[] = await m.query(
+        `SELECT id, join_policy, is_default FROM clubs WHERE id = $1 FOR UPDATE`,
         [clubId],
       );
       if (!club) throw HttpError.notFound('Club not found', 'CLUB_NOT_FOUND');
-      const [member]: unknown[] = await m.query(`SELECT 1 FROM club_members WHERE club_id = $1 AND user_id = $2`, [
-        clubId,
-        me.userId,
-      ]);
-      if (member || club.is_default) throw HttpError.conflict("You're in this club already", 'ALREADY_IN_CLUB');
-      if (club.join_policy === 'invite') {
-        throw HttpError.forbidden('This club takes people with an invite link', 'CLUB_INVITE_ONLY');
-      }
-      if (club.join_policy === 'open') {
-        await joinClub(m, { orgId: me.orgId, clubId, userId: me.userId, roleId: null, assignedBy: null });
-        return { status: 'joined' as const };
-      }
-      await m.query(
-        `INSERT INTO join_requests (org_id, club_id, invite_id, user_id, message)
-         VALUES ($1, $2, NULL, $3, $4)
-         ON CONFLICT (club_id, user_id) WHERE status = 'pending' DO UPDATE SET message = EXCLUDED.message`,
-        [me.orgId, clubId, me.userId, message?.trim() || null],
+      return this.enterClub(m, me.orgId, club, me.userId, message);
+    });
+  }
+
+  // --- a club's own link (/c/{workspace}/{club}; any signed-in person) -----------
+
+  /**
+   * Where a club's link leads. Someone outside the workspace sees it only if
+   * the workspace and the club both take people without an invite; invite-only
+   * ones stay hidden (404), like unknown addresses.
+   */
+  clubLinkPreview(user: AuthUser, orgSlug: string, clubSlug: string): Promise<ClubLinkPreviewDto> {
+    return this.byClubLink(orgSlug, clubSlug, user.id, async (m, link) => {
+      const [counts]: { member_count: number; club_requested: boolean; org_requested: boolean }[] = await m.query(
+        `SELECT (SELECT count(*) FROM club_members WHERE club_id = $1)::int AS member_count,
+                EXISTS (SELECT 1 FROM join_requests WHERE club_id = $1 AND user_id = $2 AND status = 'pending') AS club_requested,
+                EXISTS (SELECT 1 FROM org_join_requests WHERE org_id = $3 AND user_id = $2 AND status = 'pending') AS org_requested`,
+        [link.id, user.id, link.org_id],
       );
-      return { status: 'requested' as const };
+      return {
+        workspaceName: link.org_name,
+        workspaceSlug: link.org_slug,
+        workspaceJoinPolicy: link.org_join_policy,
+        inWorkspace: link.in_workspace,
+        workspaceRequested: counts.org_requested,
+        clubId: link.id,
+        clubName: link.name,
+        description: link.description,
+        isDefault: link.is_default,
+        joinPolicy: link.join_policy,
+        memberCount: counts.member_count,
+        isMember: link.is_member,
+        requested: counts.club_requested,
+      };
+    });
+  }
+
+  /**
+   * Joins through a club's link. In the workspace already: as from Browse
+   * clubs. Not yet: an open workspace lets them in with the club (or with
+   * their request to it); a workspace that asks takes a request to join it
+   * first, for its moderators, and they open the link again once they're in.
+   */
+  joinByClubLink(user: AuthUser, orgSlug: string, clubSlug: string, message?: string): Promise<ClubLinkJoinResultDto> {
+    return this.byClubLink(orgSlug, clubSlug, user.id, async (m, link) => {
+      const result = { workspaceSlug: link.org_slug, clubId: link.id };
+      if (!link.in_workspace && link.org_join_policy === 'request') {
+        await this.orgJoinRequests.create(m, link.org_id, user.id, message);
+        return { ...result, status: 'workspace_requested' as const };
+      }
+      // locked, so a setting changed at the same moment is seen
+      await m.query(`SELECT 1 FROM clubs WHERE id = $1 FOR UPDATE`, [link.id]);
+      const { status } = await this.enterClub(m, link.org_id, link, user.id, message, link.in_workspace);
+      return { ...result, status };
     });
   }
 
@@ -391,6 +434,71 @@ export class InviteService {
   }
 
   // --- helpers -------------------------------------------------------------------
+
+  /**
+   * Into a club by its own setting: open lets them straight in, request files
+   * one request (asking again updates its note), invite-only refuses. The
+   * default club is the workspace's: someone outside it joins it here only
+   * through a club link to an open workspace.
+   */
+  private async enterClub(
+    m: EntityManager,
+    orgId: string,
+    club: ClubJoinRow,
+    userId: string,
+    message?: string,
+    inWorkspace = true,
+  ): Promise<{ status: 'joined' | 'requested' }> {
+    if ((club.is_default && inWorkspace) || (await this.inClubAlready(m, club.id, userId))) {
+      throw HttpError.conflict("You're in this club already", 'ALREADY_IN_CLUB');
+    }
+    if (club.is_default || club.join_policy === 'open') {
+      await joinClub(m, { orgId, clubId: club.id, userId, roleId: null, assignedBy: null });
+      return { status: 'joined' };
+    }
+    if (club.join_policy === 'invite') {
+      throw HttpError.forbidden('This club takes people with an invite link', 'CLUB_INVITE_ONLY');
+    }
+    await m.query(
+      `INSERT INTO join_requests (org_id, club_id, invite_id, user_id, message)
+       VALUES ($1, $2, NULL, $3, $4)
+       ON CONFLICT (club_id, user_id) WHERE status = 'pending' DO UPDATE SET message = EXCLUDED.message`,
+      [orgId, club.id, userId, message?.trim() || null],
+    );
+    return { status: 'requested' };
+  }
+
+  // A club found by its workspace's address and its own. Hidden (404) from
+  // people who couldn't get in without an invite: outside an invite-only
+  // workspace, or outside an invite-only club.
+  private async byClubLink<T>(
+    orgSlug: string,
+    clubSlug: string,
+    userId: string,
+    work: (m: EntityManager, link: ClubLinkRow) => Promise<T>,
+  ): Promise<T> {
+    const notFound = () => HttpError.notFound('No such club, or it takes invite links only', 'CLUB_NOT_FOUND');
+    if (orgSlug.length > 100 || clubSlug.length > 100) throw notFound();
+    const orgId = await this.tenant.orgIdForSlug(orgSlug);
+    if (!orgId) throw notFound();
+    return this.tenant.withTenant(orgId, async (m) => {
+      const [link]: ClubLinkRow[] = await m.query(
+        `SELECT c.id, c.name, c.description, c.join_policy, c.is_default,
+                o.id AS org_id, o.name AS org_name, o.slug AS org_slug, o.join_policy AS org_join_policy,
+                EXISTS (SELECT 1 FROM org_members om WHERE om.org_id = o.id AND om.user_id = $3) AS in_workspace,
+                EXISTS (SELECT 1 FROM club_members cm WHERE cm.club_id = c.id AND cm.user_id = $3) AS is_member
+         FROM clubs c JOIN organisations o ON o.id = c.org_id
+         WHERE o.id = $1 AND c.slug = $2`,
+        [orgId, clubSlug, userId],
+      );
+      if (!link) throw notFound();
+      const hidden =
+        !link.is_member &&
+        ((!link.in_workspace && link.org_join_policy === 'invite') || (!link.is_default && link.join_policy === 'invite'));
+      if (hidden) throw notFound();
+      return work(m, link);
+    });
+  }
 
   private async inClub<T>(access: ClubAccess, work: (m: EntityManager, orgId: string) => Promise<T>): Promise<T> {
     const orgId = await this.tenant.orgIdForClub(access.clubId);
@@ -465,6 +573,23 @@ export class InviteService {
     ]);
     return rows.length > 0;
   }
+}
+
+interface ClubJoinRow {
+  id: string;
+  join_policy: 'open' | 'request' | 'invite';
+  is_default: boolean;
+}
+
+interface ClubLinkRow extends ClubJoinRow {
+  name: string;
+  description: string | null;
+  org_id: string;
+  org_name: string;
+  org_slug: string;
+  org_join_policy: 'open' | 'request' | 'invite';
+  in_workspace: boolean;
+  is_member: boolean;
 }
 
 interface InviteContext {

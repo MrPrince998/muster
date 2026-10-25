@@ -73,6 +73,8 @@ export interface UpdateClubSettingsInput {
 export interface ClubDirectoryEntry {
   id: string;
   name: string;
+  // in the club's link: /c/{workspace}/{club}
+  slug: string;
   description: string | null;
   joinPolicy: ClubJoinPolicy;
   memberCount: number;
@@ -80,4 +82,30 @@ export interface ClubDirectoryEntry {
   isMember: boolean;
   // asked to join, and nobody has decided yet
   requested: boolean;
+}
+
+/** GET /club-links/:orgSlug/:clubSlug: where a club's link leads, before joining. */
+export interface ClubLinkPreview {
+  workspaceName: string;
+  workspaceSlug: string;
+  workspaceJoinPolicy: ClubJoinPolicy;
+  inWorkspace: boolean;
+  // asked to join the workspace, and nobody has decided yet
+  workspaceRequested: boolean;
+  clubId: string;
+  clubName: string;
+  description: string | null;
+  // the workspace's General club: joining it is joining the workspace
+  isDefault: boolean;
+  joinPolicy: ClubJoinPolicy;
+  memberCount: number;
+  isMember: boolean;
+  requested: boolean;
+}
+
+export interface ClubLinkJoinResult {
+  // workspace_requested: the workspace asks first; open the link again once its moderators let you in
+  status: "joined" | "requested" | "workspace_requested";
+  workspaceSlug: string;
+  clubId: string;
 }

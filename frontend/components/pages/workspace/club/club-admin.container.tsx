@@ -22,6 +22,7 @@ import {
   useUpdateRole,
 } from "../services/club-admin.service";
 import { useClubAttendance } from "../services/analytics.service";
+import { clubLinkUrl } from "../services/club-directory.service";
 import { useClubRoles } from "../services/invite.service";
 import InviteDialog from "../dialogs/invite-dialog";
 import { InviteLinks } from "../members/parts/invite-links";
@@ -209,6 +210,7 @@ export default function ClubAdminContainer() {
               key={club.id}
               settings={settings.data}
               workspaceName={organisation.name}
+              clubLink={clubLinkUrl(organisation.slug, club.slug)}
               canEdit={iAmOwner || mine.has("role.manage")}
               onSave={(changes) => attempt(() => updateSettings.mutateAsync(changes))}
             />

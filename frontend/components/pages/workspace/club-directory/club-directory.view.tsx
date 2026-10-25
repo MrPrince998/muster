@@ -1,7 +1,8 @@
 "use client";
 
-import { CalendarDays, Check, Clock, LoaderCircle, Users } from "lucide-react";
+import { CalendarDays, Check, Clock, Link2, LoaderCircle, Send, UserPlus, Users } from "lucide-react";
 import Link from "next/link";
+import { useState } from "react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Textarea } from "@/components/ui/textarea";
@@ -16,6 +17,8 @@ export interface ClubDirectoryViewProps {
   failed: boolean;
   onRetry: () => void;
   clubHref: (clubId: string) => string;
+  // the club's own link, to share with people who aren't in it
+  linkFor: (club: ClubDirectoryEntry) => string;
   // the club a button is working on, and the last error per club
   working: string | null;
   errors: Record<string, string>;
@@ -41,7 +44,7 @@ const ClubDirectoryView = (props: ClubDirectoryViewProps) => {
       <h1 className="text-5xl leading-none font-extrabold font-stretch-70%">Clubs</h1>
       <p className="mt-2 max-w-prose text-muted-foreground">
         Clubs in {workspaceName} that you can join without an invite. Clubs that take invite links only don&rsquo;t
-        show here.
+        show here. Copy a club&rsquo;s link to share it with people who aren&rsquo;t in the workspace yet.
       </p>
       <p className="sr-only" role="status">
         {announcement}
@@ -118,6 +121,7 @@ const ClubDirectoryView = (props: ClubDirectoryViewProps) => {
 function ClubRow({
   club,
   clubHref,
+  linkFor,
   working,
   errors,
   onJoin,
@@ -174,17 +178,39 @@ function ClubRow({
             </Button>
           </>
         ) : club.joinPolicy === "open" ? (
-          <Button onClick={() => onJoin(club)} disabled={busy}>
-            {busy && <LoaderCircle className="animate-spin" aria-hidden />}
+          <Button onClick={() => onJoin(club)} disabled={busy} aria-label={`Join ${club.name}`}>
+            {busy ? <LoaderCircle className="animate-spin" aria-hidden /> : <UserPlus aria-hidden />}
             {busy ? "Joining…" : "Join"}
           </Button>
         ) : (
-          <Button variant="outline" onClick={() => onAskingChange(club)}>
+          <Button variant="outline" onClick={() => onAskingChange(club)} aria-label={`Ask to join ${club.name}`}>
+            <Send aria-hidden />
             Ask to join
           </Button>
         )}
+        {club.joinPolicy !== "invite" && <CopyClubLink url={linkFor(club)} clubName={club.name} />}
       </div>
     </li>
+  );
+}
+
+/** Copies the club's own link, for sharing with people who aren't in it yet. */
+export function CopyClubLink({ url, clubName }: { url: string; clubName: string }) {
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // clipboard blocked (insecure origin, permissions): nothing to copy by hand here, so stay quiet
+    }
+  };
+  return (
+    <Button variant="ghost" onClick={copy} aria-label={`Copy ${clubName}'s link`} aria-live="polite">
+      {copied ? <Check aria-hidden /> : <Link2 aria-hidden />}
+      {copied ? "Copied" : "Copy link"}
+    </Button>
   );
 }
 

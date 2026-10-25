@@ -4,6 +4,7 @@ import type { TenantService } from '../../database/tenant.service.js';
 import { ClubAccess } from '../permission/club-access.js';
 import { Permission } from '../permission/permissions.js';
 import { InviteService } from './invite.service.js';
+import type { OrgJoinRequestService } from '../organisation/join-requests/org-join-request.service.js';
 
 const user: AuthUser = { id: 'u-new', sessionId: 's1' };
 
@@ -51,7 +52,7 @@ function setup(answers: [fragment: string, answer: unknown][] = []) {
     orgIdForInviteCode: vi.fn().mockResolvedValue('org1'),
     withTenant: vi.fn((_orgId: string, work: (m: typeof manager) => unknown) => work(manager)),
   };
-  const service = new InviteService(tenant as unknown as TenantService);
+  const service = new InviteService(tenant as unknown as TenantService, {} as OrgJoinRequestService);
   const ran = (fragment: string) => calls.filter((call) => call.sql.includes(fragment));
   return { service, tenant, calls, ran };
 }

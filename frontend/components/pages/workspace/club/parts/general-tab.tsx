@@ -8,6 +8,7 @@ import { InputGroup, InputGroupInput } from "@/components/ui/input-group";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import type { ClubJoinPolicy, ClubSettings, UpdateClubSettingsInput } from "@/types";
+import { CopyClubLink } from "../../club-directory/club-directory.view";
 
 export const CLUB_POLICIES: { value: ClubJoinPolicy; label: string; hint: string }[] = [
   {
@@ -30,6 +31,8 @@ export const CLUB_POLICIES: { value: ClubJoinPolicy; label: string; hint: string
 export interface GeneralTabProps {
   settings: ClubSettings;
   workspaceName: string;
+  // the club's own link (/c/{workspace}/{club}), shown when it takes people without an invite
+  clubLink: string;
   // the owner, or role.manage
   canEdit: boolean;
   // resolves to an error message, or null when saved
@@ -37,7 +40,7 @@ export interface GeneralTabProps {
 }
 
 /** The club's name, description and who can join. Keyed by club, so it starts from the saved settings. */
-export function GeneralTab({ settings, workspaceName, canEdit, onSave }: GeneralTabProps) {
+export function GeneralTab({ settings, workspaceName, clubLink, canEdit, onSave }: GeneralTabProps) {
   const [name, setName] = useState(settings.name);
   const [description, setDescription] = useState(settings.description ?? "");
   const [policy, setPolicy] = useState(settings.joinPolicy);
@@ -133,6 +136,20 @@ export function GeneralTab({ settings, workspaceName, canEdit, onSave }: General
           </div>
         )}
       </fieldset>
+
+      {!settings.isDefault && settings.joinPolicy !== "invite" && (
+        <div>
+          <h2 className="text-xl font-bold font-stretch-80%">Club link</h2>
+          <p className="mt-1 max-w-prose text-sm text-muted-foreground">
+            Share it anywhere. People in the workspace join from it like from Browse clubs; people who aren&rsquo;t yet
+            join the workspace too, if it lets them.
+          </p>
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <code className="min-w-0 truncate rounded-lg bg-muted px-3 py-2 text-sm">{clubLink}</code>
+            <CopyClubLink url={clubLink} clubName={settings.name} />
+          </div>
+        </div>
+      )}
 
       {canEdit ? (
         <div className="space-y-2">

@@ -1,4 +1,4 @@
-import { expect, openClub, openEvent, RIVERSIDE, test } from "./helpers";
+import { DEMO, expect, openClub, openEvent, RIVERSIDE, signIn, test } from "./helpers";
 
 // A member's side of an event: a place, the ticket, giving it back, and the waitlist.
 
@@ -97,8 +97,19 @@ test("join an open club from Browse clubs", async ({ page }) => {
   await expect(page.getByRole("heading", { level: 1, name: "Clubs" })).toBeVisible();
   // Film Club takes invite links only, so it shows only because you're in it
   const chess = page.getByRole("listitem").filter({ hasText: "Chess Club" });
-  await chess.getByRole("button", { name: "Join" }).click();
+  await chess.getByRole("button", { name: "Join Chess Club" }).click();
   await expect(chess.getByText("You’re in")).toBeVisible();
   await chess.getByRole("link", { name: "Events" }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "Chess Club" })).toBeVisible();
+});
+
+test("a club's link lets someone join it straight from the link", async ({ page }) => {
+  // Avery isn't in Chess Club; it's open, so its link has a Join button
+  await page.context().clearCookies();
+  await signIn(page, { email: "admin@muster.test", password: DEMO.password, name: "Avery Admin" });
+  await page.goto(`/c/${RIVERSIDE}/chess`);
+  await expect(page.getByRole("heading", { level: 1, name: "Chess Club" })).toBeVisible();
+  await page.getByRole("button", { name: "Join Chess Club" }).click();
+  await expect(page).toHaveURL(/\/o\/riverside-uni\?club=/);
   await expect(page.getByRole("heading", { level: 1, name: "Chess Club" })).toBeVisible();
 });

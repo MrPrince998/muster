@@ -12,6 +12,7 @@ let ada: TestUser;
 let bo: TestUser;
 let cy: TestUser;
 let orgId = '';
+let orgSlug = '';
 let generalId = '';
 let chessId = '';
 
@@ -42,6 +43,7 @@ beforeAll(async () => {
     .post('/orgs', { name: `Clubs ${t.suffix}`, joinPolicy: 'open' })
     .expect(201);
   orgId = org.body.id;
+  orgSlug = org.body.slug;
   for (const u of [ada, bo, cy])
     await as(u).post(`/orgs/by-slug/${org.body.slug}/join`).expect(201);
   generalId = (await as(owner).get(`/orgs/${orgId}/clubs`).expect(200)).body[0]
@@ -215,5 +217,74 @@ describe('club join settings', () => {
     await as(ada)
       .post(`/orgs/${orgId}/club-directory/${generalId}/join`)
       .expect(409);
+  });
+});
+
+describe("a club's own link", () => {
+  let link = '';
+  let dan: TestUser;
+  let eve: TestUser;
+
+  beforeAll(async () => {
+    [dan, eve] = [await t.user('Dan'), await t.user('Eve')];
+    await setPolicy('open');
+    const chess = (await directory(owner)).find((c) => c.id === chessId) as unknown as { slug: string };
+    link = `/club-links/${orgSlug}/${chess.slug}`;
+  });
+
+  it('shows someone outside the workspace the club, and lets them into both', async () => {
+    expect((await as(dan).get(link).expect(200)).body).toMatchObject({
+      clubName: 'Chess & Go',
+      inWorkspace: false,
+      isMember: false,
+      joinPolicy: 'open',
+      workspaceJoinPolicy: 'open',
+    });
+    expect((await as(dan).post(`${link}/join`).expect(200)).body).toEqual({
+      status: 'joined',
+      workspaceSlug: orgSlug,
+      clubId: chessId,
+    });
+    // in the workspace, its General club, and the club
+    const clubs = (await as(dan).get(`/orgs/${orgId}/clubs`).expect(200)).body.map((c: { id: string }) => c.id);
+    expect(clubs).toEqual(expect.arrayContaining([generalId, chessId]));
+    expect((await as(dan).get(link).expect(200)).body).toMatchObject({ inWorkspace: true, isMember: true });
+    expect((await as(dan).post(`${link}/join`).expect(409)).body.code).toBe('ALREADY_IN_CLUB');
+  });
+
+  it("files a request with the club when it asks, and approving lets them into the workspace too", async () => {
+    await setPolicy('request');
+    expect((await as(eve).post(`${link}/join`, { message: 'Hi' }).expect(200)).body.status).toBe('requested');
+    expect((await as(eve).get(link).expect(200)).body).toMatchObject({ requested: true, inWorkspace: false });
+    const [request] = (await as(owner).get(`/clubs/${chessId}/join-requests`).expect(200)).body;
+    expect(request).toMatchObject({ name: eve.name, message: 'Hi', viaLink: false });
+    await as(owner).post(`/clubs/${chessId}/join-requests/${request.id}/approve`).expect(204);
+    expect((await as(eve).get(link).expect(200)).body).toMatchObject({ inWorkspace: true, isMember: true });
+  });
+
+  it("asks the workspace first when the workspace asks", async () => {
+    const zed = await t.user('Zed');
+    await as(owner).patch(`/orgs/${orgId}`, { joinPolicy: 'request' }).expect(200);
+    await setPolicy('open');
+    expect((await as(zed).post(`${link}/join`, { message: 'Chess!' }).expect(200)).body.status).toBe('workspace_requested');
+    expect((await as(zed).get(link).expect(200)).body).toMatchObject({ workspaceRequested: true, inWorkspace: false });
+    expect((await as(zed).post(`${link}/join`).expect(409)).body.code).toBe('REQUEST_PENDING');
+    const queue = (await as(owner).get(`/orgs/${orgId}/join-requests`).expect(200)).body;
+    expect(queue.map((r: { name: string }) => r.name)).toContain(zed.name);
+    await as(owner).patch(`/orgs/${orgId}`, { joinPolicy: 'open' }).expect(200);
+  });
+
+  it('hides invite-only clubs and workspaces from outsiders, like unknown addresses', async () => {
+    const outsider = await t.user('Out');
+    await setPolicy('invite');
+    expect((await as(outsider).get(link).expect(404)).body.code).toBe('CLUB_NOT_FOUND');
+    await as(outsider).post(`${link}/join`).expect(404);
+    // its members still see it
+    await as(dan).get(link).expect(200);
+    await setPolicy('open');
+    await as(owner).patch(`/orgs/${orgId}`, { joinPolicy: 'invite' }).expect(200);
+    await as(outsider).get(link).expect(404);
+    await as(outsider).get(`/club-links/${orgSlug}/no-such-club`).expect(404);
+    await as(owner).patch(`/orgs/${orgId}`, { joinPolicy: 'open' }).expect(200);
   });
 });

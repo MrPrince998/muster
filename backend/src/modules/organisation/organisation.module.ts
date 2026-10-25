@@ -19,7 +19,7 @@ import { OrganisationService } from './organisation.service.js';
   imports: [TypeOrmModule.forFeature([Organisation, OrgMember, OrgJoinRequest]), ClubModule, EmailModule],
   controllers: [OrganisationController, OrgMemberController, OrgJoinRequestController, OrgClubController],
   providers: [OrganisationService, OrgMemberService, OrgJoinRequestService, OrgClubService, OrgMemberGuard],
-  // other modules use @RequireOrgRole() for workspace-level routes
-  exports: [OrgMemberService, OrgMemberGuard],
+  // other modules use @RequireOrgRole() for workspace-level routes; a club's link can ask to join the workspace
+  exports: [OrgMemberService, OrgMemberGuard, OrgJoinRequestService],
 })
 export class OrganisationModule {}

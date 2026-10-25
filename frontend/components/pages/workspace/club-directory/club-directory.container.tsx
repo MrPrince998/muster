@@ -3,7 +3,7 @@
 import { useState } from "react";
 import type { ClubDirectoryEntry } from "@/types";
 import { useWorkspace } from "../org-shell/workspace-context";
-import { useCancelClubRequest, useClubDirectory, useJoinClub } from "../services/club-directory.service";
+import { clubLinkUrl, useCancelClubRequest, useClubDirectory, useJoinClub } from "../services/club-directory.service";
 import { workspaceErrorMessage } from "../shared/workspace-errors";
 import ClubDirectoryView from "./club-directory.view";
 
@@ -46,6 +46,7 @@ export default function ClubDirectoryContainer() {
       failed={directory.isError}
       onRetry={() => directory.refetch()}
       clubHref={(clubId) => `/o/${organisation.slug}?club=${clubId}`}
+      linkFor={(club) => clubLinkUrl(organisation.slug, club.slug)}
       working={working}
       errors={errors}
       announcement={announcement}

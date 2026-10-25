@@ -7,11 +7,12 @@ import { ClubInviteController, InviteLinkController } from './invite.controller.
 import { InviteService } from './invite.service.js';
 import { OrganisationModule } from '../organisation/organisation.module.js';
 import { ClubDirectoryController } from './club-directory.controller.js';
+import { ClubLinkController } from './club-link.controller.js';
 
 @Module({
   // PermissionModule: the club routes are guarded by @RequirePermission()
   imports: [TypeOrmModule.forFeature([Invite, JoinRequest]), PermissionModule, OrganisationModule],
-  controllers: [ClubInviteController, InviteLinkController, ClubDirectoryController],
+  controllers: [ClubInviteController, InviteLinkController, ClubDirectoryController, ClubLinkController],
   providers: [InviteService],
 })
 export class InviteModule {}
