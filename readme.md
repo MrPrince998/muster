@@ -4,7 +4,7 @@ A multi-tenant SaaS for running club and community events: create a workspace, o
 
 Built as a full-stack learning and portfolio project to demonstrate **multi-tenant data isolation, a custom role and permission system, signed tokens, concurrency-safe check-in, and analytics**.
 
-> **Status: planning complete, build in progress.** This README describes what is being built. Sections marked *(planned)* are not implemented yet.
+> **Status: built and deployed.** Phases 1 to 8 of the [roadmap](#roadmap) are done; pricing plans come next.
 
 ---
 
@@ -12,11 +12,12 @@ Built as a full-stack learning and portfolio project to demonstrate **multi-tena
 
 1. **Create a workspace.** A university, company, church group, or local meetup signs up and gets its own isolated space (for example `/o/state-uni`).
 2. **Add clubs.** A workspace contains one or more clubs (Coding Club, Robotics Club). Small groups get one default club and never have to think about clubs.
-3. **Invite members.** People join a club through an **invite link**. Links can expire, have a use limit, assign a default role, and optionally require **approval** before the person is let in.
-4. **Publish events.** Organisers create and publish events with a capacity limit. Events are either members-only or public.
-5. **Register and get a ticket.** Registering generates a cryptographically signed pass, encoded as a QR code and emailed to the attendee. Public events also accept guests (name and email only).
-6. **Scan at the door.** Staff open a mobile scanner page, point the camera at a QR code, and attendance is recorded instantly. A ticket can never be used twice.
-7. **See the results.** A dashboard shows registrations over time, registered-to-attended conversion, peak arrival times, and attendance percentage. Workspace owners also get a rollup across all their clubs.
+3. **Bring people in.** Each club decides who can join it: anyone in the workspace (from **Browse clubs**), people who **ask** (its approvers decide), or **invite links** only. Invite links can expire, have a use limit, give a role, and require approval; each club also has a plain link to share, `/c/{workspace}/{club}`.
+4. **Publish events.** Organisers create events (one-off or repeating) with a capacity, ticket types and prices, discount codes, a cover image, and questions to ask. Events are members-only or public.
+5. **Register and get a ticket.** Registering (or buying, through the workspace's own Stripe account) gives a cryptographically signed pass, shown as a QR code and emailed. Full events have a waitlist; public events also take guests (name and email only).
+6. **Scan at the door.** Staff open a scanner on their phone and point the camera at a QR code, or check people in by name. A ticket can never be used twice, and the door keeps working with no connection.
+7. **See the results.** Attendance per event and per month, what people answered, how they rated it afterwards, and an activity log of who changed what.
+8. **Find anything.** Search (⌘K) finds clubs, events, people and the app's own pages across every workspace you're in.
 
 ---
 
@@ -33,9 +34,12 @@ A person can belong to many workspaces and many clubs, and can hold different ro
 
 ### Joining
 
-- **Clubs are joined by invite link.** Links support expiry, max uses, a default role, and a "requires approval" flag.
-- **Approval:** when a link requires approval, joining creates a *pending request*. Anyone with the right permission can approve or reject it, and the decision (who, when) is recorded.
-- **Workspace join policy** is configurable: invite link (default) or open. Restricting joins to an email domain (for example `@stateuni.edu`) is a later stretch feature.
+- **The workspace** has its own join policy: invite links only (the default), people who ask (moderators decide), or open to anyone with the address. Joining it puts you in its default club, General.
+- **Each club** has its own, set in its settings: invite links only (the default), **ask to join**, or **anyone in the workspace**. Clubs that take people without an invite show in Browse clubs.
+- **Invite links** support expiry, max uses, a default role, and a "requires approval" flag. Opened by someone outside the workspace, a link brings them into the workspace too.
+- **A club's own link** (`/c/{workspace}/{club}`) isn't secret, so it follows both settings: someone outside an open workspace joins it with the club; when the workspace asks, they ask it first.
+- **Approval:** a request (from Browse clubs, a club link, or a link that requires approval) waits in the club's settings, under Join requests. Anyone with `member.approve` there decides, and the decision (who, when) is recorded.
+- **Who sees whom:** a plain member sees the workspace's staff and the people they share a club with (General doesn't count), on the Members page and in search. Moderators and up see everyone. Open workspaces let anyone in, so nobody gets the whole list by joining.
 - **Public events** do not require membership. Guests can register with just a name and email.
 
 ### Roles and permissions (Discord-style)
@@ -78,7 +82,7 @@ Every club starts with default roles that owners can edit or extend:
 
 ```mermaid
 flowchart LR
-  Browser["Next.js frontend<br/>(Tailwind, Recharts, html5-qrcode)"] -- "HTTPS + JSON" --> API
+  Browser["Next.js frontend<br/>(Tailwind, shadcn/ui, html5-qrcode)"] -- "HTTPS + JSON" --> API
   subgraph API["NestJS API (TypeScript)"]
     direction TB
     G["Guards<br/>auth, tenant, permissions"] --> C["Controllers<br/>DTO validation (class-validator)"]
@@ -156,14 +160,14 @@ organisations ─┬─< org_members >─ users
 | Table | Purpose |
 |---|---|
 | `users` | Everyone who signs up, including lightweight guest accounts |
-| `organisations` | The workspace (tenant), with join policy |
+| `organisations` | The workspace (tenant), with its join policy and time zone |
 | `org_members` | Which users belong to which workspace |
-| `clubs` | Clubs inside a workspace |
+| `clubs` | Clubs inside a workspace, each with its own join policy |
 | `club_members` | Which users belong to which club |
 | `roles` | Custom roles per club, holding a list of permissions and a position |
 | `member_roles` | Which roles each member holds |
 | `invites` | Invite links with expiry, max uses, default role, approval flag |
-| `join_requests` | Pending, approved, or rejected join requests |
+| `join_requests` | Requests to join a club (through a link that needs approval, or asked from Browse clubs), pending, approved, or rejected |
 | `events` | Events created by a club |
 | `registrations` | A user's sign-up for an event, including `checked_in_at` |
 
@@ -185,7 +189,7 @@ TypeORM provides the connection pool, transactions, entities for simple CRUD, an
 
 | Layer | Choice |
 |---|---|
-| Frontend | Next.js (server and client components), Tailwind CSS, Recharts |
+| Frontend | Next.js 16, Tailwind CSS, shadcn/ui (on Base UI), TanStack Query and Pacer, charts with shadcn Chart (Recharts) |
 | Scanner | `html5-qrcode` (camera access requires HTTPS) |
 | Backend | Node.js 22, NestJS, TypeScript, class-validator |
 | Database | PostgreSQL with Row-Level Security |
@@ -193,7 +197,8 @@ TypeORM provides the connection pool, transactions, entities for simple CRUD, an
 | Auth | scrypt password hashing, short JWT access tokens, rotating refresh tokens |
 | Tickets | JWT signature, `qrcode` library |
 | Email | Resend (transactional) |
-| Testing | Vitest, Supertest |
+| Payments | Stripe Connect (each workspace's own account) |
+| Testing | Vitest, Supertest, Playwright |
 | Package manager | pnpm |
 | DevOps | Docker, Docker Compose, GitHub Actions |
 
@@ -204,29 +209,37 @@ backend/src/
 ├── main.ts
 ├── app.module.ts
 ├── config/                env loading and validation
-├── common/
-│   ├── errors/            HttpError
-│   ├── filters/           global exception filter (one error response shape)
-│   ├── guards/            (planned) auth, tenant, @RequirePermission()
-│   └── decorators/        (planned) @CurrentUser(), @CurrentOrg()
+├── common/                HttpError, the exception filter, decorators, page cursors
 ├── database/
 │   ├── database.module.ts TypeORM connection (as the limited app role)
 │   ├── data-source.ts     TypeORM CLI connection (as the schema owner)
 │   ├── migrations/        schema, RLS policies, database roles, tenant lookups
+│   ├── migrate.ts         applies migrations at start-up, quietly
+│   ├── seed.ts            the demo data
 │   └── tenant.service.ts  withTenant() and tenant resolution
 └── modules/
-    ├── user/              users (scaffolded)
-    ├── auth/              (planned) register, login, me
-    ├── workspaces/        (planned) workspaces and clubs
-    ├── permissions/       (planned) roles, hierarchy, permission checks
-    ├── invites/           (planned) invite links, join requests, approval
-    ├── events/            (planned) events and visibility
-    ├── registrations/     (planned) sign-up and capacity protection
-    ├── passes/            (planned) ticket signing, QR generation
-    ├── checkin/           (planned) scanner endpoint, atomic attendance
-    ├── analytics/         (planned) dashboard queries
-    └── email/             (planned) Resend client and ticket template
+    ├── auth/              sign-up, verification, sessions, password reset
+    ├── user/              accounts
+    ├── organisation/      workspaces, their members and join requests, who sees whom
+    ├── club/              clubs: settings, members, roles, ownership
+    ├── permission/        the permission list, hierarchy, @RequirePermission()
+    ├── invite/            invite links, club join requests, Browse clubs, club links
+    ├── event/             events, series, ticket types, discount codes, questions, messages
+    ├── registration/      places, guests, check-in, reminders
+    ├── waitlist/          waitlists, places handed out in order
+    ├── ticket/            signed tickets and their QR codes
+    ├── payment/           Stripe Connect per workspace, checkouts, refunds
+    ├── analytics/         attendance
+    ├── feedback/          the "how was it?" email and its answers
+    ├── feed/              calendar feeds and new-event emails
+    ├── notification/      who follows what
+    ├── search/            ⌘K across workspaces
+    ├── audit/             the activity log
+    ├── files/             cover images
+    └── email/             Resend client and templates
 ```
+
+scripts/load-test.ts       builds a big workspace and times the lists (pnpm load-test)
 
 Each module is a Nest module with its own controller, service, entities, and DTOs, so a feature can be read top to bottom in one folder. Unit tests sit next to the code (`*.spec.ts`); end-to-end tests live in `backend/test/`.
 
@@ -269,12 +282,21 @@ The tests that matter most are the ones that prove the hard claims:
 - **Overbooking:** many simultaneous registrations for the last seat produce exactly one success.
 - **Tickets:** tampered, expired, and wrong-secret tokens are rejected.
 - **Check-in:** scanning twice, or from two scanners at once, checks the person in exactly once.
+- **Who sees whom:** a plain member sees only the staff and people they share a club with, on the Members page, in search and in General's members (`test/member-visibility.e2e-spec.ts`).
+- **Paging:** every long list (members, past events, who's going, join requests, the activity log) comes a page at a time, each row once, in order.
 
-**Browser journeys** (`frontend/e2e`, Playwright): signing in and out, registering and the ticket's QR code, the waitlist, creating and cancelling an event, checking someone in at the door, attendance, search, the account page, and a stranger on a public event page. They run against the whole stack with the demo data reset first:
+**Browser journeys** (`frontend/e2e`, Playwright): signing in and out, registering and the ticket's QR code, the waitlist, buying a ticket with a discount code, creating and cancelling an event, a weekly series, checking someone in at the door (and with no connection), attendance, a club's settings and join requests, Browse clubs and club links, search (including going straight to a page), the members list, the account page, and a stranger on a public event page. They run against the whole stack with the demo data reset first:
 
 ```bash
 THROTTLE_DISABLED=true docker compose up -d backend   # tests sign in faster than any person
 cd frontend && pnpm test:e2e                           # uses your installed Chrome
+```
+
+**The load test** builds one big workspace locally (5,000 members, 30 clubs, 500 past events of 150 people, a 3,000-person event, thousands of join requests and activity lines) and times the main lists through the API. Every list answers in under 50 ms; club attendance, the heaviest page, in about 100 ms. Run it with the API up and `THROTTLE_DISABLED=true`:
+
+```bash
+cd backend && pnpm load-test            # builds it once, then times
+pnpm load-test --remove                 # deletes it again
 ```
 
 CI (`.github/workflows/ci.yml`) runs on every push and pull request: lint, typecheck, unit tests, migrations from an empty database, the end-to-end suite against Postgres 17 (what development and production both run), the browser journeys against the production builds, and both production image builds.
@@ -340,7 +362,7 @@ docker compose exec backend pnpm seed           # creates it (once)
 docker compose exec backend pnpm seed --reset   # deletes the demo data, and only that, then recreates it
 ```
 
-Then sign in as `demo@muster.test` / `muster-demo-2026`. You own *Riverside University* (four clubs where you're owner, admin and plain member, months of past events with attendance, upcoming events in every state: public, full with a waitlist, cancelled, draft, registration closed, plus tickets and join requests waiting) and are a member of *Northside Makers*. Every demo address is on the reserved `.test` domain, so nothing is ever emailed; it refuses to run in production. Event times follow `APP_TIME_ZONE`.
+Then sign in as `demo@muster.test` / `demopassword123` (or `admin@muster.test`, a workspace admin). You own *Riverside University*: clubs where you're owner, admin and plain member, each with its own join setting (Robotics asks, Hiking and Chess are open, Film is invite-only), months of past events with attendance, upcoming events in every state (public, full with a waitlist, cancelled, draft, registration closed, paid), and join requests waiting. You're also a member of *Northside Makers*. Set `SEED_PASSWORD` for another password; on a real deployment (`--force`) it's required. Every demo address is on the reserved `.test` domain, so nothing is ever emailed; it refuses to run in production. Event times follow `APP_TIME_ZONE`.
 
 Notes: Resend only delivers to arbitrary addresses once you verify a sending domain, so use its test mode during development. The camera scanner needs HTTPS (`localhost` is allowed).
 
@@ -383,7 +405,7 @@ Production settings beyond development's (all in `.env.prod.example`):
 
 ## Roadmap
 
-Work is tracked in small tasks (30 to 90 minutes each), in this order:
+Work is tracked in small tasks (30 to 90 minutes each), in this order. Phases 1 to 8 are done:
 
 | Phase | Focus |
 |---|---|
@@ -395,7 +417,7 @@ Work is tracked in small tasks (30 to 90 minutes each), in this order:
 | 6 | Analytics dashboard |
 | 7 | Next.js frontend |
 | 8 | Polish, CI, documentation, deployment |
-| 9 | **Later:** pricing plans |
+| 9 | **Next:** pricing plans |
 
 ### Planned later: pricing
 
@@ -407,7 +429,7 @@ The core product comes first. After it is complete, a `plan` column on `organisa
 
 - **Shared schema over schema-per-tenant:** cheapest to run and migrate, and safe because RLS is forced. Schema-per-tenant or database-per-tenant would isolate more strongly at much higher operational cost.
 - **Polling over WebSockets** for the live attendance counter: simple, and plenty for this use.
-- **Offset pagination and `ILIKE` search** are fine at this scale; keyset pagination and full-text search are the upgrade path.
+- **Keyset paging over offsets:** long lists page on (timestamp, id) or (role, name, id), so a page never repeats or skips a row while others are added, and stays fast however deep you go. Search uses trigram indexes (`pg_trgm`), which forgive typos; full-text search is the upgrade path if it's ever needed.
 - **NestJS over plain Express:** modules, dependency injection, and guards map directly onto the design (one module per feature, `@RequirePermission()` guards, request-scoped tenant context), at the cost of more framework conventions.
 - **TypeORM, but SQL where it matters:** the ORM handles plumbing and simple CRUD; RLS, locking, atomic updates, and analytics are hand-written SQL so the important mechanics are visible and not hidden behind ORM abstractions.
 - **Migrations written by hand** (run through TypeORM's migration runner) instead of auto-generated schema, because RLS policies and database roles cannot be expressed in entities.
