@@ -1,7 +1,7 @@
 import { test as base, expect, type Locator, type Page } from "@playwright/test";
 
-/** The seeded demo account (backend src/database/seed.ts). */
-export const DEMO = { email: "demo@muster.test", password: "muster-demo-2026", name: "Sam Rivera" };
+/** The seeded demo account (backend src/database/seed.ts): its default password, unless SEED_PASSWORD set another. */
+export const DEMO = { email: "demo@muster.test", password: process.env.SEED_PASSWORD ?? "demopassword123", name: "Sam Rivera" };
 export const RIVERSIDE = "riverside-uni";
 const API = process.env.API_URL!;
 
