@@ -4,6 +4,8 @@ import type { AuthUser } from '../../common/types/auth-user.js';
 import { TenantService } from '../../database/tenant.service.js';
 import type { EventStatus } from '../event/entities/event.entity.js';
 import { Permission } from '../permission/permissions.js';
+import type { OrgRole } from '../organisation/entities/org-member.entity.js';
+import { seesEveryone, visibleTo } from '../organisation/member-visibility.js';
 import type { ClubHit, EventHit, PersonHit, SearchResultDto, WorkspaceHit } from './dto/search.dto.js';
 
 const LIMIT = { workspaces: 4, clubs: 5, events: 8, people: 5 };
@@ -51,7 +53,7 @@ export class SearchService {
           const workspace = await this.workspace(m, params, org.orgId);
           const clubs = await this.clubs(m, params, user.id);
           const events = await this.events(m, params, user.id);
-          const people = await this.people(m, params);
+          const people = await this.people(m, params, user.id, seesEveryone(org.role as OrgRole));
           return {
             workspaces: workspace === null ? [] : [{ orgId: org.orgId, name: org.name, slug: org.slug, role: org.role, score: workspace }],
             clubs: clubs.map((c) => ({ ...c, ...ref })),
@@ -157,14 +159,19 @@ export class SearchService {
     }));
   }
 
-  // members of this workspace, by name (users is global; org_members, under RLS, limits it)
-  private async people(m: EntityManager, params: string[]): Promise<Scored<Omit<PersonHit, 'orgName' | 'orgSlug'>>[]> {
+  // members of this workspace you can see, by name (users is global; org_members, under RLS, limits it)
+  private async people(
+    m: EntityManager,
+    params: string[],
+    userId: string,
+    staff: boolean,
+  ): Promise<Scored<Omit<PersonHit, 'orgName' | 'orgSlug'>>[]> {
     const rows: { user_id: string; name: string; role: string; score: number }[] = await m.query(
       `SELECT u.id AS user_id, u.name, om.role, ${score('u.name')} AS score
        FROM org_members om JOIN users u ON u.id = om.user_id
-       WHERE ${matches('u.name')}
+       WHERE ${matches('u.name')} AND ($6 OR ${visibleTo('$5', 'om.user_id', 'om.role')})
        ORDER BY score DESC LIMIT ${LIMIT.people}`,
-      params,
+      [...params, userId, staff],
     );
     return rows.map((r) => ({ userId: r.user_id, name: r.name, role: r.role, score: Number(r.score) }));
   }

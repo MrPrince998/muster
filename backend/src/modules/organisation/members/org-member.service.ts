@@ -6,6 +6,7 @@ import { OrgRole } from '../entities/org-member.entity.js';
 import { orgRoleRank, type OrgMembership } from '../org-roles.js';
 import type { AssignableOrgRole, OrgMemberDto } from './dto/member.dto.js';
 import { audit, AuditAction } from '../../audit/audit.js';
+import { seesEveryone, visibleTo } from '../member-visibility.js';
 
 const memberNotFound = () => HttpError.notFound('Member not found', 'MEMBER_NOT_FOUND');
 
@@ -13,9 +14,12 @@ const memberNotFound = () => HttpError.notFound('Member not found', 'MEMBER_NOT_
 export class OrgMemberService {
   constructor(private readonly tenant: TenantService) {}
 
-  /** Everyone in the workspace, owner first. Emails only for staff (moderator and above). */
+  /**
+   * The workspace's members you can see (member-visibility.ts: staff see
+   * everyone), owner first. Emails only for staff (moderator and above).
+   */
   list(me: OrgMembership): Promise<OrgMemberDto[]> {
-    const showEmail = orgRoleRank(me.role) >= orgRoleRank(OrgRole.Moderator);
+    const staff = seesEveryone(me.role);
     return this.tenant.withTenant(me.orgId, async (m) => {
       // users is global (no RLS); org_members limits the join to this workspace
       const rows: { user_id: string; name: string; email: string; role: OrgRole; joined_at: Date }[] =
@@ -23,11 +27,12 @@ export class OrgMemberService {
           `SELECT m.user_id, u.name, u.email, m.role, m.joined_at
            FROM org_members m
            JOIN users u ON u.id = m.user_id
-           WHERE m.org_id = $1
+           WHERE m.org_id = $1 AND ($3 OR ${visibleTo('$2', 'm.user_id', 'm.role')})
            ORDER BY CASE m.role WHEN 'owner' THEN 0 WHEN 'admin' THEN 1 WHEN 'moderator' THEN 2 ELSE 3 END,
                     u.name`,
-          [me.orgId],
+          [me.orgId, me.userId, staff],
         );
+      const showEmail = staff;
       return rows.map((r) => ({
         userId: r.user_id,
         name: r.name,

@@ -8,7 +8,7 @@ export const ROLE_RANK: Record<OrgRole, number> = { member: 1, moderator: 2, adm
 
 /** What your workspace role lets you do (club permissions are separate, per club). */
 export interface WorkspaceAbilities {
-  // everyone can see who's in the workspace; staff also see emails
+  // everyone has a Members page: members see the staff and people in their clubs, staff see everyone (and emails)
   seeMembers: boolean;
   reviewJoinRequests: boolean;
   changeSettings: boolean;

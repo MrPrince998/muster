@@ -7,6 +7,8 @@ import type { ClubAccess } from '../permission/club-access.js';
 import { Permission } from '../permission/permissions.js';
 import type { ClubMemberDto, ClubRoleDto, CreateRoleDto, UpdateRoleDto } from './dto/club-admin.dto.js';
 import { audit, AuditAction } from '../audit/audit.js';
+import type { OrgRole } from '../organisation/entities/org-member.entity.js';
+import { seesEveryone, visibleTo } from '../organisation/member-visibility.js';
 import type { ClubDetailsDto, ClubJoinPolicy, UpdateClubDto } from './dto/club-admin.dto.js';
 
 // enough for any club; keeps the roles list (and positions under Owner's 100) small
@@ -118,9 +120,33 @@ export class ClubAdminService {
 
   // --- members ---------------------------------------------------------------
 
+  /**
+   * Everyone in the club. The default club holds the whole workspace, so
+   * there a plain member sees only who they could see on the Members page
+   * (member-visibility.ts); its staff, and whoever runs its members, see all.
+   */
   members(access: ClubAccess): Promise<ClubMemberDto[]> {
     return this.inClub(access, async (m) => {
       const rows: MemberRow[] = await m.query(SELECT_MEMBERS, [access.clubId, null]);
+      const runsMembers =
+        access.isOwner ||
+        [Permission.RoleManage, Permission.MemberRemove, Permission.MemberApprove].some((p) => access.has(p));
+      if (!runsMembers) {
+        const [me]: { is_default: boolean; role: OrgRole }[] = await m.query(
+          `SELECT c.is_default, om.role FROM clubs c
+           JOIN org_members om ON om.org_id = c.org_id AND om.user_id = $2
+           WHERE c.id = $1`,
+          [access.clubId, access.userId],
+        );
+        if (me?.is_default && !seesEveryone(me.role)) {
+          const visible: { user_id: string }[] = await m.query(
+            `SELECT om.user_id FROM org_members om WHERE ${visibleTo('$1', 'om.user_id', 'om.role')}`,
+            [access.userId],
+          );
+          const ids = new Set(visible.map((v) => v.user_id));
+          return rows.filter((row) => ids.has(row.user_id)).map((row) => this.toMember(row, access));
+        }
+      }
       return rows.map((row) => this.toMember(row, access));
     });
   }

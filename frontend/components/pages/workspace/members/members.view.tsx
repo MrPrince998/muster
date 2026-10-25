@@ -65,10 +65,17 @@ const MembersView = (props: MembersViewProps) => {
       <header className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="text-5xl leading-none font-extrabold font-stretch-70%">Members</h1>
-          <p className="mt-2 text-muted-foreground">
-            {loading ? "Everyone in " : `${total} ${total === 1 ? "person" : "people"} in `}
-            {workspaceName}. Joining the workspace puts them in General; other clubs they join themselves.
-          </p>
+          {myRole === "member" ? (
+            // members see the staff and people they share a club with (not the whole workspace)
+            <p className="mt-2 max-w-prose text-muted-foreground">
+              The people who run {workspaceName}, and the people in your clubs. Join more clubs to meet more of them.
+            </p>
+          ) : (
+            <p className="mt-2 text-muted-foreground">
+              {loading ? "Everyone in " : `${total} ${total === 1 ? "person" : "people"} in `}
+              {workspaceName}. Joining the workspace puts them in General; other clubs they join themselves.
+            </p>
+          )}
         </div>
         <div className="flex flex-wrap gap-2">
           {myRole !== "owner" && (

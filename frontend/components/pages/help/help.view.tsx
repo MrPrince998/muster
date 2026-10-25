@@ -140,6 +140,10 @@ const SECTIONS: { title: string; answers: Answer[] }[] = [
     title: "Your account",
     answers: [
       {
+        q: "Who can see that I'm in a workspace?",
+        a: "Its moderators, admins and owner see everyone in it. Other members see you only if you share a club with them (General doesn't count, since everyone's in it), on the Members page and in search alike. Nobody but the staff sees your email.",
+      },
+      {
         q: "Can I see who changed what?",
         a: "Yes, if you're the workspace's owner or an admin: Activity, in the workspace menu, lists changes to roles, members, events, invites and settings, plus attendee-list downloads and check-ins by name, each with who and when. Nobody can edit or delete that list.",
       },
