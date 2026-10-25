@@ -32,6 +32,9 @@ export const AuditAction = {
   EventMessaged: 'event.messaged',
   EventCodeCreated: 'event.code_created',
   PaymentsConnected: 'payments.connected',
+  PaymentsSettingsChanged: 'payments.settings_changed',
+  EventPaymentConfirmed: 'event.payment_confirmed',
+  EventPaymentDeclined: 'event.payment_declined',
 } as const;
 export type AuditAction = (typeof AuditAction)[keyof typeof AuditAction];
 

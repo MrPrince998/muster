@@ -71,6 +71,23 @@ export class Organisation {
   @Column({ type: 'varchar', length: 3, nullable: true })
   currency: string | null;
 
+  // how buyers pay (migration DirectPayments): through Stripe, or to the organisers directly
+  @Column({ name: 'payment_method', type: 'varchar', length: 10, default: 'stripe' })
+  paymentMethod: 'stripe' | 'direct';
+
+  // paying directly: the currency, how to pay (its own words), a QR code, and how long a place waits
+  @Column({ name: 'direct_currency', type: 'varchar', length: 3, nullable: true })
+  directCurrency: string | null;
+
+  @Column({ name: 'direct_instructions', type: 'varchar', length: 1000, nullable: true })
+  directInstructions: string | null;
+
+  @Column({ name: 'direct_qr_key', type: 'varchar', length: 100, nullable: true })
+  directQrKey: string | null;
+
+  @Column({ name: 'direct_hold_hours', type: 'smallint', default: 48 })
+  directHoldHours: number;
+
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;
 

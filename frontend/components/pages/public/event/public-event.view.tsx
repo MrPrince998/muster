@@ -215,7 +215,9 @@ function Card({ event, form, onSubmit, sentTo, onAskAgain, paymentReturn, questi
           {waitlist
             ? "Open it to join the waitlist; if a place opens up, your ticket arrives by email."
             : event.price
-              ? "Open it to pay; your place is held while you do, and your ticket arrives straight after."
+              ? event.payDirectly
+                ? "Open it and we'll show you how to pay the organisers; your place is held while you do, and your ticket arrives once they confirm it."
+                : "Open it to pay; your place is held while you do, and your ticket arrives straight after."
               : "Your place is held once you open it, and your ticket arrives straight after."}{" "}
           It works for 24 hours.
         </p>
@@ -337,10 +339,12 @@ function Card({ event, form, onSubmit, sentTo, onAskAgain, paymentReturn, questi
         {waitlist
           ? "It's full right now. If someone gives their place back, it goes to whoever has waited longest."
           : event.price
-            ? "We'll email you a link to confirm, then you pay through Stripe. No account needed."
+            ? event.payDirectly
+              ? "We'll email you a link to confirm, then you pay the organisers directly. No account needed."
+              : "We'll email you a link to confirm, then you pay through Stripe. No account needed."
             : "We'll email you a link to confirm. No account needed."}
       </p>
-      {!waitlist && chosenType && chosenType.priceCents > 0 && <TestCardNote />}
+      {!waitlist && chosenType && chosenType.priceCents > 0 && !event.payDirectly && <TestCardNote />}
     </form>
   );
 }

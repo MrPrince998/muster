@@ -8,13 +8,15 @@ import { TicketModule } from '../ticket/ticket.module.js';
 import { DisabledGateway, FakeGateway, PaymentGateway, StripeGateway } from './payment-gateway.js';
 import { PaymentController } from './payment.controller.js';
 import { PaymentService } from './payment.service.js';
+import { DirectPaymentService } from './direct-payment.service.js';
 
-/** Paid tickets, through each workspace's own Stripe account. */
+/** Paid tickets: through each workspace's own Stripe account, or paid to its organisers directly. */
 @Module({
   imports: [EmailModule, OrganisationModule, PermissionModule, TicketModule],
   controllers: [PaymentController],
   providers: [
     PaymentService,
+    DirectPaymentService,
     {
       provide: PaymentGateway,
       useFactory: (): PaymentGateway => {

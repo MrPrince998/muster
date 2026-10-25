@@ -10,7 +10,8 @@ import { DiscountCode } from '../../event/entities/discount-code.entity.js';
  */
 @Entity('checkouts')
 @Unique('checkouts_session_id_key', ['sessionId'])
-@Check('checkouts_status_check', `"status" IN ('pending', 'paid', 'expired', 'refunded')`)
+@Check('checkouts_status_check', `"status" IN ('pending', 'paid', 'expired', 'refunded', 'declined')`)
+@Check('checkouts_method_check', `"method" IN ('stripe', 'direct')`)
 @Index('checkouts_held_idx', ['eventId', 'expiresAt'], { where: `"status" = 'pending'` })
 export class Checkout {
   @PrimaryGeneratedColumn('uuid', { primaryKeyConstraintName: 'checkouts_pkey' })
@@ -38,7 +39,15 @@ export class Checkout {
   currency: string;
 
   @Column({ type: 'varchar', length: 10, default: 'pending' })
-  status: 'pending' | 'paid' | 'expired' | 'refunded';
+  status: 'pending' | 'paid' | 'expired' | 'refunded' | 'declined';
+
+  // paid through Stripe, or to the organisers directly (migration DirectPayments)
+  @Column({ type: 'varchar', length: 10, default: 'stripe' })
+  method: 'stripe' | 'direct';
+
+  // paying directly: what the buyer puts on the payment, for the organisers to match
+  @Column({ type: 'varchar', length: 12, nullable: true })
+  reference: string | null;
 
   @Column({ name: 'expires_at', type: 'timestamptz' })
   expiresAt: Date;

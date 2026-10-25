@@ -45,7 +45,7 @@ function messageFor(code: string): string {
     case "TICKET_NAME_TAKEN":
       return "Two tickets have the same name. Give each its own.";
     case "PAYMENTS_NOT_SET_UP":
-      return "This workspace can't take payments yet. Connect Stripe in Settings, or make the event free.";
+      return "This workspace can't take payments yet. Set up payments in Settings, or make the event free.";
     case "NETWORK_ERROR":
       return "Can't reach Muster. Check your connection, then try again.";
     default:
@@ -95,7 +95,7 @@ export default function EventFormDialog({
   timeZone?: string;
 }) {
   const editing = !!event;
-  // paid tickets only once the workspace's Stripe account can take payments (or the event has some already)
+  // paid tickets only once the workspace can take payments, through Stripe or directly (or the event has some already)
   const payments = usePaymentStatus(orgId);
   const canPrice = !!payments.data?.ready || !!event?.price;
   const currency = (event?.price?.currency ?? payments.data?.currency ?? "").toUpperCase();
@@ -397,7 +397,7 @@ export default function EventFormDialog({
                   <FieldError errors={[fieldErrors?.name, fieldErrors?.price]} />
                   {paid && !canPrice && (
                     <p className="text-sm text-destructive">
-                      Connect Stripe in Settings to sell paid tickets, or make this one free.
+                      Set up payments in Settings to sell paid tickets, or make this one free.
                     </p>
                   )}
                   <div className="grid gap-2 sm:grid-cols-2">
@@ -450,7 +450,8 @@ export default function EventFormDialog({
             )}
           </fieldset>
 
-          {anyPaid && (
+          {/* paid directly, refunds are the organisers' own to make: there's no cut-off to set */}
+          {anyPaid && payments.data?.method !== "direct" && (
             <Field data-invalid={!!errors.refundCutoffHours}>
               <FieldLabel htmlFor="event-refund">Refunds until</FieldLabel>
               <InputGroup className="h-11 sm:max-w-56">

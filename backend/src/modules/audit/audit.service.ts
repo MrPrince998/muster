@@ -77,6 +77,9 @@ export class AuditService {
   }
 }
 
+// "NPR 500.00": an amount as the log shows it
+const money = (cents: number, currency: string) => `${String(currency).toUpperCase()} ${(cents / 100).toFixed(2)}`;
+
 /** The line as a sentence, without the actor (shown before it) or the time. */
 export function describe(row: Pick<Row, 'action' | 'subject_name' | 'club_name' | 'details'>): string {
   const d = row.details as Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
@@ -155,6 +158,14 @@ export function describe(row: Pick<Row, 'action' | 'subject_name' | 'club_name' 
       return `messaged ${d.people} ${d.people === 1 ? 'person' : 'people'} about ${title}: “${d.subject}”`;
     case A.PaymentsConnected:
       return 'started connecting a Stripe account, to sell tickets';
+    case A.PaymentsSettingsChanged:
+      return d.method === 'direct'
+        ? `set tickets to be paid to the organisers directly${d.currency ? `, in ${String(d.currency).toUpperCase()}` : ''}`
+        : 'set tickets to be paid through Stripe';
+    case A.EventPaymentConfirmed:
+      return `marked ${who}’s payment for ${title} as received (${money(d.amountCents, d.currency)}, reference ${d.reference})`;
+    case A.EventPaymentDeclined:
+      return `turned down ${who}’s payment for ${title} (reference ${d.reference})`;
     case A.EventManualCheckIn:
       return `checked ${who} in by name, without a ticket`;
     default:

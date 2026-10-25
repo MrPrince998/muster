@@ -146,7 +146,7 @@ describe('discount codes', () => {
   it('make a ticket free with no Stripe at all, and stop when turned off', async () => {
     const before = t.payments.checkouts.length;
     const free = await getTicket(owner, { ticketTypeId: type.General, code: 'FREEBIE' }).expect(200);
-    expect(free.body).toEqual({ url: null, registered: true });
+    expect(free.body).toEqual({ url: null, registered: true, payment: null });
     expect(t.payments.checkouts).toHaveLength(before);
     await vi.waitFor(() => expect(t.mail.sent.some((e) => e.to === owner.email && e.subject === 'Your ticket: Robot Gala')).toBe(true));
 

@@ -88,6 +88,10 @@ export class Registration {
   @Column({ name: 'refunded_at', type: 'timestamptz', nullable: true })
   refundedAt: Date | null;
 
+  // paid to the organisers, not through Stripe: refunds are theirs to make
+  @Column({ name: 'paid_directly', type: 'boolean', default: false })
+  paidDirectly: boolean;
+
   // the ticket type it is (ticket_types); null for an event without types
   @Index('registrations_ticket_type_id_idx', { where: '"ticket_type_id" IS NOT NULL' })
   @ManyToOne(() => TicketType, { onDelete: 'RESTRICT', nullable: true })

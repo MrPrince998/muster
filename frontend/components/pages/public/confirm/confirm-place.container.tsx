@@ -8,6 +8,8 @@ import { buttonVariants } from "@/components/ui/button";
 import { asApiError } from "@/lib/api/client";
 import { cn } from "@/lib/utils";
 import { useConfirmPlace } from "../services/public.service";
+import { PayDirectly } from "@/components/common/pay-directly";
+import type { DirectPayment } from "@/types/event.interface";
 
 const MESSAGES: Record<string, { title: string; body: string }> = {
   INVALID_TOKEN: {
@@ -35,6 +37,8 @@ export default function ConfirmPlaceContainer() {
   const [failure, setFailure] = useState<string | null>(token ? null : "INVALID_TOKEN");
   // the event was full: they're in the queue instead
   const [waiting, setWaiting] = useState<number | null>(null);
+  // the organisers are paid directly: the place is held, and this is how to pay
+  const [payment, setPayment] = useState<DirectPayment | null>(null);
   // confirm once per page load, even if React runs the effect twice
   const started = useRef(false);
 
@@ -46,11 +50,26 @@ export default function ConfirmPlaceContainer() {
         if ("ticketToken" in result) router.replace(`/t/${result.ticketToken}`);
         // a paid event: on to Stripe to pay, the place held meanwhile
         else if ("checkoutUrl" in result) window.location.assign(result.checkoutUrl);
+        else if ("payment" in result) setPayment(result.payment);
         else setWaiting(result.waitlistPosition);
       },
       (error: unknown) => setFailure(asApiError(error).code),
     );
   }, [token, confirm, router]);
+
+  if (payment) {
+    return (
+      <div className="mx-auto max-w-md px-5 py-16">
+        <h1 className="text-5xl leading-none font-extrabold font-stretch-70%">Pay for your ticket</h1>
+        <p className="mt-3 text-muted-foreground">We&rsquo;ve emailed you these details too.</p>
+        <PayDirectly payment={payment} className="mt-6">
+          <Link href={`/e/${eventId}`} className={cn(buttonVariants({ size: "lg", variant: "outline" }), "h-11")}>
+            Back to the event
+          </Link>
+        </PayDirectly>
+      </div>
+    );
+  }
 
   if (waiting !== null) {
     return (

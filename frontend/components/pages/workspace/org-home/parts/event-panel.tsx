@@ -56,6 +56,15 @@ import { differsFromDevice, zoneCity, zoneName } from "@/lib/time-zone";
 import { apiUrl } from "@/lib/image";
 import { formatMoney } from "@/lib/money";
 import { AnswersSummary } from "./answers-summary";
+import { PayDirectly } from "@/components/common/pay-directly";
+import { asApiError } from "@/lib/api/client";
+import { useWorkspace } from "../../org-shell/workspace-context";
+import {
+  useDecidePayment,
+  useDirectPayments,
+  useGiveUpHold,
+  usePaymentStatus,
+} from "../../services/payment.service";
 import { FeedbackSection } from "./feedback-section";
 import { formatFullDate, formatTimeRange } from "./format";
 
@@ -71,6 +80,12 @@ function useWide() {
     () => window.matchMedia(WIDE).matches,
     () => true,
   );
+}
+
+// the workspace's buyers pay its organisers directly, not through Stripe
+function usePaysDirectly(): boolean {
+  const { organisation } = useWorkspace();
+  return usePaymentStatus(organisation.orgId).data?.method === "direct";
 }
 
 export type PanelAction =
@@ -168,6 +183,7 @@ function PanelBody(props: EventPanelProps & { event: ClubEvent }) {
   const full = event.capacity !== null && taken >= event.capacity;
   const left =
     event.capacity === null ? null : Math.max(0, event.capacity - taken);
+  const paysDirectly = usePaysDirectly();
 
   return (
     <div className="flex flex-col gap-6 p-6">
@@ -238,7 +254,9 @@ function PanelBody(props: EventPanelProps & { event: ClubEvent }) {
             </ul>
             {event.price && (
               <span className="mt-1 block text-xs text-muted-foreground">
-                {event.refundCutoffHours === 0
+                {paysDirectly
+                  ? "Paid to the organisers directly: refunds are up to them"
+                  : event.refundCutoffHours === 0
                   ? "Paid tickets are refunded if given back before it starts"
                   : `Paid tickets are refunded if given back ${event.refundCutoffHours} hours or more before it starts`}
               </span>
@@ -344,6 +362,9 @@ function PanelBody(props: EventPanelProps & { event: ClubEvent }) {
       )}
       {!draft && !cancelled && (
         <MemberActions {...props} ended={ended} full={full} />
+      )}
+      {event.canManage && !draft && event.paymentsToConfirm > 0 && (
+        <PaymentsToConfirm event={event} timeZone={props.timeZone} />
       )}
       {props.canSeeFeedback && ended && !cancelled && (
         <FeedbackSection clubId={event.clubId} eventId={event.id} />
@@ -700,6 +721,7 @@ function MemberActions({
   const [showingTicket, setShowingTicket] = useState(false);
   const [givingBack, setGivingBack] = useState(false);
   const paid = event.yourPayment;
+  const paysDirectly = usePaysDirectly();
   // the event's questions come first, whichever way they're taking a place
   const [asking, setAsking] = useState<"register" | "waitlist" | null>(null);
   // events with ticket types: the choice (and any code) in a dialog of its own
@@ -736,6 +758,7 @@ function MemberActions({
           onOpenChange={(open) => !open && setTicketing(null)}
           waitlist={ticketing === "waitlist"}
           timeZone={timeZone}
+          payDirectly={paysDirectly}
           onConfirm={(choice) =>
             ticketing === "waitlist"
               ? onJoinWaitlist(choice.answers, choice.ticketTypeId)
@@ -800,9 +823,11 @@ function MemberActions({
             onOpenChange={setGivingBack}
             title="Give your ticket back?"
             body={
-              paid.refundable
-                ? `You'll get ${formatMoney(paid.amountCents, paid.currency)} back, to the card you paid with, within a few days.`
-                : `It's less than ${event.refundCutoffHours} hours to the start, so there's no refund. Someone else can buy the place.`
+              paid.direct
+                ? "You paid the organisers directly, so ask them about a refund. Someone else can have the place."
+                : paid.refundable
+                  ? `You'll get ${formatMoney(paid.amountCents, paid.currency)} back, to the card you paid with, within a few days.`
+                  : `It's less than ${event.refundCutoffHours} hours to the start, so there's no refund. Someone else can buy the place.`
             }
             confirmLabel={
               paid.refundable ? "Give it back and refund" : "Give it back"
@@ -818,6 +843,11 @@ function MemberActions({
         )}
       </div>
     );
+  }
+
+  // paying the organisers directly: the place waits while they do
+  if (event.yourPendingPayment) {
+    return <HeldForPayment event={event} timeZone={timeZone} />;
   }
 
   // back from Stripe, paid: the ticket arrives as soon as Stripe tells us
@@ -907,7 +937,9 @@ function MemberActions({
         </Button>
         {!soldOut && paidTypes && (
           <p className="text-center text-xs text-muted-foreground">
-            Paid tickets go through Stripe.
+            {paysDirectly
+              ? "You pay the organisers directly. Your place is held while you do."
+              : "Paid tickets go through Stripe."}
           </p>
         )}
         {questions}
@@ -952,6 +984,144 @@ function MemberActions({
       </Button>
       {questions}
     </>
+  );
+}
+
+/** Your place, held while you pay the organisers: how to pay, and a way to give it up. */
+function HeldForPayment({ event, timeZone }: { event: ClubEvent; timeZone?: string }) {
+  const giveUp = useGiveUpHold(event.clubId, event.id);
+  const [asking, setAsking] = useState(false);
+  return (
+    <PayDirectly payment={event.yourPendingPayment!} timeZone={timeZone}>
+      <Button
+        size="lg"
+        variant="ghost"
+        className="h-11 text-muted-foreground"
+        onClick={() => setAsking(true)}
+      >
+        Give up my place
+      </Button>
+      <ConfirmDialog
+        open={asking}
+        onOpenChange={setAsking}
+        title="Give up your place?"
+        body="It goes back on offer. If you've already paid, keep it: the organisers will confirm your payment."
+        confirmLabel="Give it up"
+        pendingLabel="Giving it up…"
+        dismissLabel="Keep my place"
+        destructive
+        onConfirm={async () => {
+          try {
+            await giveUp.mutateAsync();
+            return null;
+          } catch {
+            return "Couldn't give up the place. Try again.";
+          }
+        }}
+      />
+    </PayDirectly>
+  );
+}
+
+const PAYMENT_ERRORS: Record<string, string> = {
+  EVENT_FULL: "The event filled up after their hold ran out. Refund them, or make room first.",
+  TICKET_TYPE_SOLD_OUT: "That ticket sold out after their hold ran out. Refund them, or make room first.",
+  PAYMENT_NOT_PENDING: "Someone else already dealt with this payment.",
+  ALREADY_REGISTERED: "They already have a place.",
+  EVENT_ENDED: "The event has ended.",
+};
+
+/**
+ * Organisers: payments people say they've made to you directly, oldest
+ * first. Mark one paid when the money's arrived (their ticket goes out), or
+ * turn it down (the place goes back on offer, and they're told).
+ */
+function PaymentsToConfirm({ event, timeZone }: { event: ClubEvent; timeZone?: string }) {
+  const list = useDirectPayments(event.clubId, event.id);
+  const decide = useDecidePayment(event.clubId, event.id);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const act = async (checkoutId: string, decision: "confirm" | "decline") => {
+    setBusy(`${checkoutId}:${decision}`);
+    setError(null);
+    try {
+      await decide.mutateAsync({ checkoutId, decision });
+    } catch (failure) {
+      setError(PAYMENT_ERRORS[asApiError(failure).code] ?? "Couldn't save that. Try again.");
+    } finally {
+      setBusy(null);
+    }
+  };
+  const until = (at: string) =>
+    new Intl.DateTimeFormat("en-GB", { timeZone, day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }).format(
+      new Date(at),
+    );
+
+  return (
+    <section aria-labelledby="payments-to-confirm" className="space-y-3">
+      <div>
+        <h3 id="payments-to-confirm" className="text-sm font-semibold">
+          Payments to confirm ({event.paymentsToConfirm})
+        </h3>
+        <p className="text-xs text-muted-foreground">
+          Match each one by its reference in your wallet or bank, then mark it paid.
+        </p>
+      </div>
+      {list.isPending ? (
+        <p className="text-sm text-muted-foreground">Loading…</p>
+      ) : list.isError ? (
+        <p className="text-sm text-destructive">Couldn&rsquo;t load the payments.</p>
+      ) : (
+        <ul className="divide-y rounded-xl border">
+          {list.data.map((p) => (
+            <li key={p.id} className="space-y-2 p-3 text-sm">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="truncate font-medium">
+                    {p.name}
+                    {p.guest && <span className="font-normal text-muted-foreground"> (guest)</span>}
+                  </p>
+                  <p className="text-muted-foreground">
+                    {formatMoney(p.amountCents, p.currency)}
+                    {p.ticketType ? `, ${p.ticketType}` : ""}
+                  </p>
+                </div>
+                <span className="shrink-0 text-base font-bold tracking-[0.15em] tabular-nums">{p.reference}</span>
+              </div>
+              <p className={cn("text-xs", p.expired ? "text-stamp" : "text-muted-foreground")}>
+                {p.expired ? "Hold ran out: the place is on offer again" : `Held until ${until(p.expiresAt)}`}
+              </p>
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  disabled={busy !== null}
+                  onClick={() => act(p.id, "confirm")}
+                  aria-label={`Mark ${p.name}'s payment as paid`}
+                >
+                  {busy === `${p.id}:confirm` && <Spinner />}
+                  Mark paid
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={busy !== null}
+                  onClick={() => act(p.id, "decline")}
+                  aria-label={`Turn down ${p.name}'s payment`}
+                >
+                  {busy === `${p.id}:decline` && <Spinner />}
+                  Turn down
+                </Button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+      {error && (
+        <p role="alert" className="text-sm text-destructive">
+          {error}
+        </p>
+      )}
+    </section>
   );
 }
 

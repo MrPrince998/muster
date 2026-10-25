@@ -124,16 +124,18 @@ export async function insertPlace(
   details: {
     ticket: { type: { id: string } | null; discountCodeId: string | null };
     answers: Record<string, string>;
-    payment?: { amountCents: number; currency: string; paymentIntentId: string };
+    // through Stripe (its payment intent), or paid to the organisers directly
+    payment?: { amountCents: number; currency: string; paymentIntentId: string | null; direct?: boolean };
   },
 ): Promise<{ id: string; event_id: string; created_at: Date }> {
   const [row]: { id: string; event_id: string; created_at: Date }[] = await m.query(
     `INSERT INTO registrations
-       (org_id, event_id, user_id, answers, ticket_type_id, discount_code_id, amount_paid_cents, currency, payment_intent_id)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+       (org_id, event_id, user_id, answers, ticket_type_id, discount_code_id, amount_paid_cents, currency, payment_intent_id,
+        paid_directly)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
      ON CONFLICT ON CONSTRAINT registrations_event_id_user_id_key
      DO UPDATE SET cancelled_at = NULL, answers = $4, ticket_type_id = $5, discount_code_id = $6,
-                   amount_paid_cents = $7, currency = $8, payment_intent_id = $9, refunded_at = NULL
+                   amount_paid_cents = $7, currency = $8, payment_intent_id = $9, refunded_at = NULL, paid_directly = $10
      RETURNING id, event_id, created_at`,
     [
       place.orgId,
@@ -145,6 +147,7 @@ export async function insertPlace(
       details.payment?.amountCents ?? null,
       details.payment?.currency ?? null,
       details.payment?.paymentIntentId ?? null,
+      details.payment?.direct ?? false,
     ],
   );
   return row;

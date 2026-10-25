@@ -51,7 +51,7 @@ const SECTIONS: { title: string; answers: Answer[] }[] = [
       },
       {
         q: "How do paid tickets work?",
-        a: "A workspace's owner or an admin connects its Stripe account in Settings; ticket money goes straight to that account. Then any event can have a price. Buying holds your place while you pay, and your ticket arrives as soon as the payment goes through. Give a ticket back before the event's refund cut-off (48 hours by default) and you get the money back; if the organisers cancel, everyone is refunded.",
+        a: "A workspace's owner or an admin sets up payments in Settings, one of two ways, and either way the money goes straight to the organisers: Muster never holds it. Through Stripe, ticket money goes to the workspace's own Stripe account; your ticket arrives as soon as the payment goes through, a ticket given back before the event's refund cut-off (48 hours by default) is refunded, and if the organisers cancel, everyone is refunded. Or, where Stripe isn't available (Nepal, say), the organisers are paid directly: eSewa, Khalti, a bank transfer or cash, in their own words and with their QR code. Your place is held while you pay with a short reference, and your ticket arrives once an organiser confirms the payment; refunds are up to them.",
       },
       {
         q: "Can an event have a picture?",

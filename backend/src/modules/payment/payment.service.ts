@@ -13,21 +13,47 @@ import { checkPlace, insertPlace } from '../registration/place.js';
 import { resolveTicket, type TicketChoice } from '../event/tickets.js';
 import { TicketService } from '../ticket/ticket.service.js';
 import { PaymentGateway, type PaymentEvent } from './payment-gateway.js';
+import { FileStorage } from '../files/file-storage.js';
+import { type DirectPayment, directPayment, newReference } from './direct-payment.js';
 
 // how long a checkout holds its place (Stripe's shortest session)
 const HOLD_MINUTES = 30;
 
-const notReady = () =>
-  HttpError.conflict("This workspace can't take payments yet: connect Stripe in Settings", 'PAYMENTS_NOT_SET_UP');
+export const notReady = () =>
+  HttpError.conflict("This workspace can't take payments yet: set up payments in Settings", 'PAYMENTS_NOT_SET_UP');
+
+export type PaymentMethod = 'stripe' | 'direct';
 
 export interface PaymentStatus {
-  // this Muster takes payments at all (Stripe keys are set)
+  // this Muster offers Stripe (its keys are set); paying directly is always on offer
   available: boolean;
+  // how the workspace's buyers pay: through Stripe, or to the organisers directly
+  method: PaymentMethod;
   // the workspace has started connecting its Stripe account
   connected: boolean;
-  // ...and Stripe says it can take payments
+  // events can have a price: Stripe says the account can take payments, or
+  // the workspace has said how to pay it directly
   ready: boolean;
+  // what its tickets are priced in, the way it's paid now
   currency: string | null;
+  // paying directly: how, and how long a place waits for its payment
+  direct: { currency: string | null; instructions: string | null; qrUrl: string | null; holdHours: number };
+}
+
+/** Someone's place held while they pay the organisers, and who to tell. */
+interface PayDirectlyRow {
+  email: string;
+  name: string;
+  guest: boolean;
+  event_id: string;
+  event_title: string;
+  starts_at: Date;
+  ends_at: Date;
+  club_id: string;
+  club_name: string;
+  org_slug: string;
+  time_zone: string;
+  qr_key: string | null;
 }
 
 interface PaidRow {
@@ -69,6 +95,7 @@ export class PaymentService {
     private readonly gateway: PaymentGateway,
     private readonly tickets: TicketService,
     private readonly email: EmailService,
+    private readonly files: FileStorage,
     @Inject(BULK_PACE_MS) private readonly paceMs: number,
   ) {}
 
@@ -155,7 +182,7 @@ export class PaymentService {
   async currencyFor(m: EntityManager, orgId: string, paid: boolean): Promise<string | null> {
     if (!paid) return null;
     const status = await this.statusIn(m, orgId);
-    if (!status.available || !status.ready || !status.currency) throw notReady();
+    if (!status.ready || !status.currency) throw notReady();
     return status.currency;
   }
 
@@ -181,7 +208,7 @@ export class PaymentService {
       choice?: TicketChoice;
     },
     back: { successUrl: string; cancelUrl: string },
-  ): Promise<{ url: string; checkoutId?: string } | { registrationId: string }> {
+  ): Promise<{ url: string; checkoutId?: string } | { registrationId: string } | { direct: DirectPayment }> {
     const { event, existing } = await checkPlace(m, place);
     if (existing) throw HttpError.conflict("You're already registered", 'ALREADY_REGISTERED');
     const ticket = await resolveTicket(m, { ...place, member: !place.publicOnly });
@@ -193,8 +220,15 @@ export class PaymentService {
     }
     if (!event.currency) throw notReady();
 
+    const [org]: { payment_method: PaymentMethod; direct_instructions: string | null; direct_hold_hours: number }[] = await m.query(
+      `SELECT payment_method, direct_instructions, direct_hold_hours FROM organisations WHERE id = $1`,
+      [place.orgId],
+    );
+    if (org.payment_method === 'direct') return { direct: await this.holdForDirect(m, place, { event, ticket, answers, org }) };
+
     const [open]: { id: string; url: string | null }[] = await m.query(
-      `SELECT id, url FROM checkouts WHERE event_id = $1 AND user_id = $2 AND status = 'pending' AND expires_at > now() + interval '2 minutes'`,
+      `SELECT id, url FROM checkouts
+       WHERE event_id = $1 AND user_id = $2 AND method = 'stripe' AND status = 'pending' AND expires_at > now() + interval '2 minutes'`,
       [place.eventId, place.userId],
     );
     if (open?.url) {
@@ -248,15 +282,106 @@ export class PaymentService {
   }
 
   /**
+   * Holds a place while someone pays the organisers directly (the caller has
+   * checked it's free, the event locked): for the workspace's hold time, or
+   * until the event ends if that's sooner, with a reference for the payment.
+   * Asking again while it's held gives the same one back, with the latest answers.
+   */
+  private async holdForDirect(
+    m: EntityManager,
+    place: { orgId: string; eventId: string; userId: string },
+    { event, ticket, answers, org }: {
+      event: { ends_at: Date; currency: string | null };
+      ticket: { type: { id: string } | null; discountCodeId: string | null; priceCents: number };
+      answers: Record<string, string>;
+      org: { direct_instructions: string | null; direct_hold_hours: number };
+    },
+  ): Promise<DirectPayment> {
+    if (!org.direct_instructions) throw notReady();
+    const [held]: { id: string }[] = await m.query(
+      `SELECT id FROM checkouts
+       WHERE event_id = $1 AND user_id = $2 AND method = 'direct' AND status = 'pending' AND expires_at > now()`,
+      [place.eventId, place.userId],
+    );
+    if (held) {
+      await m.query(`UPDATE checkouts SET answers = $2 WHERE id = $1`, [held.id, JSON.stringify(answers)]);
+      return directPayment(m, held.id);
+    }
+    const expiresAt = new Date(Math.min(Date.now() + org.direct_hold_hours * 3_600_000, event.ends_at.getTime()));
+    const [{ id }]: { id: string }[] = await m.query(
+      `INSERT INTO checkouts
+         (org_id, event_id, user_id, amount_cents, currency, expires_at, answers, ticket_type_id, discount_code_id, method, reference)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'direct', $10) RETURNING id`,
+      [
+        place.orgId,
+        place.eventId,
+        place.userId,
+        ticket.priceCents,
+        event.currency,
+        expiresAt,
+        JSON.stringify(answers),
+        ticket.type?.id ?? null,
+        ticket.discountCodeId,
+        newReference(),
+      ],
+    );
+    return directPayment(m, id);
+  }
+
+  /**
+   * Emails someone how to pay the organisers for the place just held for
+   * them (once it's committed), with the workspace's QR code if it has one.
+   */
+  async emailPayDirectly(orgId: string, payment: DirectPayment): Promise<void> {
+    const [row]: PayDirectlyRow[] = await this.tenant.withTenant(orgId, (m) =>
+      m.query(
+        `SELECT u.email, u.name, (u.password_hash IS NULL) AS guest, e.id AS event_id, e.title AS event_title,
+                e.starts_at, e.ends_at, c.id AS club_id, c.name AS club_name, o.slug AS org_slug, o.time_zone,
+                o.direct_qr_key AS qr_key
+         FROM checkouts h
+         JOIN users u ON u.id = h.user_id
+         JOIN events e ON e.id = h.event_id
+         JOIN clubs c ON c.id = e.club_id
+         JOIN organisations o ON o.id = h.org_id
+         WHERE h.id = $1`,
+        [payment.checkoutId],
+      ),
+    );
+    if (!row) return;
+    this.email.inBackground(
+      'pay directly',
+      (async () => {
+        const qr = row.qr_key ? await this.files.get(row.qr_key) : null;
+        await this.email.sendPayDirectly({
+          to: row.email,
+          checkoutId: payment.checkoutId,
+          qr: qr && row.qr_key ? { filename: `payment-qr.${row.qr_key.split('.').pop()}`, content: await streamToBuffer(qr.stream) } : null,
+          link: { guest: row.guest, orgSlug: row.org_slug, clubId: row.club_id, eventId: row.event_id },
+          name: row.name,
+          eventTitle: row.event_title,
+          clubName: row.club_name,
+          when: formatWhen(row.starts_at, row.ends_at, row.time_zone),
+          amount: formatAmount(payment.amountCents, payment.currency),
+          instructions: payment.instructions,
+          reference: payment.reference,
+          heldUntil: formatMoment(payment.expiresAt, row.time_zone),
+        });
+      })(),
+    );
+  }
+
+  /**
    * A member getting a ticket: Stripe's checkout page, coming back to the
-   * event; or, if it comes to nothing, the place straight away (and its ticket by email).
+   * event; or, if it comes to nothing, the place straight away (and its
+   * ticket by email); or, when the workspace is paid directly, the place
+   * held and how to pay for it (by email too).
    */
   async memberCheckout(
     access: ClubAccess,
     eventId: string,
     answers?: Record<string, unknown>,
     choice?: TicketChoice,
-  ): Promise<{ url: string | null; registered: boolean }> {
+  ): Promise<{ url: string | null; registered: boolean; payment: DirectPayment | null }> {
     const orgId = await this.tenant.orgIdForClub(access.clubId);
     if (!orgId) throw HttpError.notFound('Club not found', 'CLUB_NOT_FOUND');
     return this.tenant.withTenant(orgId, async (m) => {
@@ -276,10 +401,14 @@ export class PaymentService {
     }).then(async (outcome) => {
       if ('registrationId' in outcome) {
         await this.ticketFor(orgId, outcome.registrationId);
-        return { url: null, registered: true };
+        return { url: null, registered: true, payment: null };
+      }
+      if ('direct' in outcome) {
+        await this.emailPayDirectly(orgId, outcome.direct);
+        return { url: null, registered: false, payment: outcome.direct };
       }
       await this.afterCheckout(orgId, outcome.checkoutId);
-      return { url: outcome.url, registered: false };
+      return { url: outcome.url, registered: false, payment: null };
     });
   }
 
@@ -442,16 +571,35 @@ export class PaymentService {
 
   // --- helpers -----------------------------------------------------------------------
 
-  private async statusIn(m: EntityManager, orgId: string): Promise<PaymentStatus> {
-    const [org]: { stripe_account_id: string | null; payments_enabled: boolean; currency: string | null }[] = await m.query(
-      `SELECT stripe_account_id, payments_enabled, currency FROM organisations WHERE id = $1`,
+  async statusIn(m: EntityManager, orgId: string): Promise<PaymentStatus> {
+    const [org]: {
+      stripe_account_id: string | null;
+      payments_enabled: boolean;
+      currency: string | null;
+      payment_method: PaymentMethod;
+      direct_currency: string | null;
+      direct_instructions: string | null;
+      direct_qr_key: string | null;
+      direct_hold_hours: number;
+    }[] = await m.query(
+      `SELECT stripe_account_id, payments_enabled, currency, payment_method,
+              direct_currency, direct_instructions, direct_qr_key, direct_hold_hours
+       FROM organisations WHERE id = $1`,
       [orgId],
     );
+    const direct = org.payment_method === 'direct';
     return {
       available: this.gateway.enabled,
+      method: org.payment_method,
       connected: !!org.stripe_account_id,
-      ready: this.gateway.enabled && org.payments_enabled,
-      currency: org.currency,
+      ready: direct ? !!org.direct_instructions && !!org.direct_currency : this.gateway.enabled && org.payments_enabled,
+      currency: direct ? org.direct_currency : org.currency,
+      direct: {
+        currency: org.direct_currency,
+        instructions: org.direct_instructions,
+        qrUrl: org.direct_qr_key ? `/files/${org.direct_qr_key}` : null,
+        holdHours: org.direct_hold_hours,
+      },
     };
   }
 
@@ -481,3 +629,26 @@ const SELECT_PAID = `
   JOIN clubs c ON c.id = e.club_id
   JOIN organisations o ON o.id = r.org_id
   JOIN users u ON u.id = r.user_id`;
+
+// "NPR 500.00": an amount as an email says it
+export const formatAmount = (cents: number, currency: string) => `${currency.toUpperCase()} ${(cents / 100).toFixed(2)}`;
+
+// "Saturday 24 October, 18:30 (NPT)": a moment on the workspace's clock
+export function formatMoment(at: Date, zone: string): string {
+  const text = new Intl.DateTimeFormat('en-GB', {
+    timeZone: zone,
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    hour: '2-digit',
+    minute: '2-digit',
+    timeZoneName: 'short',
+  }).format(at);
+  return text.replace(/ at /, ', ').replace(/ ([A-Z]{2,5}|GMT[+-]\d+(:\d+)?)$/, ' ($1)');
+}
+
+async function streamToBuffer(stream: NodeJS.ReadableStream): Promise<Buffer> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of stream) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  return Buffer.concat(chunks);
+}

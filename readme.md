@@ -14,7 +14,7 @@ Built as a full-stack learning and portfolio project to demonstrate **multi-tena
 2. **Add clubs.** A workspace contains one or more clubs (Coding Club, Robotics Club). Small groups get one default club and never have to think about clubs.
 3. **Bring people in.** Each club decides who can join it: anyone in the workspace (from **Browse clubs**), people who **ask** (its approvers decide), or **invite links** only. Invite links can expire, have a use limit, give a role, and require approval; each club also has a plain link to share, `/c/{workspace}/{club}`.
 4. **Publish events.** Organisers create events (one-off or repeating) with a capacity, ticket types and prices, discount codes, a cover image, and questions to ask. Events are members-only or public.
-5. **Register and get a ticket.** Registering (or buying, through the workspace's own Stripe account) gives a cryptographically signed pass, shown as a QR code and emailed. Full events have a waitlist; public events also take guests (name and email only).
+5. **Register and get a ticket.** Registering (or buying: through the workspace's own Stripe account, or paid to its organisers directly, with eSewa, Khalti, a bank transfer or cash, where Stripe isn't available) gives a cryptographically signed pass, shown as a QR code and emailed. Full events have a waitlist; public events also take guests (name and email only).
 6. **Scan at the door.** Staff open a scanner on their phone and point the camera at a QR code, or check people in by name. A ticket can never be used twice, and the door keeps working with no connection.
 7. **See the results.** Attendance per event and per month, what people answered, how they rated it afterwards, and an activity log of who changed what.
 8. **Find anything.** Search (⌘K) finds clubs, events, people and the app's own pages across every workspace you're in.
@@ -197,7 +197,7 @@ TypeORM provides the connection pool, transactions, entities for simple CRUD, an
 | Auth | scrypt password hashing, short JWT access tokens, rotating refresh tokens |
 | Tickets | JWT signature, `qrcode` library |
 | Email | Resend (transactional) |
-| Payments | Stripe Connect (each workspace's own account) |
+| Payments | Stripe Connect (each workspace's own account), or paid to the organisers directly; Muster never holds the money |
 | Testing | Vitest, Supertest, Playwright |
 | Package manager | pnpm |
 | DevOps | Docker, Docker Compose, GitHub Actions |
@@ -228,7 +228,7 @@ backend/src/
     ├── registration/      places, guests, check-in, reminders
     ├── waitlist/          waitlists, places handed out in order
     ├── ticket/            signed tickets and their QR codes
-    ├── payment/           Stripe Connect per workspace, checkouts, refunds
+    ├── payment/           Stripe Connect per workspace, direct payments, checkouts, refunds
     ├── analytics/         attendance
     ├── feedback/          the "how was it?" email and its answers
     ├── feed/              calendar feeds and new-event emails

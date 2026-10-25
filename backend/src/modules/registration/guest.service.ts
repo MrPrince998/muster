@@ -54,6 +54,7 @@ interface PublicEventRow {
   }[];
   // the event has a discount code people can use
   has_codes: boolean;
+  payment_method: 'stripe' | 'direct';
   cover_image_key: string | null;
   club_name: string;
   org_name: string;
@@ -79,7 +80,7 @@ const SELECT_PUBLIC_EVENT = `
           FROM ticket_types t WHERE t.event_id = e.id AND NOT t.members_only) AS ticket_types,
          EXISTS (SELECT 1 FROM discount_codes d
                  WHERE d.event_id = e.id AND d.active AND (d.expires_at IS NULL OR d.expires_at > now())) AS has_codes,
-         e.cover_image_key, c.name AS club_name, o.name AS org_name, o.time_zone
+         e.cover_image_key, c.name AS club_name, o.name AS org_name, o.time_zone, o.payment_method
   FROM events e
   JOIN clubs c ON c.id = e.club_id
   JOIN organisations o ON o.id = e.org_id
@@ -240,6 +241,7 @@ export class GuestService {
           { successUrl: back('1'), cancelUrl: back('0') },
         );
         if ('url' in result) return { checkoutUrl: result.url, checkoutId: result.checkoutId, orgId };
+        if ('direct' in result) return { payment: result.direct, orgId };
         const [row]: (TicketRow & { email: string })[] = await m.query(SELECT_TICKET, [result.registrationId, eventId]);
         return { ticket: row, isNew: true };
       }
@@ -257,6 +259,10 @@ export class GuestService {
     });
 
     if ('waitlistPosition' in outcome) return { waitlistPosition: outcome.waitlistPosition };
+    if ('payment' in outcome && outcome.payment) {
+      await this.payments.emailPayDirectly(outcome.orgId, outcome.payment);
+      return { payment: outcome.payment };
+    }
     if ('checkoutUrl' in outcome) {
       await this.payments.afterCheckout(outcome.orgId, outcome.checkoutId);
       return { checkoutUrl: outcome.checkoutUrl };
@@ -382,6 +388,7 @@ function toPublicEvent(row: PublicEventRow): PublicEventDto {
     // the workspace's: where the event happens
     timeZone: row.time_zone,
     ...publicTickets(row),
+    payDirectly: row.payment_method === 'direct',
     coverUrl: row.cover_image_key ? `/files/${row.cover_image_key}` : null,
     questions: row.questions ?? [],
   };

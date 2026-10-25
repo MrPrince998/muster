@@ -31,7 +31,7 @@ const WORKSPACE_PAGES: (PageDef & { path: string; allowed: (can: ReturnType<type
   { label: "Members", path: "/members", detail: "People, roles and invite links", words: ["people", "members", "invite", "invite links", "roles"], allowed: (can) => can.seeMembers },
   { label: "Join requests", path: "/join-requests", detail: "People asking to join", words: ["requests", "approve", "pending", "waiting"], allowed: (can) => can.reviewJoinRequests },
   { label: "Activity", path: "/activity", detail: "Who changed what", words: ["activity", "audit", "log", "history", "changes"], allowed: (can) => can.changeSettings },
-  { label: "Workspace settings", path: "/settings", detail: "Name, time zone, joining and payments", words: ["settings", "time zone", "payments", "stripe", "join policy", "delete workspace", "rename"], allowed: (can) => can.changeSettings },
+  { label: "Workspace settings", path: "/settings", detail: "Name, time zone, joining and payments", words: ["settings", "time zone", "payments", "stripe", "esewa", "khalti", "qr code", "join policy", "delete workspace", "rename"], allowed: (can) => can.changeSettings },
 ];
 
 const MAX = 5;

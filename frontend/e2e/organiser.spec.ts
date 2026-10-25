@@ -291,3 +291,50 @@ test("a new event whose image didn't upload says so, and retries only the image"
   // one event, not two
   await expect(page.getByRole("button", { name: /Retry Walk/ })).toHaveCount(1);
 });
+
+test("take payments directly, hold a place with a reference, and confirm it", async ({ page }) => {
+  // where Stripe can't go: the organisers say how to pay them
+  await page.goto("/o/riverside-uni/settings");
+  const payments = page.getByRole("region", { name: "Paid tickets" });
+  await payments.getByLabel(/Directly to you/).check();
+  await payments.getByLabel("How to pay you").fill("eSewa: 9800000000 (Riverside Robotics)");
+  await payments.getByLabel("Currency").selectOption("npr");
+  await payments.getByLabel("Hold a place for").fill("24");
+  await payments.getByRole("button", { name: "Use direct payments" }).click();
+  await expect(payments.getByText("Ready to sell tickets in NPR, paid to you directly")).toBeVisible();
+
+  await openClub(page, "Robotics Society");
+  await page.getByRole("button", { name: "New event" }).click();
+  const form = page.getByRole("dialog");
+  await form.getByLabel("Name", { exact: true }).fill("Robot Wars");
+  await form.locator("#event-starts").fill(localDateTime(29, 18));
+  await form.locator("#event-ends").fill(localDateTime(29, 21));
+  await form.getByRole("button", { name: "Add a ticket" }).click();
+  await form.getByLabel("Ticket 1 price").fill("500");
+  // refunds are the organisers' own to make: no cut-off to set
+  await expect(form.getByLabel("Refunds until")).toHaveCount(0);
+  await form.getByRole("button", { name: "Publish" }).click();
+
+  // buying: the place is held, and how to pay is right there
+  const panel = page.getByRole("complementary", { name: "Robot Wars" });
+  await expect(panel.getByText("You pay the organisers directly. Your place is held while you do.")).toBeVisible();
+  await panel.getByRole("button", { name: /Buy a ticket for/ }).click();
+  await page.getByRole("dialog").getByRole("button", { name: /^Hold my place/ }).click();
+  const held = panel.getByRole("region", { name: /Your place is held/ });
+  await expect(held).toContainText("eSewa: 9800000000 (Riverside Robotics)");
+  await expect(held.getByTestId("payment-reference")).toHaveText(/^[A-Z2-9]{6}$/);
+  const reference = await held.getByTestId("payment-reference").textContent();
+
+  // the organisers' list, matched by that reference
+  const toConfirm = panel.getByRole("region", { name: /Payments to confirm/ });
+  await expect(toConfirm.getByRole("listitem")).toContainText(reference!);
+  await toConfirm.getByRole("button", { name: /Mark .* payment as paid/ }).click();
+  await expect(panel.getByText(/You.re going/)).toBeVisible();
+  await expect(toConfirm).toHaveCount(0);
+
+  // back to Stripe for the rest of the run
+  await page.goto("/o/riverside-uni/settings");
+  await payments.getByLabel(/Through Stripe/).check();
+  await payments.getByRole("button", { name: "Use Stripe" }).click();
+  await expect(payments.getByText("Ready to sell tickets in AUD")).toBeVisible();
+});

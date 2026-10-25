@@ -26,6 +26,8 @@ export interface PublicEvent {
   ticketTypes: import("./event.interface").TicketType[];
   // discount codes work for this event
   hasCodes: boolean;
+  // tickets are paid to the organisers directly, not through Stripe
+  payDirectly: boolean;
   // its cover image, a path on the API; null for none
   coverUrl: string | null;
 }
@@ -39,4 +41,9 @@ export interface GuestPlaceInput {
 }
 
 /** POST .../places/confirm: a ticket, or (the event being full) a place in the queue. */
-export type GuestPlaceResult = { ticketToken: string } | { waitlistPosition: number } | { checkoutUrl: string };
+export type GuestPlaceResult =
+  | { ticketToken: string }
+  | { waitlistPosition: number }
+  | { checkoutUrl: string }
+  // paid to the organisers directly: the place is held, and how to pay (also emailed)
+  | { payment: import("./event.interface").DirectPayment };

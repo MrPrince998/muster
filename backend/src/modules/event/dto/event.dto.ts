@@ -20,6 +20,7 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { EventStatus, EventVisibility, REPEAT_EVERY, type RepeatEvery } from '../entities/event.entity.js';
+import { DirectPaymentDto } from '../../payment/dto/direct-payment.dto.js';
 
 const VISIBILITIES = Object.values(EventVisibility);
 export const EVENT_SCOPES = ['upcoming', 'past', 'drafts'] as const;
@@ -405,6 +406,9 @@ export class YourPaymentDto {
 
   @ApiProperty({ description: 'Giving the place back now refunds it' })
   refundable: boolean;
+
+  @ApiProperty({ description: 'Paid to the organisers directly: any refund is theirs to make' })
+  direct: boolean;
 }
 
 export class EventSeriesDto {
@@ -496,6 +500,16 @@ export class EventDto {
 
   @ApiProperty({ description: 'Places held by people paying for them right now' })
   heldCount: number;
+
+  @ApiPropertyOptional({
+    type: DirectPaymentDto,
+    nullable: true,
+    description: "A place held for you while you pay the organisers directly: how to pay for it",
+  })
+  yourPendingPayment: DirectPaymentDto | null;
+
+  @ApiProperty({ description: 'Payments waiting for an organiser to confirm (only for people who can edit it; else 0)' })
+  paymentsToConfirm: number;
 
   @ApiPropertyOptional({ type: YourPaymentDto, nullable: true, description: 'What you paid for your place, if anything' })
   yourPayment: YourPaymentDto | null;

@@ -17,6 +17,12 @@ import { newEventTemplate, type NewEventEmailData } from './templates/new-event.
 import { digestTemplate, type DigestEmailData } from './templates/digest.js';
 import { feedbackRequestTemplate, type FeedbackRequestEmailData } from './templates/feedback-request.js';
 import { eventMessageTemplate, type EventMessageEmailData } from './templates/event-message.js';
+import {
+  payDirectlyTemplate,
+  paymentDeclinedTemplate,
+  type PayDirectlyEmailData,
+  type PaymentDeclinedEmailData,
+} from './templates/pay-directly.js';
 
 export const APP_URL = Symbol('APP_URL');
 // the gap between emails in a bulk send: Resend accepts a few requests a second
@@ -43,6 +49,14 @@ export interface EventRecipient {
   registrationId: string;
   to: string;
   name: string;
+}
+
+/** Where an email about an event sends someone: into the app, or (a guest) to its public page. */
+export interface EventLink {
+  guest: boolean;
+  orgSlug: string;
+  clubId: string;
+  eventId: string;
 }
 
 export interface TokenEmail {
@@ -137,6 +151,38 @@ export class EmailService {
         ...this.calendarAttachment(calendar, data.eventTitle, data.clubName, data.where, url),
       ],
       idempotencyKey: `event-reminder/${registrationId}`,
+    });
+  }
+
+  /**
+   * How to pay the organisers for a place held at their event, with their
+   * QR code attached if they have one. Members' link opens the event in the
+   * app; a guest's, its public page. Once per checkout.
+   */
+  sendPayDirectly(
+    email: { to: string; checkoutId: string; qr: { filename: string; content: Buffer } | null; link: EventLink } & Omit<
+      PayDirectlyEmailData,
+      'url' | 'hasQr'
+    >,
+  ): Promise<void> {
+    const { to, checkoutId, qr, link, ...data } = email;
+    return this.sender.send({
+      to,
+      ...payDirectlyTemplate({ ...data, hasQr: !!qr, url: this.linkFor(link) }),
+      ...(qr && { attachments: [qr] }),
+      idempotencyKey: `pay-directly/${checkoutId}`,
+    });
+  }
+
+  /** The organisers couldn't find someone's payment: the place they held is on offer again. */
+  sendPaymentDeclined(
+    email: { to: string; checkoutId: string; link: EventLink } & Omit<PaymentDeclinedEmailData, 'url'>,
+  ): Promise<void> {
+    const { to, checkoutId, link, ...data } = email;
+    return this.sender.send({
+      to,
+      ...paymentDeclinedTemplate({ ...data, url: this.linkFor(link) }),
+      idempotencyKey: `payment-declined/${checkoutId}`,
     });
   }
 
@@ -291,6 +337,13 @@ export class EmailService {
     const url = new URL('/tickets', this.appUrl);
     url.searchParams.set('ticket', registrationId);
     return url.toString();
+  }
+
+  // a member's way to an event is in the app; a guest's, its public page
+  private linkFor(link: EventLink): string {
+    return link.guest
+      ? new URL(`/e/${link.eventId}`, this.appUrl).toString()
+      : this.eventUrl(link.orgSlug, link.clubId, link.eventId);
   }
 
   // the club's events with this one open: /o/:slug?club=…&event=…

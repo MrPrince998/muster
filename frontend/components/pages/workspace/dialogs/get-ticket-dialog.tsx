@@ -44,6 +44,7 @@ export function GetTicketDialog({
   onOpenChange,
   waitlist = false,
   timeZone,
+  payDirectly = false,
   onConfirm,
 }: {
   event: ClubEvent;
@@ -51,6 +52,8 @@ export function GetTicketDialog({
   onOpenChange: (open: boolean) => void;
   waitlist?: boolean;
   timeZone?: string;
+  // paid to the organisers directly: the place is held while they pay, no Stripe
+  payDirectly?: boolean;
   onConfirm: (choice: TicketChoice) => void;
 }) {
   const types = event.ticketTypes;
@@ -151,14 +154,20 @@ export function GetTicketDialog({
             <QuestionFields questions={event.questions} answers={answers} onChange={setAnswers} problems={problems} />
           )}
 
-          {paid && !waitlist && <TestCardNote />}
+          {paid && !waitlist && !payDirectly && <TestCardNote />}
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
             <Button type="submit">
-              {waitlist ? "Join the waitlist" : paid ? `Continue to pay ${ticketPrice(chosen!)}` : "Get my ticket"}
+              {waitlist
+                ? "Join the waitlist"
+                : paid
+                  ? payDirectly
+                    ? `Hold my place, ${ticketPrice(chosen!)}`
+                    : `Continue to pay ${ticketPrice(chosen!)}`
+                  : "Get my ticket"}
             </Button>
           </DialogFooter>
         </form>

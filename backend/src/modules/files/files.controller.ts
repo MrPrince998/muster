@@ -4,11 +4,15 @@ import type { Response } from 'express';
 import { Public } from '../../common/decorators/public.decorator.js';
 import { CONTENT_TYPES, FileStorage } from './file-storage.js';
 
+// events' cover images, and workspaces' payment QR codes
+const FOLDERS = new Set(['covers', 'qr']);
+
 /**
  * Uploaded files, for anyone with the link (an event's cover image shows on
- * its public page and in link previews). Keys are random, so a members-only
- * event's image can't be found by guessing; and a key's file never
- * changes, so browsers and proxies keep it for a year.
+ * its public page and in link previews; a workspace's payment QR code, to
+ * whoever is paying it). Keys are random, so a members-only event's image
+ * can't be found by guessing; and a key's file never changes, so browsers
+ * and proxies keep it for a year.
  */
 @ApiExcludeController()
 @Controller('files')
@@ -23,7 +27,7 @@ export class FilesController {
     @Res({ passthrough: true }) res: Response,
   ): Promise<StreamableFile> {
     const match = /^[a-z0-9-]{8,64}\.(webp|jpg|png)$/.exec(name);
-    if (folder !== 'covers' || !match) throw new NotFoundException();
+    if (!FOLDERS.has(folder) || !match) throw new NotFoundException();
     const file = await this.storage.get(`${folder}/${name}`);
     if (!file) throw new NotFoundException();
     res.setHeader('Content-Type', CONTENT_TYPES[match[1]]);

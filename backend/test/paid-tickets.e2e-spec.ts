@@ -68,8 +68,9 @@ describe('paid tickets', () => {
   });
 
   it('takes a price only once the workspace has connected Stripe', async () => {
-    expect((await as(ada).get(`/orgs/${orgId}/payments`).expect(200)).body).toEqual({
+    expect((await as(ada).get(`/orgs/${orgId}/payments`).expect(200)).body).toMatchObject({
       available: true,
+      method: 'stripe',
       connected: false,
       ready: false,
       currency: null,
@@ -83,7 +84,7 @@ describe('paid tickets', () => {
     await as(ada).post(`/orgs/${orgId}/payments/connect`).expect(403);
     const link = await as(owner).post(`/orgs/${orgId}/payments/connect`).expect(200);
     expect(decodeURIComponent(link.body.url)).toContain(`/o/${slug}/settings?stripe=return`);
-    expect((await as(owner).post(`/orgs/${orgId}/payments/refresh`).expect(200)).body).toEqual({
+    expect((await as(owner).post(`/orgs/${orgId}/payments/refresh`).expect(200)).body).toMatchObject({
       available: true,
       connected: true,
       ready: true,

@@ -35,6 +35,7 @@ import type {
 import { EventStatus, EventVisibility, type RepeatEvery } from './entities/event.entity.js';
 import { audit, AuditAction } from '../audit/audit.js';
 import { isUniqueViolation } from '../../common/utils/pg-errors.js';
+import { DIRECT_PAYMENT_FIELDS, type DirectPaymentRow, toDirectPayment } from '../payment/direct-payment.js';
 
 // a cover image, after the browser has resized it
 const MAX_COVER_BYTES = 2 * 1024 * 1024;
@@ -86,6 +87,9 @@ interface EventRow {
   held_count: number;
   your_paid_cents: number | null;
   your_paid_currency: string | null;
+  your_paid_directly: boolean | null;
+  your_pending_payment: DirectPaymentRow | null;
+  payments_to_confirm: number;
   sales_cents: number;
   questions: Question[];
 }
@@ -132,6 +136,14 @@ const SELECT_EVENTS = `
       WHERE r.event_id = e.id AND r.user_id = $2 AND r.cancelled_at IS NULL AND r.refunded_at IS NULL) AS your_paid_cents,
     (SELECT r.currency FROM registrations r
       WHERE r.event_id = e.id AND r.user_id = $2 AND r.cancelled_at IS NULL AND r.refunded_at IS NULL) AS your_paid_currency,
+    (SELECT r.paid_directly FROM registrations r
+      WHERE r.event_id = e.id AND r.user_id = $2 AND r.cancelled_at IS NULL) AS your_paid_directly,
+    (SELECT json_build_object(${DIRECT_PAYMENT_FIELDS})
+       FROM checkouts h JOIN organisations o ON o.id = h.org_id LEFT JOIN ticket_types t ON t.id = h.ticket_type_id
+      WHERE h.event_id = e.id AND h.user_id = $2 AND h.method = 'direct' AND h.status = 'pending'
+        AND h.expires_at > now()) AS your_pending_payment,
+    (SELECT count(*) FROM checkouts h
+      WHERE h.event_id = e.id AND h.method = 'direct' AND h.status = 'pending')::int AS payments_to_confirm,
     (SELECT coalesce(sum(r.amount_paid_cents), 0) FROM registrations r
       WHERE r.event_id = e.id AND r.amount_paid_cents IS NOT NULL AND r.refunded_at IS NULL)::int AS sales_cents,
     (SELECT count(*) FROM registrations r
@@ -1129,9 +1141,14 @@ export class EventService {
           ? {
               amountCents: row.your_paid_cents,
               currency: row.your_paid_currency,
-              refundable: Date.now() < row.starts_at.getTime() - (row.refund_cutoff_hours ?? 48) * 3_600_000,
+              // paid to the organisers: giving it back is between you and them
+              direct: !!row.your_paid_directly,
+              refundable:
+                !row.your_paid_directly && Date.now() < row.starts_at.getTime() - (row.refund_cutoff_hours ?? 48) * 3_600_000,
             }
           : null,
+      yourPendingPayment: row.your_pending_payment ? toDirectPayment(row.your_pending_payment) : null,
+      paymentsToConfirm: canManage(access, row.created_by) ? (row.payments_to_confirm ?? 0) : 0,
       salesCents:
         canManage(access, row.created_by) && (row.ticket_types ?? []).some((t) => t.price_cents > 0) ? (row.sales_cents ?? 0) : null,
       questions: row.questions ?? [],

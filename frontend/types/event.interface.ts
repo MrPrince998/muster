@@ -49,8 +49,13 @@ export interface ClubEvent {
   refundCutoffHours: number;
   // places held by people paying for them right now
   heldCount: number;
-  // what you paid for your place, and whether giving it back now refunds it
-  yourPayment: (Price & { refundable: boolean }) | null;
+  // what you paid for your place, whether giving it back now refunds it, and
+  // whether it was paid to the organisers directly (refunds are theirs to make)
+  yourPayment: (Price & { refundable: boolean; direct: boolean }) | null;
+  // a place held for you while you pay the organisers directly
+  yourPendingPayment: DirectPayment | null;
+  // payments waiting for an organiser to confirm; 0 for people who can't edit it
+  paymentsToConfirm: number;
   // takings less refunds; only for people who can edit it
   salesCents: number | null;
   // what people taking a place are asked
@@ -175,4 +180,34 @@ export interface PastEventsPage {
   // pass as `before` for the next page; null at the end
   next: string | null;
   total: number;
+}
+
+/** A place held while someone pays the organisers directly: how much, how, the reference, and by when. */
+export interface DirectPayment {
+  checkoutId: string;
+  reference: string;
+  amountCents: number;
+  currency: string;
+  ticketType: string | null;
+  // the organisers' own words: eSewa ID, bank account, cash at the door
+  instructions: string;
+  // their payment QR code, a path on the API
+  qrUrl: string | null;
+  expiresAt: string;
+}
+
+/** Someone's payment waiting for an organiser to say it arrived. */
+export interface PendingDirectPayment {
+  id: string;
+  name: string;
+  email: string;
+  guest: boolean;
+  reference: string;
+  amountCents: number;
+  currency: string;
+  ticketType: string | null;
+  createdAt: string;
+  expiresAt: string;
+  // the hold ran out: the place is on offer again, though it can still be confirmed if there's room
+  expired: boolean;
 }

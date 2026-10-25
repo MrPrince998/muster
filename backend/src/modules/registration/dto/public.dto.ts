@@ -2,6 +2,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
 import { IsEmail, IsNotEmpty, IsString, MaxLength, IsObject, IsOptional, IsUUID } from 'class-validator';
 import { PriceDto, QuestionDto, TicketTypeDto } from '../../event/dto/event.dto.js';
+import { DirectPaymentDto } from '../../payment/dto/direct-payment.dto.js';
 
 const trim = ({ value }: { value: unknown }) => (typeof value === 'string' ? value.trim() : value);
 
@@ -37,6 +38,9 @@ export class PublicEventDto {
 
   @ApiProperty({ description: 'Discount codes work for this event: offer a box for one' })
   hasCodes: boolean;
+
+  @ApiProperty({ description: 'Tickets are paid to the organisers directly, not through Stripe' })
+  payDirectly: boolean;
 
   @ApiPropertyOptional({ type: String, nullable: true, description: 'Its cover image, a path on the API (/files/...)' })
   coverUrl: string | null;
@@ -91,4 +95,10 @@ export class GuestPlaceResultDto {
 
   @ApiPropertyOptional({ description: 'A paid event: Stripe checkout, where the place is bought (held half an hour)' })
   checkoutUrl?: string;
+
+  @ApiPropertyOptional({
+    type: () => DirectPaymentDto,
+    description: 'A paid event whose organisers are paid directly: the place held, and how to pay for it (also emailed)',
+  })
+  payment?: DirectPaymentDto;
 }
