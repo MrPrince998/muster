@@ -1,7 +1,7 @@
 /** Something picked from search, remembered so it's one keypress away next time. */
 export interface RecentPick {
   key: string;
-  kind: "workspace" | "club" | "event" | "person";
+  kind: "workspace" | "club" | "event" | "person" | "page";
   label: string;
   detail: string;
   href: string;

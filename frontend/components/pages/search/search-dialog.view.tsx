@@ -1,7 +1,7 @@
 "use client";
 
 import { Command as CommandPrimitive } from "cmdk";
-import { History, LoaderCircle, SearchIcon, X } from "lucide-react";
+import { CornerDownRight, History, LoaderCircle, SearchIcon, X } from "lucide-react";
 import {
   Command,
   CommandDialog,
@@ -14,6 +14,7 @@ import { cn } from "@/lib/utils";
 import type { ClubHit, EventHit, PersonHit, SearchResult, WorkspaceHit } from "@/types";
 import { stubParts } from "../workspace/org-home/parts/format";
 import { initialsOf } from "../workspace/org-rail/org-rail.view";
+import type { PageHit } from "./parts/app-pages";
 import type { RecentPick } from "./parts/recent-searches";
 
 export type SearchState =
@@ -28,8 +29,10 @@ export type SearchState =
  * it highlighted whenever the results change, so Enter always opens the top
  * match (cmdk would otherwise hold on to a row that's no longer there).
  */
-export function firstRowValue(state: SearchState, recent: RecentPick[]): string {
+export function firstRowValue(state: SearchState, recent: RecentPick[], pages: PageHit[]): string {
   if (state.kind === "idle") return recent[0] ? `recent:${recent[0].key}` : "";
+  if (state.kind === "too-short") return "";
+  if (pages[0]) return pages[0].key;
   if (state.kind !== "results") return "";
   const { events, clubs, workspaces, people } = state.result;
   if (events[0]) return `event:${events[0].id}`;
@@ -48,6 +51,9 @@ export interface SearchDialogViewProps {
   selected: string;
   onSelectedChange: (value: string) => void;
   state: SearchState;
+  // the app's own pages that match, shown first and at once (no request)
+  pages: PageHit[];
+  onPickPage: (hit: PageHit) => void;
   recent: RecentPick[];
   onClearRecent: () => void;
   onPickRecent: (pick: RecentPick) => void;
@@ -74,7 +80,7 @@ export default function SearchDialogView(props: SearchDialogViewProps) {
       open={open}
       onOpenChange={onOpenChange}
       title="Search"
-      description="Find workspaces, clubs, events and people"
+      description="Find pages, workspaces, clubs, events and people"
       className="sm:max-w-xl"
     >
       {/* results come from the server already ranked: cmdk mustn't filter or reorder them */}
@@ -93,7 +99,7 @@ export default function SearchDialogView(props: SearchDialogViewProps) {
           <CommandPrimitive.Input
             value={text}
             onValueChange={onTextChange}
-            placeholder="Search clubs, events and people"
+            placeholder="Search pages, clubs, events and people"
             className="h-14 w-full bg-transparent text-base outline-hidden placeholder:text-muted-foreground"
           />
           {text && (
@@ -134,7 +140,7 @@ function Body(props: SearchDialogViewProps) {
 
   if (state.kind === "idle") {
     if (recent.length === 0) {
-      return <Hint>Find any workspace, club, event or person you share a workspace with.</Hint>;
+      return <Hint>Find a page, or any workspace, club, event or person you share a workspace with.</Hint>;
     }
     return (
       <CommandGroup
@@ -169,16 +175,52 @@ function Body(props: SearchDialogViewProps) {
     );
   }
   if (state.kind === "too-short") return <Hint>Keep typing: at least 2 letters.</Hint>;
-  if (state.kind === "loading") return <Skeleton />;
-  if (state.kind === "failed") return <Hint>Search isn&rsquo;t working right now. Try again in a moment.</Hint>;
+
+  const pages = props.pages.length > 0 && (
+    <CommandGroup heading="Pages">
+      {props.pages.map((hit) => (
+        <Row
+          key={hit.key}
+          value={hit.key}
+          onSelect={() => props.onPickPage(hit)}
+          lead={
+            <Tile tone="muted">
+              <CornerDownRight className="size-4" aria-hidden />
+            </Tile>
+          }
+          label={hit.label}
+          detail={hit.detail}
+        />
+      ))}
+    </CommandGroup>
+  );
+
+  if (state.kind === "loading") {
+    return (
+      <>
+        {pages}
+        <Skeleton />
+      </>
+    );
+  }
+  if (state.kind === "failed") {
+    return (
+      <>
+        {pages}
+        <Hint>Search isn&rsquo;t working right now. Try again in a moment.</Hint>
+      </>
+    );
+  }
 
   const { workspaces, clubs, events, people } = state.result;
   if (workspaces.length + clubs.length + events.length + people.length === 0) {
     return (
-      <Hint>
-        Nothing matches &ldquo;<span className="font-medium text-foreground">{text.trim()}</span>&rdquo;. Check the
-        spelling, or try fewer letters.
-      </Hint>
+      pages || (
+        <Hint>
+          Nothing matches &ldquo;<span className="font-medium text-foreground">{text.trim()}</span>&rdquo;. Check the
+          spelling, or try fewer letters.
+        </Hint>
+      )
     );
   }
   // the workspace name is only worth showing when results span several
@@ -188,6 +230,7 @@ function Body(props: SearchDialogViewProps) {
 
   return (
     <>
+      {pages}
       {events.length > 0 && (
         <CommandGroup heading="Events">
           {events.map((hit) => (

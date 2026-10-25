@@ -102,7 +102,7 @@ const Navbar = () => {
           className="flex h-9 min-w-0 flex-1 items-center gap-2 rounded-lg border bg-muted/60 px-3 text-sm text-muted-foreground transition-colors hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none sm:max-w-sm"
         >
           <SearchIcon className="size-4 shrink-0" aria-hidden />
-          <span className="truncate">Search clubs, events and people</span>
+          <span className="truncate">Search pages, clubs, events and people</span>
           {modifier && (
             <Kbd className="ml-auto hidden sm:inline-flex">
               {modifier === "⌘" ? "⌘K" : "Ctrl K"}

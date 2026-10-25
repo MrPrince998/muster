@@ -1,9 +1,11 @@
 "use client";
 
 import { useDebouncedValue } from "@tanstack/react-pacer";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
 import { stubParts } from "../workspace/org-home/parts/format";
+import { useMyOrganisations } from "../workspace/services/organisation.service";
+import { matchPages } from "./parts/app-pages";
 import { forgetRecent, readRecent, rememberPick, type RecentPick } from "./parts/recent-searches";
 import SearchDialogView, { firstRowValue, type SearchState } from "./search-dialog.view";
 import { SEARCH_MIN_LENGTH, useSearch } from "./services/search.service";
@@ -26,6 +28,10 @@ export default function SearchDialogContainer({
   // debounce the trimmed text: spaces alone never send a request
   const [query] = useDebouncedValue(trimmed, { wait: SEARCH_WAIT_MS });
   const search = useSearch(query);
+  // the app's own pages match as you type, before the debounce: they're local
+  const organisations = useMyOrganisations();
+  const currentSlug = usePathname().match(/^\/o\/([^/]+)/)?.[1] ?? null;
+  const pages = trimmed.length >= SEARCH_MIN_LENGTH ? matchPages(trimmed, organisations.data ?? [], currentSlug) : [];
 
   const [selected, setSelected] = useState("");
   const [shownFirst, setShownFirst] = useState("");
@@ -54,7 +60,7 @@ export default function SearchDialogContainer({
             : { kind: "loading" };
 
   // new results: highlight the top one
-  const first = firstRowValue(state, recent);
+  const first = firstRowValue(state, recent, pages);
   if (first !== shownFirst) {
     setShownFirst(first);
     setSelected(first);
@@ -75,6 +81,8 @@ export default function SearchDialogContainer({
       selected={selected}
       onSelectedChange={setSelected}
       state={state}
+      pages={pages}
+      onPickPage={(hit) => go({ key: hit.key, kind: "page", label: hit.label, detail: hit.detail, href: hit.href })}
       recent={recent}
       onClearRecent={() => {
         forgetRecent();

@@ -4,12 +4,28 @@ import { DEMO, expect, openClub, openEvent, RIVERSIDE, test } from "./helpers";
 
 test("search finds an event and opens it", async ({ page }) => {
   await page.goto(`/o/${RIVERSIDE}`);
-  await page.getByRole("button", { name: /Search clubs, events and people/ }).click();
+  await page.getByRole("button", { name: /Search pages, clubs, events and people/ }).click();
   const search = page.getByRole("dialog");
   await search.getByRole("combobox").fill("ghibli");
   await expect(search.getByRole("option", { name: /Studio Ghibli Night/ })).toBeVisible();
   await page.keyboard.press("Enter");
   await expect(page.getByRole("complementary", { name: "Studio Ghibli Night" })).toBeVisible();
+});
+
+test("search goes straight to a page: tickets, or a workspace's settings", async ({ page }) => {
+  await page.goto(`/o/${RIVERSIDE}`);
+  await page.getByRole("button", { name: /Search pages, clubs, events and people/ }).click();
+  const search = page.getByRole("dialog");
+  await search.getByRole("combobox").fill("ticket");
+  await expect(search.getByRole("option", { name: /My tickets/ })).toBeVisible();
+  await page.keyboard.press("Enter");
+  await expect(page).toHaveURL(/\/tickets$/);
+
+  await page.getByRole("button", { name: /Search pages, clubs, events and people/ }).click();
+  // by another word for it
+  await search.getByRole("combobox").fill("time zone");
+  await search.getByRole("option", { name: /Workspace settings/ }).click();
+  await expect(page).toHaveURL(new RegExp(`/o/${RIVERSIDE}/settings$`));
 });
 
 test("the account page shows your pass", async ({ page }) => {
