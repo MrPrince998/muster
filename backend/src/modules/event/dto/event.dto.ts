@@ -569,6 +569,53 @@ export class EventAttendeeDto {
   answers: Record<string, string>;
 }
 
+/** A page of who's going: ?after= continues. */
+export class AttendeesQuery {
+  /** The `next` of the page before */
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  after?: string;
+
+  @ApiPropertyOptional({ default: 50, maximum: 100 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  limit?: number;
+}
+
+/** How everyone going answered one question: the count per choice, or how many answered a text one. */
+export class AnswerTallyDto {
+  @ApiProperty()
+  questionId: string;
+
+  @ApiProperty({ description: 'How many going gave an answer' })
+  answered: number;
+
+  @ApiProperty({
+    type: 'object',
+    additionalProperties: { type: 'number' },
+    description: 'For a choice question: how many chose each option (empty for a text one)',
+  })
+  options: Record<string, number>;
+}
+
+export class AttendeesPageDto {
+  @ApiProperty({ type: [EventAttendeeDto] })
+  attendees: EventAttendeeDto[];
+
+  @ApiPropertyOptional({ type: String, nullable: true, description: 'Pass as `after` for the next page; null at the end' })
+  next: string | null;
+
+  @ApiProperty({ description: "How many are going (or registered, once it's over)" })
+  total: number;
+
+  @ApiProperty({ type: [AnswerTallyDto], description: "Every question's tally, over everyone going (not just this page)" })
+  tallies: AnswerTallyDto[];
+}
+
 export class MyRegistrationDto {
   @ApiProperty({ format: 'uuid', description: 'The ticket id' })
   id: string;

@@ -77,3 +77,10 @@ export interface UpdateOrganisationInput {
   // an IANA name, e.g. "Australia/Perth"
   timeZone?: string;
 }
+
+/** GET /orgs/:orgId/join-requests: a page of the queue (pending oldest first, decided newest first). */
+export interface JoinRequestsPage {
+  requests: JoinRequest[];
+  next: string | null;
+  total: number;
+}

@@ -1,8 +1,7 @@
 import { keepPreviousData, useInfiniteQuery } from "@tanstack/react-query";
 import { request } from "@/lib/api/client";
 import { useApiMutation } from "@/lib/api/useApiMutation";
-import { useApiQuery } from "@/lib/api/useApiQuery";
-import type { JoinRequest, JoinRequestStatus, OrgMembersPage, OrgRole } from "@/types/organisation.interface";
+import type { JoinRequestsPage, JoinRequestStatus, OrgMembersPage, OrgRole } from "@/types/organisation.interface";
 import { MY_ORGANISATIONS } from "./organisation.service";
 
 // Everything that changes who is in a workspace refreshes the same things:
@@ -63,13 +62,20 @@ export const useLeaveOrganisation = (orgId: string) =>
     { invalidates: [MY_ORGANISATIONS] },
   );
 
-/** Requests to join, newest decisions or oldest pending first (moderators and up). */
+/** Requests to join, oldest pending or newest decisions first, 50 at a time (moderators and up). */
 export const useJoinRequests = (orgId: string | undefined, status: JoinRequestStatus) =>
-  useApiQuery<JoinRequest[]>(
-    ["orgs", orgId ?? "", "join-requests", status],
-    { url: `/orgs/${orgId}/join-requests`, params: { status } },
-    { enabled: !!orgId },
-  );
+  useInfiniteQuery({
+    queryKey: ["orgs", orgId ?? "", "join-requests", status],
+    queryFn: ({ pageParam, signal }) =>
+      request<JoinRequestsPage>({
+        url: `/orgs/${orgId}/join-requests`,
+        params: { status, ...(pageParam && { after: pageParam }), limit: 50 },
+        signal,
+      }),
+    initialPageParam: null as string | null,
+    getNextPageParam: (last) => last.next,
+    enabled: !!orgId,
+  });
 
 /** Let them in: they join the workspace and its default club. */
 export const useApproveJoinRequest = (orgId: string) =>

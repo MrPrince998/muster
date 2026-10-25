@@ -76,3 +76,10 @@ export interface ClubRole {
   // below your own role: you can give, edit, move or delete it
   assignable: boolean;
 }
+
+/** GET /clubs/:clubId/join-requests: a page of the people waiting, oldest first. */
+export interface ClubJoinRequestsPage {
+  requests: ClubJoinRequest[];
+  next: string | null;
+  total: number;
+}

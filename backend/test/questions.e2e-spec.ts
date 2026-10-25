@@ -25,7 +25,7 @@ const as = (u: TestUser) => ({
   delete: (path: string) => t.api().delete(path).set('Authorization', u.auth),
 });
 const attendees = async () =>
-  (await as(owner).get(`/clubs/${clubId}/events/${eventId}/registrations`).expect(200)).body as {
+  (await as(owner).get(`/clubs/${clubId}/events/${eventId}/registrations`).expect(200)).body.attendees as {
     name: string;
     answers: Record<string, string>;
   }[];
@@ -150,7 +150,9 @@ describe('registration questions', () => {
         }),
       )
       .expect(200);
-    const list = (await as(owner).get(`/clubs/${clubId}/events/${paid.body.id}/registrations`).expect(200)).body;
-    expect(list[0].answers).toEqual({ [course]: 'Fish' });
+    const page = (await as(owner).get(`/clubs/${clubId}/events/${paid.body.id}/registrations`).expect(200)).body;
+    expect(page.attendees[0].answers).toEqual({ [course]: 'Fish' });
+    // the tally counts it, over everyone going
+    expect(page.tallies.find((x: { questionId: string }) => x.questionId === course)).toMatchObject({ answered: 1, options: { Fish: 1 } });
   });
 });

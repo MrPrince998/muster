@@ -5,7 +5,7 @@ import { useCallback, useRef, useState } from "react";
 import { asApiError } from "@/lib/api/client";
 import type { CheckInResult } from "@/types/ticket.interface";
 import { useWorkspace } from "../org-shell/workspace-context";
-import { useEvent, useEventAttendees } from "../services/event.service";
+import { useDoorAttendees, useEvent } from "../services/event.service";
 import { useCheckIn, useManualCheckIn } from "../services/ticket.service";
 import CheckInView, { type DoorResult } from "./check-in.view";
 import { useOfflineDoor } from "./use-offline-door";
@@ -37,7 +37,7 @@ export default function CheckInContainer() {
   const canListAttendees = !!club?.permissions.includes("registration.view");
 
   const event = useEvent(canScan ? clubId : undefined, eventId);
-  const attendees = useEventAttendees(clubId, eventId, canScan && canListAttendees);
+  const attendees = useDoorAttendees(clubId, eventId, canScan && canListAttendees);
   const checkIn = useCheckIn(clubId, eventId);
   const manual = useManualCheckIn(clubId, eventId);
   const [result, setResult] = useState<DoorResult | null>(null);

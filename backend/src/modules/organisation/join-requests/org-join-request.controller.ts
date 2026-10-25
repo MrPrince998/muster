@@ -5,7 +5,7 @@ import { CurrentOrgMember } from '../decorators/current-org-member.decorator.js'
 import { RequireOrgRole } from '../decorators/require-org-role.decorator.js';
 import { OrgRole } from '../entities/org-member.entity.js';
 import type { OrgMembership } from '../org-roles.js';
-import { JoinRequestDto, ListJoinRequestsQuery } from './dto/join-request.dto.js';
+import { JoinRequestsPageDto, ListJoinRequestsQuery } from './dto/join-request.dto.js';
 import { OrgJoinRequestService } from './org-join-request.service.js';
 
 const alreadyDecided = {
@@ -22,9 +22,9 @@ export class OrgJoinRequestController {
   /** Requests to join (moderators and above) */
   @Get()
   @RequireOrgRole(OrgRole.Moderator)
-  @ApiOkResponse({ type: [JoinRequestDto] })
-  list(@CurrentOrgMember() me: OrgMembership, @Query() { status }: ListJoinRequestsQuery): Promise<JoinRequestDto[]> {
-    return this.joinRequests.list(me, status);
+  @ApiOkResponse({ type: JoinRequestsPageDto })
+  list(@CurrentOrgMember() me: OrgMembership, @Query() query: ListJoinRequestsQuery): Promise<JoinRequestsPageDto> {
+    return this.joinRequests.list(me, query);
   }
 
   /** Let them in: they join the workspace and its default club */

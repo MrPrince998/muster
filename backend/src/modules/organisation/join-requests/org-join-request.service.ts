@@ -1,12 +1,13 @@
 import { Injectable } from '@nestjs/common';
 import type { EntityManager } from 'typeorm';
 import { HttpError } from '../../../common/errors/http-error.js';
+import { cursorAt, decodeTimeCursor, encodeTimeCursor } from '../../../common/utils/time-cursor.js';
 import { isUniqueViolation } from '../../../common/utils/pg-errors.js';
 import { TenantService } from '../../../database/tenant.service.js';
 import { EmailService } from '../../email/email.service.js';
 import { OrgJoinRequestStatus } from '../entities/org-join-request.entity.js';
 import type { OrgMembership } from '../org-roles.js';
-import type { JoinRequestDto, MyJoinRequestDto } from './dto/join-request.dto.js';
+import type { JoinRequestsPageDto, MyJoinRequestDto } from './dto/join-request.dto.js';
 import { audit, AuditAction } from '../../audit/audit.js';
 
 // after a rejection, the same person must wait before asking again
@@ -80,8 +81,20 @@ export class OrgJoinRequestService {
     if (rows.length === 0) throw requestNotFound();
   }
 
-  /** The moderators' queue: pending by default, oldest first. */
-  list(me: OrgMembership, status: OrgJoinRequestStatus = OrgJoinRequestStatus.Pending): Promise<JoinRequestDto[]> {
+  /**
+   * The moderators' queue, a page at a time: pending ones oldest first (who's
+   * waited longest), decided ones newest first. `after` is the `next` of the
+   * page before (keyset on asked, then id).
+   */
+  list(
+    me: OrgMembership,
+    query: { status?: OrgJoinRequestStatus; after?: string; limit?: number } = {},
+  ): Promise<JoinRequestsPageDto> {
+    const status = query.status ?? OrgJoinRequestStatus.Pending;
+    const limit = query.limit ?? 50;
+    const cursor = query.after ? decodeTimeCursor(query.after) : null;
+    if (query.after && !cursor) throw HttpError.badRequest('A wrong page cursor', 'INVALID_CURSOR');
+    const oldestFirst = status === OrgJoinRequestStatus.Pending;
     return this.tenant.withTenant(me.orgId, async (m) => {
       const rows: {
         id: string;
@@ -91,28 +104,41 @@ export class OrgJoinRequestService {
         message: string | null;
         status: OrgJoinRequestStatus;
         created_at: Date;
+        cursor_at: string;
         decided_at: Date | null;
         decided_by: string | null;
       }[] = await m.query(
-        `SELECT r.id, r.user_id, u.name, u.email, r.message, r.status, r.created_at, r.decided_at, r.decided_by
+        `SELECT r.id, r.user_id, u.name, u.email, r.message, r.status, r.created_at, ${cursorAt('r.created_at')} AS cursor_at,
+                r.decided_at, r.decided_by
          FROM org_join_requests r
          JOIN users u ON u.id = r.user_id
          WHERE r.org_id = $1 AND r.status = $2
-         ORDER BY r.created_at ${status === OrgJoinRequestStatus.Pending ? 'ASC' : 'DESC'}
-         LIMIT 200`,
+           AND ($3::timestamptz IS NULL OR (r.created_at, r.id) ${oldestFirst ? '>' : '<'} ($3, $4::uuid))
+         ORDER BY r.created_at ${oldestFirst ? 'ASC' : 'DESC'}, r.id ${oldestFirst ? 'ASC' : 'DESC'}
+         LIMIT $5`,
+        [me.orgId, status, cursor?.at ?? null, cursor?.id ?? null, limit + 1],
+      );
+      const [{ total }]: { total: number }[] = await m.query(
+        `SELECT count(*)::int AS total FROM org_join_requests WHERE org_id = $1 AND status = $2`,
         [me.orgId, status],
       );
-      return rows.map((r) => ({
-        id: r.id,
-        userId: r.user_id,
-        name: r.name,
-        email: r.email,
-        message: r.message,
-        status: r.status,
-        createdAt: r.created_at,
-        decidedAt: r.decided_at,
-        decidedBy: r.decided_by,
-      }));
+      const page = rows.slice(0, limit);
+      const last = page[page.length - 1];
+      return {
+        requests: page.map((r) => ({
+          id: r.id,
+          userId: r.user_id,
+          name: r.name,
+          email: r.email,
+          message: r.message,
+          status: r.status,
+          createdAt: r.created_at,
+          decidedAt: r.decided_at,
+          decidedBy: r.decided_by,
+        })),
+        next: rows.length > limit ? encodeTimeCursor(last.cursor_at, last.id) : null,
+        total,
+      };
     });
   }
 

@@ -133,7 +133,7 @@ describe('club join settings', () => {
 
     const pending = (
       await as(owner).get(`/clubs/${chessId}/join-requests`).expect(200)
-    ).body;
+    ).body.requests;
     expect(pending).toHaveLength(1);
     expect(pending[0]).toMatchObject({
       name: bo.name,
@@ -168,7 +168,7 @@ describe('club join settings', () => {
       .delete(`/orgs/${orgId}/club-directory/${chessId}/join-request`)
       .expect(404);
     expect(
-      (await as(owner).get(`/clubs/${chessId}/join-requests`).expect(200)).body,
+      (await as(owner).get(`/clubs/${chessId}/join-requests`).expect(200)).body.requests,
     ).toHaveLength(0);
   });
 
@@ -256,7 +256,7 @@ describe("a club's own link", () => {
     await setPolicy('request');
     expect((await as(eve).post(`${link}/join`, { message: 'Hi' }).expect(200)).body.status).toBe('requested');
     expect((await as(eve).get(link).expect(200)).body).toMatchObject({ requested: true, inWorkspace: false });
-    const [request] = (await as(owner).get(`/clubs/${chessId}/join-requests`).expect(200)).body;
+    const [request] = (await as(owner).get(`/clubs/${chessId}/join-requests`).expect(200)).body.requests;
     expect(request).toMatchObject({ name: eve.name, message: 'Hi', viaLink: false });
     await as(owner).post(`/clubs/${chessId}/join-requests/${request.id}/approve`).expect(204);
     expect((await as(eve).get(link).expect(200)).body).toMatchObject({ inWorkspace: true, isMember: true });
@@ -269,7 +269,7 @@ describe("a club's own link", () => {
     expect((await as(zed).post(`${link}/join`, { message: 'Chess!' }).expect(200)).body.status).toBe('workspace_requested');
     expect((await as(zed).get(link).expect(200)).body).toMatchObject({ workspaceRequested: true, inWorkspace: false });
     expect((await as(zed).post(`${link}/join`).expect(409)).body.code).toBe('REQUEST_PENDING');
-    const queue = (await as(owner).get(`/orgs/${orgId}/join-requests`).expect(200)).body;
+    const queue = (await as(owner).get(`/orgs/${orgId}/join-requests`).expect(200)).body.requests;
     expect(queue.map((r: { name: string }) => r.name)).toContain(zed.name);
     await as(owner).patch(`/orgs/${orgId}`, { joinPolicy: 'open' }).expect(200);
   });

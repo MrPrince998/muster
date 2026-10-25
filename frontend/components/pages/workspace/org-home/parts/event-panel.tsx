@@ -36,6 +36,7 @@ import { cn } from "@/lib/utils";
 import type {
   Answers,
   ClubEvent,
+  AnswerTally,
   EventAttendee,
   SeriesScope,
 } from "@/types/event.interface";
@@ -94,7 +95,17 @@ export interface EventPanelProps {
   // checkin.scan in this club, and where the scanner for this event lives
   canScan: boolean;
   scanHref: string;
-  attendees: { list: EventAttendee[]; loading: boolean; failed: boolean };
+  // the first page of who's going, more on request; tallies cover everyone
+  attendees: {
+    list: EventAttendee[];
+    total: number;
+    tallies: AnswerTally[];
+    loading: boolean;
+    failed: boolean;
+    hasMore: boolean;
+    loadingMore: boolean;
+    onMore: () => void;
+  };
   pending: PanelAction | null;
   error: string | null;
   // with the answers to the event's questions, when it asks any
@@ -341,7 +352,7 @@ function PanelBody(props: EventPanelProps & { event: ClubEvent }) {
         <WhosGoing {...props} ended={ended} />
       )}
       {props.canViewAttendees && !draft && (
-        <AnswersSummary event={event} attendees={props.attendees.list} />
+        <AnswersSummary event={event} total={props.attendees.total} tallies={props.attendees.tallies} />
       )}
     </div>
   );
@@ -962,8 +973,8 @@ function WhosGoing({
       setDownloading(false);
     }
   };
-  const shown = attendees.list.slice(0, 8);
-  const more = attendees.list.length - shown.length;
+  const shown = attendees.list;
+  const more = Math.max(0, attendees.total - shown.length);
 
   return (
     <section aria-labelledby="whos-going">
@@ -1036,9 +1047,19 @@ function WhosGoing({
               )}
             </li>
           ))}
-          {more > 0 && (
-            <li className="pl-9.5 text-sm text-muted-foreground">
-              and {more} more
+          {more > 0 && attendees.hasMore && (
+            <li className="pl-9.5">
+              <button
+                type="button"
+                onClick={attendees.onMore}
+                disabled={attendees.loadingMore}
+                className="inline-flex items-center gap-1.5 text-sm font-medium text-cobalt underline-offset-4 hover:underline disabled:opacity-60"
+              >
+                {attendees.loadingMore && (
+                  <LoaderCircle className="size-3.5 animate-spin" aria-hidden />
+                )}
+                Show {Math.min(more, 20)} more of {more}
+              </button>
             </li>
           )}
         </ul>

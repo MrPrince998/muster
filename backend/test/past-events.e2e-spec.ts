@@ -9,6 +9,7 @@ import { createTestApp, type TestUser } from './support/test-app.js';
 let t: Awaited<ReturnType<typeof createTestApp>>;
 let owner: TestUser;
 let clubId = '';
+let orgSlug = '';
 // the table owner's connection: moving events into the past goes around the API (and RLS)
 let db: DataSource;
 
@@ -18,7 +19,8 @@ beforeAll(async () => {
   t = await createTestApp();
   db = await new DataSource({ type: 'postgres', url: process.env.MIGRATION_DATABASE_URL }).initialize();
   owner = await t.user('Olive');
-  const org = await t.api().post('/orgs').set('Authorization', owner.auth).send({ name: `Past ${t.suffix}` }).expect(201);
+  const org = await t.api().post('/orgs').set('Authorization', owner.auth).send({ name: `Past ${t.suffix}`, joinPolicy: 'open' }).expect(201);
+  orgSlug = org.body.slug;
   clubId = (await t.api().get(`/orgs/${org.body.id}/clubs`).set('Authorization', owner.auth).expect(200)).body[0].id;
   // five that are over, one coming up
   for (const [i, days] of [-1, -2, -3, -4, -5, 3].entries()) {
@@ -59,5 +61,28 @@ describe('past events', () => {
   it('refuses a cursor it did not make', async () => {
     const res = await t.api().get(`/clubs/${clubId}/events/past?before=nope`).set('Authorization', owner.auth).expect(400);
     expect(res.body.code).toBe('INVALID_CURSOR');
+  });
+});
+
+describe("who's going", () => {
+  it('comes a page at a time too, in the order they registered', async () => {
+    const event = await t
+      .api()
+      .post(`/clubs/${clubId}/events`)
+      .set('Authorization', owner.auth)
+      .send({ title: 'Big Night', startsAt: inDays(5), endsAt: inDays(5.1), publish: true })
+      .expect(201);
+    const people = [await t.user('Ada'), await t.user('Bo'), await t.user('Cy')];
+    for (const person of people) {
+      await t.api().post(`/orgs/by-slug/${orgSlug}/join`).set('Authorization', person.auth).expect(201);
+      await t.api().post(`/clubs/${clubId}/events/${event.body.id}/my-registration`).set('Authorization', person.auth).expect(201);
+    }
+    const path = `/clubs/${clubId}/events/${event.body.id}/registrations`;
+    const first = (await t.api().get(`${path}?limit=2`).set('Authorization', owner.auth).expect(200)).body;
+    expect(first).toMatchObject({ total: 3, tallies: [] });
+    expect(first.attendees.map((a: { name: string }) => a.name)).toEqual(['Ada', 'Bo']);
+    const second = (await t.api().get(`${path}?limit=2&after=${first.next}`).set('Authorization', owner.auth).expect(200)).body;
+    expect(second.attendees.map((a: { name: string }) => a.name)).toEqual(['Cy']);
+    expect(second.next).toBeNull();
   });
 });

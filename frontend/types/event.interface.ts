@@ -120,6 +120,24 @@ export interface EventAttendee {
   answers: Answers;
 }
 
+/** How everyone going answered one question. */
+export interface AnswerTally {
+  questionId: string;
+  // how many gave an answer
+  answered: number;
+  // choice questions: how many chose each option (empty for text ones)
+  options: Record<string, number>;
+}
+
+/** GET /clubs/:clubId/events/:eventId/registrations: a page of who's going. */
+export interface AttendeesPage {
+  attendees: EventAttendee[];
+  next: string | null;
+  total: number;
+  // over everyone going, not just this page
+  tallies: AnswerTally[];
+}
+
 export interface EventInput {
   title: string;
   description?: string;

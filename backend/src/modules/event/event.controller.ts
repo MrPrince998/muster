@@ -39,6 +39,8 @@ import {
   DiscountCodeDto,
   EventMessageDto,
   ListEventsQuery,
+  AttendeesPageDto,
+  AttendeesQuery,
   PastEventsPageDto,
   PastEventsQuery,
   UpdateDiscountCodeDto,
@@ -331,12 +333,14 @@ export class EventController {
   /** Who's going */
   @Get(':eventId/registrations')
   @RequirePermission(Permission.RegistrationView)
-  @ApiOkResponse({ type: [EventAttendeeDto] })
+  @ApiOkResponse({ type: AttendeesPageDto })
   @ApiNotFoundResponse(error('No such event (EVENT_NOT_FOUND)'))
+  @ApiBadRequestResponse(error('A wrong page cursor (INVALID_CURSOR)'))
   attendees(
     @CurrentClubAccess() access: ClubAccess,
     @Param('eventId', ParseUUIDPipe) eventId: string,
-  ): Promise<EventAttendeeDto[]> {
-    return this.events.attendees(access, eventId);
+    @Query() query: AttendeesQuery,
+  ): Promise<AttendeesPageDto> {
+    return this.events.attendees(access, eventId, query);
   }
 }

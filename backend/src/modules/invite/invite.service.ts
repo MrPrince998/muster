@@ -2,12 +2,13 @@ import { HttpStatus, Injectable } from '@nestjs/common';
 import { randomBytes } from 'node:crypto';
 import type { EntityManager } from 'typeorm';
 import { HttpError } from '../../common/errors/http-error.js';
+import { cursorAt, decodeTimeCursor, encodeTimeCursor } from '../../common/utils/time-cursor.js';
 import type { AuthUser } from '../../common/types/auth-user.js';
 import { TenantService } from '../../database/tenant.service.js';
 import type { ClubAccess } from '../permission/club-access.js';
 import type {
   AcceptInviteResultDto,
-  ClubJoinRequestDto,
+  ClubJoinRequestsPageDto,
   ClubDirectoryEntryDto,
   ClubLinkJoinResultDto,
   ClubLinkPreviewDto,
@@ -229,8 +230,11 @@ export class InviteService {
 
   // --- reviewing requests (member.approve) ------------------------------------
 
-  /** People waiting to get into this club, oldest first. */
-  pendingRequests(access: ClubAccess): Promise<ClubJoinRequestDto[]> {
+  /** People waiting to get into this club, oldest first, a page at a time (keyset on asked, then id). */
+  pendingRequests(access: ClubAccess, query: { after?: string; limit?: number } = {}): Promise<ClubJoinRequestsPageDto> {
+    const limit = query.limit ?? 50;
+    const cursor = query.after ? decodeTimeCursor(query.after) : null;
+    if (query.after && !cursor) throw HttpError.badRequest('A wrong page cursor', 'INVALID_CURSOR');
     return this.inClub(access, async (m) => {
       // users is global (no RLS); join_requests limits the join to this club
       const rows: {
@@ -242,28 +246,40 @@ export class InviteService {
         message: string | null;
         via_link: boolean;
         created_at: Date;
-      }[] =
-        await m.query(
-          `SELECT jr.id, jr.user_id, u.name, u.email, r.name AS role_name, jr.message,
-                  (jr.invite_id IS NOT NULL) AS via_link, jr.created_at
-           FROM join_requests jr
-           JOIN users u ON u.id = jr.user_id
-           LEFT JOIN invites i ON i.id = jr.invite_id
-           LEFT JOIN roles r ON r.id = i.default_role_id
-           WHERE jr.club_id = $1 AND jr.status = 'pending'
-           ORDER BY jr.created_at`,
-          [access.clubId],
-        );
-      return rows.map((r) => ({
-        id: r.id,
-        userId: r.user_id,
-        name: r.name,
-        email: r.email,
-        roleName: r.role_name,
-        message: r.message,
-        viaLink: r.via_link,
-        createdAt: r.created_at,
-      }));
+        cursor_at: string;
+      }[] = await m.query(
+        `SELECT jr.id, jr.user_id, u.name, u.email, r.name AS role_name, jr.message,
+                (jr.invite_id IS NOT NULL) AS via_link, jr.created_at, ${cursorAt('jr.created_at')} AS cursor_at
+         FROM join_requests jr
+         JOIN users u ON u.id = jr.user_id
+         LEFT JOIN invites i ON i.id = jr.invite_id
+         LEFT JOIN roles r ON r.id = i.default_role_id
+         WHERE jr.club_id = $1 AND jr.status = 'pending'
+           AND ($2::timestamptz IS NULL OR (jr.created_at, jr.id) > ($2, $3::uuid))
+         ORDER BY jr.created_at, jr.id
+         LIMIT $4`,
+        [access.clubId, cursor?.at ?? null, cursor?.id ?? null, limit + 1],
+      );
+      const [{ total }]: { total: number }[] = await m.query(
+        `SELECT count(*)::int AS total FROM join_requests WHERE club_id = $1 AND status = 'pending'`,
+        [access.clubId],
+      );
+      const page = rows.slice(0, limit);
+      const last = page[page.length - 1];
+      return {
+        requests: page.map((r) => ({
+          id: r.id,
+          userId: r.user_id,
+          name: r.name,
+          email: r.email,
+          roleName: r.role_name,
+          message: r.message,
+          viaLink: r.via_link,
+          createdAt: r.created_at,
+        })),
+        next: rows.length > limit ? encodeTimeCursor(last.cursor_at, last.id) : null,
+        total,
+      };
     });
   }
 

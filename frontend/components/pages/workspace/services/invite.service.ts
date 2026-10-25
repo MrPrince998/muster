@@ -1,8 +1,10 @@
+import { useInfiniteQuery } from "@tanstack/react-query";
+import { request } from "@/lib/api/client";
 import { useApiMutation } from "@/lib/api/useApiMutation";
 import { useApiQuery } from "@/lib/api/useApiQuery";
 import type {
   AcceptInviteResult,
-  ClubJoinRequest,
+  ClubJoinRequestsPage,
   ClubRole,
   CreateInviteInput,
   Invite,
@@ -50,9 +52,20 @@ export const useAcceptInvite = (code: string) =>
     { invalidates: [MY_ORGANISATIONS, ["orgs"], ["invites", code]] },
   );
 
-/** People waiting to get into a club (member.approve). */
+/** People waiting to get into a club, oldest first, 50 at a time (member.approve). */
 export const useClubJoinRequests = (clubId: string | undefined) =>
-  useApiQuery<ClubJoinRequest[]>(["clubs", clubId ?? "", "join-requests"], { url: `/clubs/${clubId}/join-requests` }, { enabled: !!clubId });
+  useInfiniteQuery({
+    queryKey: ["clubs", clubId ?? "", "join-requests"],
+    queryFn: ({ pageParam, signal }) =>
+      request<ClubJoinRequestsPage>({
+        url: `/clubs/${clubId}/join-requests`,
+        params: { ...(pageParam && { after: pageParam }), limit: 50 },
+        signal,
+      }),
+    initialPageParam: null as string | null,
+    getNextPageParam: (last) => last.next,
+    enabled: !!clubId,
+  });
 
 // deciding changes the queue, the clubs (member and pending counts) and the members list
 const decided = (clubId: string, orgId: string) => [

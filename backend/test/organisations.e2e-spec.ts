@@ -309,7 +309,7 @@ describe('join requests (policy "request")', () => {
     await t.api().post(`/orgs/by-slug/${reqSlug}/join`).set('Authorization', mod.auth).expect(201);
     const [modRequest] = (
       await t.api().get(`/orgs/${reqOrgId}/join-requests`).set('Authorization', owner.auth).expect(200)
-    ).body;
+    ).body.requests;
     await t
       .api()
       .post(`/orgs/${reqOrgId}/join-requests/${modRequest.id}/approve`)
@@ -366,20 +366,21 @@ describe('join requests (policy "request")', () => {
 
   it('lets moderators see the queue, but not plain members', async () => {
     const res = await pending();
-    expect(res.body).toEqual([
+    expect(res.body.total).toBe(1);
+    expect(res.body.requests).toEqual([
       expect.objectContaining({ userId: applicant.id, email: applicant.email, message: 'I build drones' }),
     ]);
   });
 
   it('can be withdrawn and filed again', async () => {
     await t.api().delete(`/orgs/by-slug/${reqSlug}/join`).set('Authorization', applicant.auth).expect(204);
-    expect((await pending()).body).toHaveLength(0);
+    expect((await pending()).body.requests).toHaveLength(0);
     await t.api().delete(`/orgs/by-slug/${reqSlug}/join`).set('Authorization', applicant.auth).expect(404);
     await t.api().post(`/orgs/by-slug/${reqSlug}/join`).set('Authorization', applicant.auth).expect(201);
   });
 
   it('a rejection blocks asking again for a while', async () => {
-    const [request] = (await pending()).body;
+    const [request] = (await pending()).body.requests;
     await t.api().post(`/orgs/${reqOrgId}/join-requests/${request.id}/reject`).set('Authorization', mod.auth).expect(204);
 
     const res = await t.api().post(`/orgs/by-slug/${reqSlug}/join`).set('Authorization', applicant.auth).expect(409);
@@ -390,7 +391,7 @@ describe('join requests (policy "request")', () => {
       .get(`/orgs/${reqOrgId}/join-requests?status=rejected`)
       .set('Authorization', mod.auth)
       .expect(200);
-    expect(rejected.body[0]).toMatchObject({ userId: applicant.id, decidedBy: mod.id });
+    expect(rejected.body.requests[0]).toMatchObject({ userId: applicant.id, decidedBy: mod.id });
 
     const email = t.mail.sent.filter((e) => e.to === applicant.email).at(-1);
     expect(email?.subject).toBe('Your request to join Robotics');
@@ -405,7 +406,7 @@ describe('join requests (policy "request")', () => {
         m.query(`UPDATE org_join_requests SET decided_at = now() - interval '2 days' WHERE status = 'rejected'`),
       );
     await t.api().post(`/orgs/by-slug/${reqSlug}/join`).set('Authorization', applicant.auth).expect(201);
-    const [request] = (await pending()).body;
+    const [request] = (await pending()).body.requests;
 
     await t.api().post(`/orgs/${reqOrgId}/join-requests/${request.id}/approve`).set('Authorization', mod.auth).expect(204);
     await t.api().post(`/orgs/${reqOrgId}/join-requests/${request.id}/approve`).set('Authorization', mod.auth).expect(404);

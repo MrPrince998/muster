@@ -47,7 +47,11 @@ export default function JoinRequestsContainer() {
       joinPolicy={detail?.joinPolicy ?? null}
       tab={tab}
       onTabChange={setTab}
-      requests={requests.data ?? []}
+      requests={requests.data?.pages.flatMap((page) => page.requests) ?? []}
+      total={requests.data?.pages[0]?.total ?? 0}
+      hasMore={requests.hasNextPage}
+      loadingMore={requests.isFetchingNextPage}
+      onMore={() => requests.fetchNextPage()}
       loading={requests.isPending}
       failed={requests.isError}
       onRetry={() => requests.refetch()}

@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Post, Query, UseGuards } from '@nestjs/common';
 import {
   ApiBadRequestResponse,
   ApiCreatedResponse,
@@ -20,7 +20,8 @@ import { RequirePermission } from '../permission/decorators/require-permission.d
 import { Permission } from '../permission/permissions.js';
 import {
   AcceptInviteResultDto,
-  ClubJoinRequestDto,
+  ClubJoinRequestsPageDto,
+  ClubJoinRequestsQuery,
   CreateInviteDto,
   InviteDto,
   InvitePreviewDto,
@@ -71,9 +72,12 @@ export class ClubInviteController {
   /** People waiting to join through links that need approval */
   @Get('join-requests')
   @RequirePermission(Permission.MemberApprove)
-  @ApiOkResponse({ type: [ClubJoinRequestDto] })
-  pendingRequests(@CurrentClubAccess() access: ClubAccess): Promise<ClubJoinRequestDto[]> {
-    return this.invites.pendingRequests(access);
+  @ApiOkResponse({ type: ClubJoinRequestsPageDto })
+  pendingRequests(
+    @CurrentClubAccess() access: ClubAccess,
+    @Query() query: ClubJoinRequestsQuery,
+  ): Promise<ClubJoinRequestsPageDto> {
+    return this.invites.pendingRequests(access, query);
   }
 
   /** Let them in, with the role of the link they used */

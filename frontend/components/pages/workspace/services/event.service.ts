@@ -1,8 +1,8 @@
-import { useInfiniteQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { request } from "@/lib/api/client";
 import { useApiMutation } from "@/lib/api/useApiMutation";
 import { useApiQuery } from "@/lib/api/useApiQuery";
-import type { Answers, ClubEvent, DiscountCode, EventAttendee, EventChanges, EventInput, EventScope, PastEventsPage, SeriesScope } from "@/types/event.interface";
+import type { Answers, AttendeesPage, ClubEvent, DiscountCode, EventAttendee, EventChanges, EventInput, EventScope, PastEventsPage, SeriesScope } from "@/types/event.interface";
 
 // Everything about a club's events sits under one key, so any change can
 // refresh all three lists (and the counts) at once.
@@ -31,6 +31,30 @@ export const useClubPastEvents = (clubId: string | undefined) =>
     enabled: !!clubId,
   });
 
+/**
+ * Everyone going, for the door: checking people in by name needs the whole
+ * list, so this follows every page (100 at a time) into one.
+ */
+export const useDoorAttendees = (clubId: string, eventId: string, enabled: boolean) =>
+  useQuery({
+    queryKey: [...eventsKey(clubId), "attendees", eventId, "all"],
+    queryFn: async ({ signal }) => {
+      const all: EventAttendee[] = [];
+      let after: string | null = null;
+      do {
+        const page: AttendeesPage = await request<AttendeesPage>({
+          url: `/clubs/${clubId}/events/${eventId}/registrations`,
+          params: { limit: 100, ...(after && { after }) },
+          signal,
+        });
+        all.push(...page.attendees);
+        after = page.next;
+      } while (after);
+      return all;
+    },
+    enabled: !!clubId && !!eventId && enabled,
+  });
+
 /** One event, as you see it (the scanner's header and counts). */
 export const useEvent = (clubId: string | undefined, eventId: string | undefined) =>
   useApiQuery<ClubEvent>(
@@ -39,13 +63,23 @@ export const useEvent = (clubId: string | undefined, eventId: string | undefined
     { enabled: !!clubId && !!eventId },
   );
 
-/** Who's going. Needs registration.view in the club. */
+/**
+ * Who's going, in the order they registered: the first 8 (what the panel
+ * shows), then 20 more at a time. Needs registration.view in the club.
+ */
 export const useEventAttendees = (clubId: string, eventId: string | null, enabled: boolean) =>
-  useApiQuery<EventAttendee[]>(
-    [...eventsKey(clubId), "attendees", eventId ?? ""],
-    { url: `/clubs/${clubId}/events/${eventId}/registrations` },
-    { enabled: !!eventId && enabled },
-  );
+  useInfiniteQuery({
+    queryKey: [...eventsKey(clubId), "attendees", eventId ?? ""],
+    queryFn: ({ pageParam, signal }) =>
+      request<AttendeesPage>({
+        url: `/clubs/${clubId}/events/${eventId}/registrations`,
+        params: pageParam ? { after: pageParam, limit: 20 } : { limit: 8 },
+        signal,
+      }),
+    initialPageParam: null as string | null,
+    getNextPageParam: (last) => last.next,
+    enabled: !!clubId && !!eventId && enabled,
+  });
 
 /**
  * Event changes also refresh the clubs list: its upcoming counts move when

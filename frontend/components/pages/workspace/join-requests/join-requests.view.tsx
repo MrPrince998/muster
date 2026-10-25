@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { JoinPolicy, JoinRequest } from "@/types/organisation.interface";
 import { formatDay, timeAgo } from "../shared/workspace-errors";
+import { LoadMore } from "../shared/load-more";
 
 export type RequestTab = "pending" | "approved" | "rejected";
 
@@ -29,6 +30,10 @@ interface JoinRequestsViewProps {
   tab: RequestTab;
   onTabChange: (tab: RequestTab) => void;
   requests: JoinRequest[];
+  total: number;
+  hasMore: boolean;
+  loadingMore: boolean;
+  onMore: () => void;
   loading: boolean;
   failed: boolean;
   onRetry: () => void;
@@ -168,11 +173,21 @@ const JoinRequestsView = (props: JoinRequestsViewProps) => {
                 )}
               </div>
             ) : (
-              <ul className="space-y-3">
-                {requests.map((request) => (
-                  <RequestCard key={request.id} request={request} {...props} />
-                ))}
-              </ul>
+              <>
+                <ul className="space-y-3">
+                  {requests.map((request) => (
+                    <RequestCard key={request.id} request={request} {...props} />
+                  ))}
+                </ul>
+                {props.hasMore && (
+                  <LoadMore
+                    shown={requests.length}
+                    total={props.total}
+                    loading={props.loadingMore}
+                    onMore={props.onMore}
+                  />
+                )}
+              </>
             )}
           </div>
         </>

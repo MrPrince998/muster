@@ -261,7 +261,16 @@ export default function OrgHomeContainer() {
       openEvent={openEvent}
       onOpenEvent={openEventPanel}
       panel={{
-        attendees: { list: attendees.data ?? [], loading: attendees.isPending && attendees.fetchStatus !== "idle", failed: attendees.isError },
+        attendees: {
+          list: attendees.data?.pages.flatMap((page) => page.attendees) ?? [],
+          total: attendees.data?.pages[0]?.total ?? 0,
+          tallies: attendees.data?.pages[0]?.tallies ?? [],
+          loading: attendees.isPending && attendees.fetchStatus !== "idle",
+          failed: attendees.isError,
+          hasMore: attendees.hasNextPage,
+          loadingMore: attendees.isFetchingNextPage,
+          onMore: () => attendees.fetchNextPage(),
+        },
         pending,
         error: actionError,
         onRegister: (answers) =>

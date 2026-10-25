@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { HttpError } from '../../common/errors/http-error.js';
+import { cursorAt, decodeTimeCursor, encodeTimeCursor } from '../../common/utils/time-cursor.js';
 import { TenantService } from '../../database/tenant.service.js';
 import type { OrgMembership } from '../organisation/org-roles.js';
 import { type AuditAction, AuditAction as A } from './audit.js';
@@ -9,6 +10,7 @@ interface Row {
   id: string;
   action: AuditAction;
   created_at: Date;
+  cursor_at: string;
   actor_id: string | null;
   actor_name: string | null;
   subject_user_id: string | null;
@@ -35,12 +37,12 @@ export class AuditService {
 
   page(me: OrgMembership, query: { clubId?: string; before?: string; limit?: number }): Promise<AuditPageDto> {
     const limit = Math.min(Math.max(query.limit ?? 50, 1), 100);
-    const cursor = query.before ? decodeCursor(query.before) : null;
+    const cursor = query.before ? decodeTimeCursor(query.before) : null;
     if (query.before && !cursor) throw HttpError.badRequest('A wrong page cursor', 'INVALID_CURSOR');
 
     return this.tenant.withTenant(me.orgId, async (m) => {
       const rows: Row[] = await m.query(
-        `SELECT a.id, a.action, a.created_at, a.actor_id, actor.name AS actor_name,
+        `SELECT a.id, a.action, a.created_at, ${cursorAt('a.created_at')} AS cursor_at, a.actor_id, actor.name AS actor_name,
                 a.subject_user_id, subject.name AS subject_name, a.club_id, c.name AS club_name,
                 a.event_id, a.details
          FROM audit_log a
@@ -56,7 +58,7 @@ export class AuditService {
       const shown = rows.slice(0, limit);
       return {
         entries: shown.map((row) => this.toDto(row)),
-        next: rows.length > limit ? encodeCursor(shown.at(-1)!) : null,
+        next: rows.length > limit ? encodeTimeCursor(shown.at(-1)!.cursor_at, shown.at(-1)!.id) : null,
       };
     });
   }
@@ -160,12 +162,3 @@ export function describe(row: Pick<Row, 'action' | 'subject_name' | 'club_name' 
   }
 }
 
-// "<created_at ISO>_<id>", base64url: the last line shown, to continue after
-function encodeCursor(row: Row): string {
-  return Buffer.from(`${row.created_at.toISOString()}_${row.id}`).toString('base64url');
-}
-
-function decodeCursor(cursor: string): { at: string; id: string } | null {
-  const [at, id] = Buffer.from(cursor, 'base64url').toString().split('_');
-  return at && id && !Number.isNaN(Date.parse(at)) && /^[0-9a-f-]{36}$/.test(id) ? { at, id } : null;
-}

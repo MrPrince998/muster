@@ -1,17 +1,18 @@
-import type { ClubEvent, EventAttendee } from "@/types/event.interface";
+import type { AnswerTally, ClubEvent } from "@/types/event.interface";
 
 /**
  * What the people going said, at a glance: each choice question's tally
  * (for the caterer, the T-shirt order), and how many answered the text ones.
- * Each person's answers are in the spreadsheet.
+ * Counted by the API over everyone going; each person's answers are in the
+ * spreadsheet.
  */
-export function AnswersSummary({ event, attendees }: { event: ClubEvent; attendees: EventAttendee[] }) {
-  if (event.questions.length === 0 || attendees.length === 0) return null;
+export function AnswersSummary({ event, total, tallies }: { event: ClubEvent; total: number; tallies: AnswerTally[] }) {
+  if (event.questions.length === 0 || total === 0) return null;
   return (
     <section aria-label="Answers" className="space-y-3">
       <h3 className="text-sm font-semibold">What they said</h3>
       {event.questions.map((q) => {
-        const given = attendees.map((a) => a.answers?.[q.id]).filter((v): v is string => !!v);
+        const tally = tallies.find((t) => t.questionId === q.id);
         return (
           <div key={q.id} className="text-sm">
             <p className="font-medium">{q.label}</p>
@@ -20,15 +21,13 @@ export function AnswersSummary({ event, attendees }: { event: ClubEvent; attende
                 {q.options.map((option) => (
                   <li key={option} className="flex justify-between gap-4 text-muted-foreground">
                     <span>{option}</span>
-                    <span className="font-semibold text-foreground tabular-nums">
-                      {given.filter((v) => v === option).length}
-                    </span>
+                    <span className="font-semibold text-foreground tabular-nums">{tally?.options[option] ?? 0}</span>
                   </li>
                 ))}
               </ul>
             ) : (
               <p className="text-muted-foreground">
-                {given.length} of {attendees.length} answered. Their answers are in the spreadsheet.
+                {tally?.answered ?? 0} of {total} answered. Their answers are in the spreadsheet.
               </p>
             )}
           </div>

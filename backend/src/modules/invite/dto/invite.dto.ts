@@ -1,4 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { Type } from 'class-transformer';
 import { IsBoolean, IsInt, IsOptional, IsString, IsUUID, Max, MaxLength, Min, ValidateIf } from 'class-validator';
 
 export const INVITE_STATUSES = ['active', 'expired', 'used_up', 'revoked'] as const;
@@ -151,6 +152,34 @@ export class ClubJoinRequestDto {
 
   @ApiProperty()
   createdAt: Date;
+}
+
+/** A page of a club's join requests: ?after= continues. */
+export class ClubJoinRequestsQuery {
+  /** The `next` of the page before */
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  after?: string;
+
+  @ApiPropertyOptional({ default: 50, maximum: 100 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  limit?: number;
+}
+
+export class ClubJoinRequestsPageDto {
+  @ApiProperty({ type: [ClubJoinRequestDto] })
+  requests: ClubJoinRequestDto[];
+
+  @ApiPropertyOptional({ type: String, nullable: true, description: 'Pass as `after` for the next page; null at the end' })
+  next: string | null;
+
+  @ApiProperty({ description: 'How many are waiting' })
+  total: number;
 }
 
 /** A club in the workspace's directory, as one member sees it. */

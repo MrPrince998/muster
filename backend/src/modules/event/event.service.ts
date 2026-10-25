@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
 import type { EntityManager } from 'typeorm';
 import { HttpError } from '../../common/errors/http-error.js';
+import { cursorAt, decodeTimeCursor, encodeTimeCursor } from '../../common/utils/time-cursor.js';
 import { fileSlug, toCsv } from '../../common/utils/csv.js';
 import { buildIcs } from '../../common/utils/ics.js';
 import { prepareQuestions, type Question } from './questions.js';
@@ -25,6 +26,7 @@ import type {
   SendEventMessageDto,
   CreateDiscountCodeDto,
   DiscountCodeDto,
+  AttendeesPageDto,
   EventScope,
   PastEventsPageDto,
   SeriesScope,
@@ -147,14 +149,6 @@ const SELECT_EVENTS = `
   FROM events e
   WHERE e.club_id = $1`;
 
-// the last event shown, to continue after: "<starts_at ISO>_<id>", base64url
-const encodeEventCursor = (at: Date, id: string) => Buffer.from(`${at.toISOString()}_${id}`).toString('base64url');
-
-function decodeEventCursor(cursor: string): { at: string; id: string } | null {
-  const [at, id] = Buffer.from(cursor, 'base64url').toString().split('_');
-  return at && id && !Number.isNaN(Date.parse(at)) && /^[0-9a-f-]{36}$/.test(id) ? { at, id } : null;
-}
-
 /** Whether this person may edit the event: any event, or their own. */
 export function canManage(access: ClubAccess, createdBy: string | null): boolean {
   return (
@@ -212,12 +206,13 @@ export class EventService {
    */
   pastPage(access: ClubAccess, query: { before?: string; limit?: number }): Promise<PastEventsPageDto> {
     const limit = query.limit ?? 20;
-    const cursor = query.before ? decodeEventCursor(query.before) : null;
+    const cursor = query.before ? decodeTimeCursor(query.before) : null;
     if (query.before && !cursor) throw HttpError.badRequest('A wrong page cursor', 'INVALID_CURSOR');
     const past = `e.status IN ('published', 'cancelled') AND e.ends_at <= now()`;
     return this.inClub(access, async (m) => {
-      const rows: EventRow[] = await m.query(
-        `${SELECT_EVENTS} AND ${past}
+      // the exact start rides along for the cursor
+      const rows: (EventRow & { cursor_at: string })[] = await m.query(
+        `${SELECT_EVENTS.replace('SELECT', `SELECT ${cursorAt('e.starts_at')} AS cursor_at,`)} AND ${past}
            AND ($3::timestamptz IS NULL OR (e.starts_at, e.id) < ($3, $4::uuid))
          ORDER BY e.starts_at DESC, e.id DESC
          LIMIT $5`,
@@ -231,7 +226,7 @@ export class EventService {
       const last = page[page.length - 1];
       return {
         events: page.map((row) => this.toDto(row, access)),
-        next: rows.length > limit ? encodeEventCursor(last.starts_at, last.id) : null,
+        next: rows.length > limit ? encodeTimeCursor(last.cursor_at, last.id) : null,
         total,
       };
     });
@@ -825,27 +820,74 @@ export class EventService {
     });
   }
 
-  /** Everyone with an active registration, in the order they registered. */
-  attendees(access: ClubAccess, eventId: string): Promise<EventAttendeeDto[]> {
+  /**
+   * Who's going, in the order they registered, a page at a time (`after` is
+   * the last one shown: keyset on registered then id), with how many in all
+   * and the answers' tallies over everyone, not just this page.
+   */
+  attendees(access: ClubAccess, eventId: string, query: { after?: string; limit?: number } = {}): Promise<AttendeesPageDto> {
+    const limit = query.limit ?? 50;
+    const cursor = query.after ? decodeTimeCursor(query.after) : null;
+    if (query.after && !cursor) throw HttpError.badRequest('A wrong page cursor', 'INVALID_CURSOR');
     return this.inClub(access, async (m) => {
-      await this.findOne(m, access, eventId); // 404 if it isn't this club's
+      const event = await this.findOne(m, access, eventId); // 404 if it isn't this club's
       // users is global (no RLS); registrations limits the join to this event
-      const rows: { user_id: string; name: string; created_at: Date; checked_in_at: Date | null; answers: Record<string, string> }[] =
-        await m.query(
-          `SELECT r.user_id, u.name, r.created_at, r.checked_in_at, r.answers
-           FROM registrations r
-           JOIN users u ON u.id = r.user_id
-           WHERE r.event_id = $1 AND r.cancelled_at IS NULL
-           ORDER BY r.created_at`,
-          [eventId],
-        );
-      return rows.map((r) => ({
-        userId: r.user_id,
-        name: r.name,
-        registeredAt: r.created_at,
-        checkedInAt: r.checked_in_at,
-        answers: r.answers ?? {},
-      }));
+      const rows: {
+        id: string;
+        user_id: string;
+        name: string;
+        created_at: Date;
+        cursor_at: string;
+        checked_in_at: Date | null;
+        answers: Record<string, string>;
+      }[] = await m.query(
+        `SELECT r.id, r.user_id, u.name, r.created_at, ${cursorAt('r.created_at')} AS cursor_at, r.checked_in_at, r.answers
+         FROM registrations r
+         JOIN users u ON u.id = r.user_id
+         WHERE r.event_id = $1 AND r.cancelled_at IS NULL
+           AND ($2::timestamptz IS NULL OR (r.created_at, r.id) > ($2, $3::uuid))
+         ORDER BY r.created_at, r.id
+         LIMIT $4`,
+        [eventId, cursor?.at ?? null, cursor?.id ?? null, limit + 1],
+      );
+      // each answer counted once per person: the choices as given, text answers only as "answered"
+      const choiceIds = event.questions.filter((q) => q.kind === 'choice').map((q) => q.id);
+      const counts: { question_id: string; value: string | null; count: number }[] = await m.query(
+        `SELECT a.key AS question_id, CASE WHEN a.key = ANY($2::text[]) THEN a.value END AS value, count(*)::int AS count
+         FROM registrations r, jsonb_each_text(r.answers) a
+         WHERE r.event_id = $1 AND r.cancelled_at IS NULL AND a.value <> ''
+         GROUP BY 1, 2`,
+        [eventId, choiceIds],
+      );
+      const [{ total }]: { total: number }[] = await m.query(
+        `SELECT count(*)::int AS total FROM registrations WHERE event_id = $1 AND cancelled_at IS NULL`,
+        [eventId],
+      );
+
+      const page = rows.slice(0, limit);
+      const last = page[page.length - 1];
+      return {
+        attendees: page.map((r) => ({
+          userId: r.user_id,
+          name: r.name,
+          registeredAt: r.created_at,
+          checkedInAt: r.checked_in_at,
+          answers: r.answers ?? {},
+        })),
+        next: rows.length > limit ? encodeTimeCursor(last.cursor_at, last.id) : null,
+        total,
+        tallies: event.questions.map((q) => {
+          const mine = counts.filter((c) => c.question_id === q.id);
+          return {
+            questionId: q.id,
+            answered: mine.reduce((sum, c) => sum + c.count, 0),
+            options:
+              q.kind === 'choice'
+                ? Object.fromEntries(q.options.map((option) => [option, mine.find((c) => c.value === option)?.count ?? 0]))
+                : {},
+          };
+        }),
+      };
     });
   }
 

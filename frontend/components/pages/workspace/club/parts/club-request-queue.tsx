@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import type { ClubSummary } from "@/types/club.interface";
 import type { ClubJoinRequest } from "@/types/invite.interface";
 import { useApproveClubRequest, useClubJoinRequests, useRejectClubRequest } from "../../services/invite.service";
+import { LoadMore } from "../../shared/load-more";
 import { timeAgo, workspaceErrorMessage } from "../../shared/workspace-errors";
 
 /**
@@ -35,7 +36,7 @@ export function ClubRequestQueue({ club, orgId }: { club: ClubSummary; orgId: st
     }
   };
 
-  const list = requests.data ?? [];
+  const list = requests.data?.pages.flatMap((page) => page.requests) ?? [];
 
   return (
     <section aria-label={`People waiting to join ${club.name}`}>
@@ -97,6 +98,14 @@ export function ClubRequestQueue({ club, orgId }: { club: ClubSummary; orgId: st
               );
             })}
           </ul>
+        )}
+        {requests.hasNextPage && (
+          <LoadMore
+            shown={list.length}
+            total={requests.data?.pages[0]?.total ?? null}
+            loading={requests.isFetchingNextPage}
+            onMore={() => requests.fetchNextPage()}
+          />
         )}
       </div>
     </section>

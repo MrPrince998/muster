@@ -1,5 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsIn, IsOptional, IsString, MaxLength } from 'class-validator';
+import { Type } from 'class-transformer';
+import { IsIn, IsInt, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
 import { OrgJoinRequestStatus } from '../../entities/org-join-request.entity.js';
 import { JoinPolicy } from '../../entities/organisation.entity.js';
 import { OrganisationDto } from '../../dto/organisation.dto.js';
@@ -22,6 +23,20 @@ export class ListJoinRequestsQuery {
   @IsOptional()
   @IsIn(STATUSES)
   status?: OrgJoinRequestStatus;
+
+  /** The `next` of the page before */
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  after?: string;
+
+  @ApiPropertyOptional({ default: 50, maximum: 100 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  limit?: number;
 }
 
 export class MyJoinRequestDto {
@@ -101,4 +116,15 @@ export class JoinRequestDto {
 
   @ApiProperty({ type: String, format: 'uuid', nullable: true })
   decidedBy: string | null;
+}
+
+export class JoinRequestsPageDto {
+  @ApiProperty({ type: [JoinRequestDto] })
+  requests: JoinRequestDto[];
+
+  @ApiPropertyOptional({ type: String, nullable: true, description: 'Pass as `after` for the next page; null at the end' })
+  next: string | null;
+
+  @ApiProperty({ description: 'How many have this status' })
+  total: number;
 }
