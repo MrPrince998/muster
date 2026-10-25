@@ -17,11 +17,13 @@ ENV NODE_ENV=production
 COPY --from=build /app/package.json ./
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
-# uploaded files (a volume in compose.prod.yaml), writable by the app
-RUN mkdir -p /app/uploads && chown node:node /app/uploads
-USER node
+# su-exec: start as root only to hand the uploads folder to the app's user
+RUN apk add --no-cache su-exec && mkdir -p /app/uploads && chown node:node /app/uploads
 EXPOSE 5001
-# Pending migrations first (as the schema owner, MIGRATION_DATABASE_URL), then
-# the API (as the limited role, DATABASE_URL). A failed migration stops here
-# instead of starting against an outdated schema.
-CMD ["sh", "-c", "node dist/database/migrate.js && exec node dist/main.js"]
+# Uploaded files live on a volume (compose.prod.yaml, Railway), and a host
+# can mount it owned by root, so the app couldn't write to it: it's given to
+# the node user first, then everything runs as that user, never as root.
+# Pending migrations go first (as the schema owner, MIGRATION_DATABASE_URL),
+# then the API (as the limited role, DATABASE_URL). A failed migration stops
+# here instead of starting against an outdated schema.
+CMD ["sh", "-c", "chown -R node:node /app/uploads && exec su-exec node sh -c 'node dist/database/migrate.js && exec node dist/main.js'"]

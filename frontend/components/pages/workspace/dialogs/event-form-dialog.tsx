@@ -120,6 +120,8 @@ export default function EventFormDialog({
   // each time it opens, back to just this one
   // a new cover image waiting to upload once the event's saved, or the current one going
   const [cover, setCover] = useState<{ file: Blob | null; removed: boolean }>({ file: null, removed: false });
+  // a new event that saved when its image didn't: saving again only retries the image
+  const [created, setCreated] = useState<ClubEvent | null>(null);
   const [preparing, setPreparing] = useState(false);
   const [coverError, setCoverError] = useState<string | null>(null);
   const preview = useMemo(() => (cover.file ? URL.createObjectURL(cover.file) : null), [cover.file]);
@@ -149,6 +151,7 @@ export default function EventFormDialog({
     if (open) {
       setScope("this");
       setCover({ file: null, removed: false });
+      setCreated(null);
     }
   }
 
@@ -191,7 +194,9 @@ export default function EventFormDialog({
   const save = (publish: boolean) =>
     form.handleSubmit(async (values) => {
       try {
-        const saved = editing
+        const saved = created
+          ? created
+          : editing
           ? await updateEvent.mutateAsync({
               eventId: event!.id,
               ...toEventInput(values, timeZone),
@@ -210,11 +215,16 @@ export default function EventFormDialog({
           else if (cover.removed && event?.coverUrl) await removeCover(clubId, saved.id);
           if (cover.file || cover.removed) await queryClient.invalidateQueries({ queryKey: eventsKey(clubId) });
         } catch {
-          // the event is saved either way; editing it again can add the image
+          // the event is saved either way
           if (editing) {
             form.setError("root", { message: "Saved, but the image didn't upload. Try choosing it again." });
-            return;
+          } else {
+            setCreated(saved);
+            form.setError("root", {
+              message: "The event is saved, but its image didn't upload. Save again to retry, or cancel to keep it without one.",
+            });
           }
+          return;
         }
         onOpenChange(false);
         onSaved?.(saved);
@@ -223,8 +233,14 @@ export default function EventFormDialog({
       }
     });
 
+  // closing after the image failed still lands on the new event, as saving would
+  const close = () => {
+    onOpenChange(false);
+    if (created) onSaved?.(created);
+  };
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={(next) => (next ? onOpenChange(true) : close())}>
       <DialogContent className="max-h-[calc(100svh-2rem)] overflow-y-auto sm:max-w-lg">
         <form onSubmit={save(false)} noValidate className="space-y-5">
           <DialogHeader>
@@ -619,7 +635,7 @@ export default function EventFormDialog({
           )}
 
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+            <Button type="button" variant="outline" onClick={close}>
               Cancel
             </Button>
             {editing ? (

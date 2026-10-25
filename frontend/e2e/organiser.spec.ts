@@ -258,3 +258,36 @@ test("give an event a cover image", async ({ page }) => {
   await expect(cover).toHaveAttribute("src", /\/files\/covers\/[0-9a-f-]{36}\.(webp|jpg)$/);
   await expect.poll(() => cover.evaluate((img: HTMLImageElement) => img.complete && img.naturalWidth > 0)).toBe(true);
 });
+
+test("a new event whose image didn't upload says so, and retries only the image", async ({ page }) => {
+  // the first upload fails, as on a server that can't store files
+  let failed = false;
+  await page.route(/\/events\/[^/]+\/cover$/, (route) => {
+    if (failed || route.request().method() !== "PUT") return route.fallback();
+    failed = true;
+    return route.fulfill({ status: 500, json: { statusCode: 500, message: "Internal server error" } });
+  });
+  await openClub(page, "Robotics Society");
+  await page.getByRole("button", { name: "New event" }).click();
+  const form = page.getByRole("dialog");
+  await form.getByLabel("Name", { exact: true }).fill("Retry Walk");
+  await form.locator("#event-starts").fill(localDateTime(28, 9));
+  await form.locator("#event-ends").fill(localDateTime(28, 12));
+  await form.getByLabel("Cover image file").setInputFiles({
+    name: "walk.png",
+    mimeType: "image/png",
+    buffer: Buffer.from(
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+      "base64",
+    ),
+  });
+  await expect(form.getByRole("button", { name: "Change" })).toBeVisible();
+  await form.getByRole("button", { name: "Publish" }).click();
+  await expect(form.getByRole("alert")).toHaveText(/The event is saved, but its image didn't upload/);
+
+  await form.getByRole("button", { name: "Publish" }).click();
+  const panel = page.getByRole("complementary", { name: "Retry Walk" });
+  await expect(panel.locator("img").first()).toHaveAttribute("src", /\/files\/covers\//);
+  // one event, not two
+  await expect(page.getByRole("button", { name: /Retry Walk/ })).toHaveCount(1);
+});
