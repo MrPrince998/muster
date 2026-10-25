@@ -65,6 +65,12 @@ describe('past events', () => {
 });
 
 describe("who's going", () => {
+  // accounts take a moment each (scrypt): made before the test, not in it
+  let people: TestUser[] = [];
+  beforeAll(async () => {
+    people = [await t.user('Ada'), await t.user('Bo'), await t.user('Cy')];
+  });
+
   it('comes a page at a time too, in the order they registered', async () => {
     const event = await t
       .api()
@@ -72,7 +78,6 @@ describe("who's going", () => {
       .set('Authorization', owner.auth)
       .send({ title: 'Big Night', startsAt: inDays(5), endsAt: inDays(5.1), publish: true })
       .expect(201);
-    const people = [await t.user('Ada'), await t.user('Bo'), await t.user('Cy')];
     for (const person of people) {
       await t.api().post(`/orgs/by-slug/${orgSlug}/join`).set('Authorization', person.auth).expect(201);
       await t.api().post(`/clubs/${clubId}/events/${event.body.id}/my-registration`).set('Authorization', person.auth).expect(201);
