@@ -26,6 +26,7 @@ import type {
   CreateDiscountCodeDto,
   DiscountCodeDto,
   EventScope,
+  PastEventsPageDto,
   SeriesScope,
   UpdateEventDto,
 } from './dto/event.dto.js';
@@ -146,6 +147,14 @@ const SELECT_EVENTS = `
   FROM events e
   WHERE e.club_id = $1`;
 
+// the last event shown, to continue after: "<starts_at ISO>_<id>", base64url
+const encodeEventCursor = (at: Date, id: string) => Buffer.from(`${at.toISOString()}_${id}`).toString('base64url');
+
+function decodeEventCursor(cursor: string): { at: string; id: string } | null {
+  const [at, id] = Buffer.from(cursor, 'base64url').toString().split('_');
+  return at && id && !Number.isNaN(Date.parse(at)) && /^[0-9a-f-]{36}$/.test(id) ? { at, id } : null;
+}
+
 /** Whether this person may edit the event: any event, or their own. */
 export function canManage(access: ClubAccess, createdBy: string | null): boolean {
   return (
@@ -178,7 +187,8 @@ export class EventService {
           where = `AND e.status IN ('published', 'cancelled') AND e.ends_at > now() ORDER BY e.starts_at`;
           break;
         case 'past':
-          where = `AND e.status IN ('published', 'cancelled') AND e.ends_at <= now() ORDER BY e.starts_at DESC`;
+          // the latest 50: pastPage() pages through the rest
+          where = `AND e.status IN ('published', 'cancelled') AND e.ends_at <= now() ORDER BY e.starts_at DESC, e.id DESC LIMIT 50`;
           break;
         case 'drafts':
           if (access.has(Permission.EventManageAny)) {
@@ -192,6 +202,38 @@ export class EventService {
       }
       const rows: EventRow[] = await m.query(`${SELECT_EVENTS} ${where}`, params);
       return rows.map((row) => this.toDto(row, access));
+    });
+  }
+
+  /**
+   * The club's past events, latest first, a page at a time: `before` is the
+   * `next` of the page before (keyset on start, then id). Past never stops
+   * growing, so it's the one list that's paged.
+   */
+  pastPage(access: ClubAccess, query: { before?: string; limit?: number }): Promise<PastEventsPageDto> {
+    const limit = query.limit ?? 20;
+    const cursor = query.before ? decodeEventCursor(query.before) : null;
+    if (query.before && !cursor) throw HttpError.badRequest('A wrong page cursor', 'INVALID_CURSOR');
+    const past = `e.status IN ('published', 'cancelled') AND e.ends_at <= now()`;
+    return this.inClub(access, async (m) => {
+      const rows: EventRow[] = await m.query(
+        `${SELECT_EVENTS} AND ${past}
+           AND ($3::timestamptz IS NULL OR (e.starts_at, e.id) < ($3, $4::uuid))
+         ORDER BY e.starts_at DESC, e.id DESC
+         LIMIT $5`,
+        [access.clubId, access.userId, cursor?.at ?? null, cursor?.id ?? null, limit + 1],
+      );
+      const [{ total }]: { total: number }[] = await m.query(
+        `SELECT count(*)::int AS total FROM events e WHERE e.club_id = $1 AND ${past}`,
+        [access.clubId],
+      );
+      const page = rows.slice(0, limit);
+      const last = page[page.length - 1];
+      return {
+        events: page.map((row) => this.toDto(row, access)),
+        next: rows.length > limit ? encodeEventCursor(last.starts_at, last.id) : null,
+        total,
+      };
     });
   }
 

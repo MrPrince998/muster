@@ -39,6 +39,8 @@ import {
   DiscountCodeDto,
   EventMessageDto,
   ListEventsQuery,
+  PastEventsPageDto,
+  PastEventsQuery,
   UpdateDiscountCodeDto,
   SendEventMessageDto,
   SeriesScopeQuery,
@@ -59,6 +61,19 @@ export class EventController {
   @ApiOkResponse({ type: [EventDto] })
   list(@CurrentClubAccess() access: ClubAccess, @Query() { scope }: ListEventsQuery): Promise<EventDto[]> {
     return this.events.list(access, scope ?? 'upcoming');
+  }
+
+  /**
+   * A club's past events, a page at a time
+   *
+   * @remarks Latest first. Pass `next` as `before` for the following page.
+   */
+  @Get('past')
+  @RequirePermission()
+  @ApiOkResponse({ type: PastEventsPageDto })
+  @ApiBadRequestResponse(error('A wrong page cursor (INVALID_CURSOR)'))
+  past(@CurrentClubAccess() access: ClubAccess, @Query() query: PastEventsQuery): Promise<PastEventsPageDto> {
+    return this.events.pastPage(access, query);
   }
 
   /**

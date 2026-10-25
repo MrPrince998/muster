@@ -37,6 +37,23 @@ export class ListEventsQuery {
   scope?: EventScope;
 }
 
+/** A page of past events: ?before= continues from the page before. */
+export class PastEventsQuery {
+  /** The `next` of the page before */
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  before?: string;
+
+  @ApiPropertyOptional({ default: 20, maximum: 50 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(50)
+  limit?: number;
+}
+
 export const SERIES_SCOPES = ['this', 'following'] as const;
 export type SeriesScope = (typeof SERIES_SCOPES)[number];
 
@@ -561,4 +578,15 @@ export class MyRegistrationDto {
 
   @ApiProperty()
   registeredAt: Date;
+}
+
+export class PastEventsPageDto {
+  @ApiProperty({ type: [EventDto] })
+  events: EventDto[];
+
+  @ApiPropertyOptional({ type: String, nullable: true, description: 'Pass as `before` for the next page; null at the end' })
+  next: string | null;
+
+  @ApiProperty({ description: 'How many past events the club has' })
+  total: number;
 }

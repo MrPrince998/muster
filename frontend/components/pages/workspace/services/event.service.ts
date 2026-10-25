@@ -1,7 +1,8 @@
+import { useInfiniteQuery } from "@tanstack/react-query";
 import { request } from "@/lib/api/client";
 import { useApiMutation } from "@/lib/api/useApiMutation";
 import { useApiQuery } from "@/lib/api/useApiQuery";
-import type { Answers, ClubEvent, DiscountCode, EventAttendee, EventChanges, EventInput, EventScope, SeriesScope } from "@/types/event.interface";
+import type { Answers, ClubEvent, DiscountCode, EventAttendee, EventChanges, EventInput, EventScope, PastEventsPage, SeriesScope } from "@/types/event.interface";
 
 // Everything about a club's events sits under one key, so any change can
 // refresh all three lists (and the counts) at once.
@@ -14,6 +15,21 @@ export const useClubEvents = (clubId: string | undefined, scope: EventScope, ena
     { url: `/clubs/${clubId}/events`, params: { scope } },
     { enabled: !!clubId && enabled },
   );
+
+/** The club's past events, latest first, 20 at a time: the one list that never stops growing. */
+export const useClubPastEvents = (clubId: string | undefined) =>
+  useInfiniteQuery({
+    queryKey: [...eventsKey(clubId ?? ""), "past"],
+    queryFn: ({ pageParam, signal }) =>
+      request<PastEventsPage>({
+        url: `/clubs/${clubId}/events/past`,
+        params: { ...(pageParam && { before: pageParam }), limit: 20 },
+        signal,
+      }),
+    initialPageParam: null as string | null,
+    getNextPageParam: (last) => last.next,
+    enabled: !!clubId,
+  });
 
 /** One event, as you see it (the scanner's header and counts). */
 export const useEvent = (clubId: string | undefined, eventId: string | undefined) =>

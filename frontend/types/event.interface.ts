@@ -150,3 +150,11 @@ export interface EventInput {
 
 /** PATCH: any of the fields, plus opening or closing registration. */
 export type EventChanges = Partial<Omit<EventInput, "publish" | "repeat">> & { registrationOpen?: boolean };
+
+/** GET /clubs/:clubId/events/past: a page of the club's past events, latest first. */
+export interface PastEventsPage {
+  events: ClubEvent[];
+  // pass as `before` for the next page; null at the end
+  next: string | null;
+  total: number;
+}

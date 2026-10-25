@@ -12,9 +12,18 @@ import EventFormDialog from "../dialogs/event-form-dialog";
 import { FollowMenu } from "./parts/follow-menu";
 import { useWorkspace } from "../org-shell/workspace-context";
 import { EventPanel, type EventPanelProps } from "./parts/event-panel";
+import { LoadMore } from "../shared/load-more";
 import { EventStub } from "./parts/event-stub";
 
 export type EventTab = "upcoming" | "past" | "drafts";
+
+export interface EventList {
+  data: ClubEvent[];
+  loading: boolean;
+  failed: boolean;
+  // a paged list (past): how many in all, and the next page
+  paging?: { total: number; hasMore: boolean; loadingMore: boolean; onMore: () => void };
+}
 
 type Dialog = "new-event" | "edit-event" | null;
 
@@ -36,7 +45,7 @@ interface OrgHomeViewProps {
   can: OrgHomePermissions;
   tab: EventTab;
   onTabChange: (tab: EventTab) => void;
-  lists: Record<EventTab, { data: ClubEvent[]; loading: boolean; failed: boolean }>;
+  lists: Record<EventTab, EventList>;
   onRetryEvents: () => void;
   openEvent: ClubEvent | null;
   onOpenEvent: (id: string | null) => void;
@@ -186,7 +195,9 @@ const OrgHomeView = ({
                   <TabsTrigger key={value} value={value} className="flex-none px-0 text-[15px] data-active:text-cobalt-800">
                     {label}
                     {!lists[value].loading && (
-                      <span className="text-xs text-muted-foreground tabular-nums">{lists[value].data.length}</span>
+                      <span className="text-xs text-muted-foreground tabular-nums">
+                        {lists[value].paging?.total ?? lists[value].data.length}
+                      </span>
                     )}
                   </TabsTrigger>
                 ))}
@@ -224,6 +235,14 @@ const OrgHomeView = ({
                     </li>
                   ))}
                 </ul>
+              )}
+              {!list.loading && !list.failed && list.paging?.hasMore && (
+                <LoadMore
+                  shown={list.data.length}
+                  total={list.paging.total}
+                  loading={list.paging.loadingMore}
+                  onMore={list.paging.onMore}
+                />
               )}
             </div>
           </>

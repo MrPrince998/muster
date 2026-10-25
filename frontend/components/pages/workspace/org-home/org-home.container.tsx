@@ -5,13 +5,14 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { asApiError } from "@/lib/api/client";
 import { getTicket } from "../services/payment.service";
-import type { ClubEvent } from "@/types/event.interface";
 import { useWorkspace } from "../org-shell/workspace-context";
 import {
   useCancelEvent,
   eventsKey,
   useCancelRegistration,
   useClubEvents,
+  useClubPastEvents,
+  useEvent,
   useDeleteEvent,
   useEventAttendees,
   useJoinWaitlist,
@@ -20,7 +21,7 @@ import {
   useRegister,
   useUpdateEvent,
 } from "../services/event.service";
-import OrgHomeView, { type EventTab } from "./org-home.view";
+import OrgHomeView, { type EventList, type EventTab } from "./org-home.view";
 import type { PanelAction } from "./parts/event-panel";
 
 /** What each refusal means for the person, in the panel. */
@@ -100,12 +101,16 @@ export default function OrgHomeContainer() {
 
   const [tab, setTab] = useState<EventTab>("upcoming");
   const upcoming = useClubEvents(club?.id, "upcoming");
-  const past = useClubEvents(club?.id, "past");
+  const pastPages = useClubPastEvents(club?.id);
+  const pastEvents = pastPages.data?.pages.flatMap((page) => page.events);
   const drafts = useClubEvents(club?.id, "drafts", canSeeDrafts);
 
   const [openEventId, setOpenEventId] = useState<string | null>(null);
-  const allEvents = [...(upcoming.data ?? []), ...(past.data ?? []), ...(drafts.data ?? [])];
-  const openEvent = allEvents.find((event) => event.id === openEventId) ?? null;
+  const allEvents = [...(upcoming.data ?? []), ...(pastEvents ?? []), ...(drafts.data ?? [])];
+  // a linked event that isn't on a loaded page (an old one): fetched on its own
+  const listed = allEvents.find((event) => event.id === openEventId);
+  const single = useEvent(club?.id, openEventId && !listed && !pastPages.isPending ? openEventId : undefined);
+  const openEvent = listed ?? (single.data?.id === openEventId ? single.data : null) ?? null;
   const attendees = useEventAttendees(
     club?.id ?? "",
     openEventId,
@@ -167,17 +172,17 @@ export default function OrgHomeContainer() {
   const [linkedEvent, setLinkedEvent] = useState<string | null>(null);
   if (!eventParam && linkedEvent !== null) setLinkedEvent(null);
   if (eventParam && eventParam !== linkedEvent && club?.id === shownClubId) {
+    const loaded = { upcoming: upcoming.data, past: pastEvents, drafts: drafts.data };
     const holder = (["upcoming", "past", "drafts"] as const).find((list) =>
-      ({ upcoming, past, drafts })[list].data?.some((event) => event.id === eventParam),
+      loaded[list]?.some((event) => event.id === eventParam),
     );
-    const settled = !upcoming.isPending && !past.isPending && (!canSeeDrafts || !drafts.isPending);
+    const settled = !upcoming.isPending && !pastPages.isPending && (!canSeeDrafts || !drafts.isPending);
     if (holder || settled) {
       setLinkedEvent(eventParam);
-      if (holder) {
-        setTab(holder);
-        setOpenEventId(eventParam);
-        setActionError(null);
-      }
+      // not on a loaded page: an older past event, opened on its own (or nothing, if it's gone)
+      setTab(holder ?? "past");
+      setOpenEventId(eventParam);
+      setActionError(null);
     }
   }
   // the event a Stripe return was for: the linked one, remembered once the link is dropped
@@ -216,9 +221,19 @@ export default function OrgHomeContainer() {
     router.replace(rest.size ? `${pathname}?${rest}` : pathname, { scroll: false });
   }, [eventParam, linkedEvent, pathname, router, searchParams, ticketArrived]);
 
-  const lists: Record<EventTab, { data: ClubEvent[]; loading: boolean; failed: boolean }> = {
+  const lists: Record<EventTab, EventList> = {
     upcoming: { data: upcoming.data ?? [], loading: upcoming.isPending, failed: upcoming.isError },
-    past: { data: past.data ?? [], loading: past.isPending, failed: past.isError },
+    past: {
+      data: pastEvents ?? [],
+      loading: pastPages.isPending,
+      failed: pastPages.isError,
+      paging: {
+        total: pastPages.data?.pages[0]?.total ?? 0,
+        hasMore: pastPages.hasNextPage,
+        loadingMore: pastPages.isFetchingNextPage,
+        onMore: () => pastPages.fetchNextPage(),
+      },
+    },
     drafts: { data: drafts.data ?? [], loading: canSeeDrafts && drafts.isPending, failed: drafts.isError },
   };
 
@@ -240,7 +255,7 @@ export default function OrgHomeContainer() {
       lists={lists}
       onRetryEvents={() => {
         upcoming.refetch();
-        past.refetch();
+        pastPages.refetch();
         if (canSeeDrafts) drafts.refetch();
       }}
       openEvent={openEvent}
