@@ -24,4 +24,4 @@ EXPOSE 5001
 # Pending migrations first (as the schema owner, MIGRATION_DATABASE_URL), then
 # the API (as the limited role, DATABASE_URL). A failed migration stops here
 # instead of starting against an outdated schema.
-CMD ["sh", "-c", "node ./node_modules/typeorm/cli.js migration:run -d dist/database/data-source.js && exec node dist/main.js"]
+CMD ["sh", "-c", "node dist/database/migrate.js && exec node dist/main.js"]

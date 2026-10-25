@@ -18,7 +18,7 @@
     "typeorm": "tsx ./node_modules/typeorm/cli.js",
     "migration:run": "pnpm typeorm migration:run -d src/database/data-source.ts",
     "seed": "tsx src/database/seed.ts",
-    "migration:run:prod": "node ./node_modules/typeorm/cli.js migration:run -d dist/database/data-source.js",
+    "migration:run:prod": "node dist/database/migrate.js",
     "migration:revert": "pnpm typeorm migration:revert -d src/database/data-source.ts",
     "migration:show": "pnpm typeorm migration:show -d src/database/data-source.ts",
     "migration:create": "pnpm typeorm migration:create",
