@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
+import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts";
+import { type ChartConfig, ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
 import { cn } from "@/lib/utils";
 import type { ClubAttendance } from "@/types";
 import { stubParts } from "../../org-home/parts/format";
@@ -10,6 +12,11 @@ const monthName = new Intl.DateTimeFormat(undefined, { month: "short" });
 const monthLong = new Intl.DateTimeFormat(undefined, { month: "long", year: "numeric" });
 // "2026-10" -> the 1st of that month, local; only for its name
 const monthDate = (month: string) => new Date(Number(month.slice(0, 4)), Number(month.slice(5, 7)) - 1, 1);
+// the brand's two cobalts: registered behind, came in front
+const chartConfig = {
+  registered: { label: "Registered", color: "var(--color-cobalt-100)" },
+  attended: { label: "Came", color: "var(--color-cobalt)" },
+} satisfies ChartConfig;
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
 export interface AttendanceTabProps {
@@ -82,7 +89,6 @@ function Headline({ summary }: { summary: ClubAttendance["summary"] }) {
 }
 
 function Months({ months }: { months: ClubAttendance["months"] }) {
-  const max = Math.max(1, ...months.map((m) => m.registered));
   const any = months.some((m) => m.events > 0);
   return (
     <section aria-labelledby="months-heading">
@@ -102,30 +108,32 @@ function Months({ months }: { months: ClubAttendance["months"] }) {
         </p>
       </div>
 
-      {/* the bars, for the eye; the table below says the same for screen readers */}
-      <div className="mt-5 grid h-48 grid-cols-12 items-end gap-1.5 border-b sm:gap-3" aria-hidden>
-        {months.map((m) => (
-          <div
-            key={m.month}
-            title={`${monthLong.format(monthDate(m.month))}: ${m.attended} came of ${m.registered} registered`}
-            className="relative flex h-full flex-col justify-end"
-          >
-            {m.registered > 0 && (
-              <div className="relative w-full rounded-t-md bg-cobalt-100" style={{ height: `${(m.registered / max) * 100}%` }}>
-                <div
-                  className="absolute inset-x-0 bottom-0 rounded-t-md bg-cobalt"
-                  style={{ height: `${(m.attended / m.registered) * 100}%` }}
-                />
-              </div>
-            )}
-          </div>
-        ))}
-      </div>
-      <div className="mt-2 grid grid-cols-12 gap-1.5 text-center text-xs text-muted-foreground sm:gap-3" aria-hidden>
-        {months.map((m) => (
-          <span key={m.month}>{monthName.format(monthDate(m.month))}</span>
-        ))}
-      </div>
+      {/* the chart, for the eye; the table below says the same for screen readers */}
+      <ChartContainer config={chartConfig} className="mt-5 aspect-auto h-56 w-full" aria-hidden>
+        <BarChart
+          accessibilityLayer={false}
+          data={months.map((m) => ({ ...m, label: monthName.format(monthDate(m.month)) }))}
+          margin={{ top: 4, right: 0, bottom: 0, left: 0 }}
+          barGap={2}
+        >
+          <CartesianGrid vertical={false} />
+          <XAxis dataKey="label" tickLine={false} axisLine={false} tickMargin={8} interval={0} />
+          <YAxis allowDecimals={false} tickLine={false} axisLine={false} width={28} />
+          <ChartTooltip
+            cursor={false}
+            content={
+              <ChartTooltipContent
+                labelFormatter={(_, payload) => {
+                  const month = payload?.[0]?.payload?.month as string | undefined;
+                  return month ? monthLong.format(monthDate(month)) : "";
+                }}
+              />
+            }
+          />
+          <Bar dataKey="registered" fill="var(--color-registered)" radius={[4, 4, 0, 0]} />
+          <Bar dataKey="attended" fill="var(--color-attended)" radius={[4, 4, 0, 0]} />
+        </BarChart>
+      </ChartContainer>
       {!any && <p className="mt-3 text-sm text-muted-foreground">No events were held in the last 12 months.</p>}
 
       <table className="sr-only">
