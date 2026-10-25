@@ -238,7 +238,7 @@ export default function InviteDialog({
               <span>
                 <span className="block font-medium">Approve each person</span>
                 <span className="text-muted-foreground">
-                  People ask to join and wait in Join requests until someone who can approve lets them in.
+                  People ask to join and wait in the club&rsquo;s settings, under Join requests, until someone who can approve lets them in.
                 </span>
               </span>
             </label>

@@ -98,10 +98,30 @@ test("the door keeps going with no connection, and catches up once it's back", a
 
 test("attendance numbers for the club", async ({ page }) => {
   await openClub(page, "Robotics Society");
-  await page.getByRole("link", { name: "Attendance" }).click();
+  await page.locator("header").getByRole("link", { name: /^Settings/ }).click();
+  await page.getByRole("tab", { name: "Attendance" }).click();
   await expect(page.getByText(/^\d+% came$/)).toBeVisible();
   await expect(page.getByRole("heading", { name: "The last 12 months" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Event by event" })).toBeVisible();
+});
+
+test("a club's settings: who can join, and the people waiting", async ({ page }) => {
+  await openClub(page, "Robotics Society");
+  // two came through a link that needs approval, one asked from Browse clubs
+  await page.getByRole("link", { name: /^Settings 3 waiting to join/ }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "Club settings" })).toBeVisible();
+  await expect(page.getByRole("tab", { name: /Join requests/, selected: true })).toBeVisible();
+  const asked = page.getByRole("listitem").filter({ hasText: "Asked from Browse clubs" });
+  await expect(asked.getByText("I did FIRST Robotics at school")).toBeVisible();
+  await asked.getByRole("button", { name: "Approve" }).click();
+  await expect(asked).toHaveCount(0);
+
+  await page.getByRole("tab", { name: "General" }).click();
+  await expect(page.getByRole("radio", { name: /Ask to join \(current\)/ })).toBeChecked();
+  await page.getByRole("radio", { name: /Invite links only/ }).check();
+  await page.getByRole("button", { name: "Save changes" }).click();
+  await expect(page.getByRole("radio", { name: /Invite links only \(current\)/ })).toBeChecked();
+  await expect(page.getByText("Saved")).toBeVisible();
 });
 
 test("download the attendee list as a spreadsheet", async ({ page }) => {

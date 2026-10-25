@@ -2,6 +2,7 @@
 
 import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
+import { useState } from "react";
 import { useParams, usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { asApiError } from "@/lib/api/client";
@@ -9,6 +10,7 @@ import { useMe } from "../../auth/services/auth.service";
 import { useWorkspace } from "../org-shell/workspace-context";
 import {
   useClubMembers,
+  useClubSettings,
   useCreateRole,
   useDeleteRole,
   useLeaveClub,
@@ -16,11 +18,16 @@ import {
   useRemoveClubMember,
   useSetMemberRoles,
   useTransferClub,
+  useUpdateClubSettings,
   useUpdateRole,
 } from "../services/club-admin.service";
 import { useClubAttendance } from "../services/analytics.service";
 import { useClubRoles } from "../services/invite.service";
+import InviteDialog from "../dialogs/invite-dialog";
+import { InviteLinks } from "../members/parts/invite-links";
 import { AttendanceTab } from "./parts/attendance-tab";
+import { ClubRequestQueue } from "./parts/club-request-queue";
+import { GeneralTab } from "./parts/general-tab";
 import { MembersTab } from "./parts/members-tab";
 import { RolesTab } from "./parts/roles-tab";
 
@@ -66,7 +73,14 @@ const attempt = async (work: () => Promise<unknown>): Promise<string | null> => 
   }
 };
 
-/** /o/[slug]/clubs/[clubId]: a club's members and roles, and what you may change. */
+type SettingsTab = "general" | "members" | "requests" | "invites" | "roles" | "attendance";
+
+/**
+ * /o/[slug]/clubs/[clubId]: the club's settings. Everything about running
+ * the club in one place: its name and who can join, its members, people
+ * waiting to join, its invite links, roles and attendance. Each tab shows
+ * for the people it's useful to.
+ */
 export default function ClubAdminContainer() {
   const { clubId } = useParams<{ clubId: string }>();
   const { organisation, clubs } = useWorkspace();
@@ -87,10 +101,23 @@ export default function ClubAdminContainer() {
   const updateRole = useUpdateRole(clubId, orgId);
   const moveRole = useMoveRole(clubId, orgId);
   const deleteRole = useDeleteRole(clubId, orgId);
+  const settings = useClubSettings(club?.id);
+  const updateSettings = useUpdateClubSettings(clubId, orgId);
+  const [inviting, setInviting] = useState(false);
   const seesAttendance = !!club?.permissions.includes("analytics.view");
+  const approves = !!club?.permissions.includes("member.approve");
+  const invites = !!club?.permissions.includes("invite.manage");
   const attendance = useClubAttendance(club?.id, seesAttendance);
-  // attendance only for those who may see it; anything else lands on members
-  const tab = tabParam === "roles" ? "roles" : tabParam === "attendance" && seesAttendance ? "attendance" : "members";
+  // the tabs you may see; anything else lands on general
+  const shown: Record<SettingsTab, boolean> = {
+    general: true,
+    members: true,
+    requests: approves,
+    invites,
+    roles: true,
+    attendance: seesAttendance,
+  };
+  const tab: SettingsTab = tabParam && tabParam in shown && shown[tabParam as SettingsTab] ? (tabParam as SettingsTab) : "general";
 
   const back = `/o/${organisation.slug}?club=${clubId}`;
 
@@ -128,22 +155,41 @@ export default function ClubAdminContainer() {
         <ArrowLeft className="size-4" aria-hidden />
         {club.name} events
       </Link>
-      <h1 className="mt-3 text-5xl leading-none font-extrabold font-stretch-70%">{club.name}</h1>
+      <h1 className="mt-3 text-5xl leading-none font-extrabold font-stretch-70%">Club settings</h1>
       <p className="mt-2 text-muted-foreground">
-        {club.memberCount} {club.memberCount === 1 ? "member" : "members"} in {organisation.name}
+        {club.name}: {club.memberCount} {club.memberCount === 1 ? "member" : "members"}
         {owner ? `, owned by ${owner.userId === me.data?.id ? "you" : owner.name}` : ""}.
       </p>
 
       <Tabs
         value={tab}
-        onValueChange={(value) => router.replace(value === "members" ? pathname : `${pathname}?tab=${value}`, { scroll: false })}
+        onValueChange={(value) => router.replace(value === "general" ? pathname : `${pathname}?tab=${value}`, { scroll: false })}
         className="mt-8"
       >
-        <TabsList variant="line" className="h-10 gap-4 border-b p-0">
+        <TabsList variant="line" className="h-10 w-full justify-start gap-4 overflow-x-auto border-b p-0">
+          <TabsTrigger value="general" className="flex-none px-0 text-[15px] data-active:text-cobalt-800">
+            General
+          </TabsTrigger>
           <TabsTrigger value="members" className="flex-none px-0 text-[15px] data-active:text-cobalt-800">
             Members
             {members.data && <span className="text-xs text-muted-foreground tabular-nums">{members.data.length}</span>}
           </TabsTrigger>
+          {approves && (
+            <TabsTrigger value="requests" className="flex-none px-0 text-[15px] data-active:text-cobalt-800">
+              Join requests
+              {club.pendingJoinRequests > 0 && (
+                <span className="rounded-full bg-cobalt px-1.5 text-xs font-bold text-white tabular-nums">
+                  {club.pendingJoinRequests}
+                  <span className="sr-only"> waiting</span>
+                </span>
+              )}
+            </TabsTrigger>
+          )}
+          {invites && (
+            <TabsTrigger value="invites" className="flex-none px-0 text-[15px] data-active:text-cobalt-800">
+              Invite links
+            </TabsTrigger>
+          )}
           <TabsTrigger value="roles" className="flex-none px-0 text-[15px] data-active:text-cobalt-800">
             Roles
             {roles.data && <span className="text-xs text-muted-foreground tabular-nums">{roles.data.length + 1}</span>}
@@ -157,7 +203,35 @@ export default function ClubAdminContainer() {
       </Tabs>
 
       <div className="mt-6">
-        {tab === "attendance" ? (
+        {tab === "general" ? (
+          settings.data ? (
+            <GeneralTab
+              key={club.id}
+              settings={settings.data}
+              workspaceName={organisation.name}
+              canEdit={iAmOwner || mine.has("role.manage")}
+              onSave={(changes) => attempt(() => updateSettings.mutateAsync(changes))}
+            />
+          ) : settings.isError ? (
+            <p className="text-muted-foreground">
+              Couldn&rsquo;t load the club&rsquo;s settings.{" "}
+              <button type="button" onClick={() => settings.refetch()} className="font-medium text-cobalt underline-offset-4 hover:underline">
+                Try again
+              </button>
+            </p>
+          ) : (
+            <div className="h-64 max-w-2xl animate-pulse rounded-xl bg-muted/60 motion-reduce:animate-none" aria-hidden />
+          )
+        ) : tab === "requests" ? (
+          <ClubRequestQueue club={club} orgId={orgId} />
+        ) : tab === "invites" ? (
+          <>
+            <InviteLinks clubs={[club]} onCreate={() => setInviting(true)} className="" />
+            {inviting && (
+              <InviteDialog open onOpenChange={(open) => !open && setInviting(false)} clubs={[club]} initialClubId={club.id} />
+            )}
+          </>
+        ) : tab === "attendance" ? (
           <AttendanceTab
             data={attendance.data}
             loading={attendance.isPending}

@@ -4,9 +4,10 @@ import { HttpError } from '../../common/errors/http-error.js';
 import { isUniqueViolation } from '../../common/utils/pg-errors.js';
 import { TenantService } from '../../database/tenant.service.js';
 import type { ClubAccess } from '../permission/club-access.js';
-import type { Permission } from '../permission/permissions.js';
+import { Permission } from '../permission/permissions.js';
 import type { ClubMemberDto, ClubRoleDto, CreateRoleDto, UpdateRoleDto } from './dto/club-admin.dto.js';
 import { audit, AuditAction } from '../audit/audit.js';
+import type { ClubDetailsDto, ClubJoinPolicy, UpdateClubDto } from './dto/club-admin.dto.js';
 
 // enough for any club; keeps the roles list (and positions under Owner's 100) small
 export const MAX_ROLES = 25;
@@ -63,6 +64,57 @@ const SELECT_MEMBERS = `
 @Injectable()
 export class ClubAdminService {
   constructor(private readonly tenant: TenantService) {}
+
+  // --- the club itself -------------------------------------------------------
+
+  /** Its name, description and who can join. Any member may look. */
+  details(access: ClubAccess): Promise<ClubDetailsDto> {
+    return this.inClub(access, (m) => this.detailsOf(m, access.clubId));
+  }
+
+  /**
+   * Renames the club, or changes its description or who can join: for its
+   * owner and anyone who can manage its roles. The workspace's default club
+   * is everyone in it, so who joins it is the workspace's own setting.
+   */
+  updateDetails(access: ClubAccess, dto: UpdateClubDto): Promise<ClubDetailsDto> {
+    if (!access.isOwner && !access.has(Permission.RoleManage)) {
+      throw HttpError.forbidden('Missing permission', 'MISSING_PERMISSION', { missing: [Permission.RoleManage] });
+    }
+    return this.inClub(access, async (m) => {
+      const before = await this.detailsOf(m, access.clubId);
+      if (dto.joinPolicy && before.isDefault && dto.joinPolicy !== before.joinPolicy) {
+        throw HttpError.conflict("Everyone in the workspace is in its default club: who joins is the workspace's setting", 'DEFAULT_CLUB');
+      }
+      await m.query(
+        `UPDATE clubs SET name = COALESCE($2, name), description = $3, join_policy = COALESCE($4, join_policy), updated_at = now()
+         WHERE id = $1`,
+        [
+          access.clubId,
+          dto.name?.trim() || null,
+          dto.description === undefined ? before.description : dto.description.trim() || null,
+          before.isDefault ? null : (dto.joinPolicy ?? null),
+        ],
+      );
+      const after = await this.detailsOf(m, access.clubId);
+      const changed = Object.fromEntries(
+        (['name', 'description', 'joinPolicy'] as const)
+          .filter((key) => after[key] !== before[key])
+          .map((key) => [key, after[key]]),
+      );
+      if (Object.keys(changed).length > 0) {
+        await audit(m, { actorId: access.userId, action: AuditAction.ClubUpdated, clubId: access.clubId, details: changed });
+      }
+      return after;
+    });
+  }
+
+  private async detailsOf(m: EntityManager, clubId: string): Promise<ClubDetailsDto> {
+    const [row]: { id: string; name: string; description: string | null; join_policy: ClubJoinPolicy; is_default: boolean }[] =
+      await m.query(`SELECT id, name, description, join_policy, is_default FROM clubs WHERE id = $1`, [clubId]);
+    if (!row) throw HttpError.notFound('Club not found', 'CLUB_NOT_FOUND');
+    return { id: row.id, name: row.name, description: row.description, joinPolicy: row.join_policy, isDefault: row.is_default };
+  }
 
   // --- members ---------------------------------------------------------------
 

@@ -22,7 +22,7 @@ const SECTIONS: { title: string; answers: Answer[] }[] = [
       },
       {
         q: "Why can I only see some clubs?",
-        a: "Joining a workspace puts you in its General club. Other clubs you join through their own invite links; some ask an organiser to approve you first.",
+        a: "Joining a workspace puts you in its General club. Each club decides who else gets in: open Browse clubs to join the ones anyone can join, or ask to join the ones that approve people first. Clubs that take invite links only don't show there; ask someone in one for a link.",
       },
       {
         q: "How do I find something quickly?",
@@ -97,6 +97,10 @@ const SECTIONS: { title: string; answers: Answer[] }[] = [
       {
         q: "Who can create and publish events?",
         a: "It depends on your role in the club. Admins and Organizers can create, publish and edit events; Scanners can check people in at the door.",
+      },
+      {
+        q: "Where are a club's settings?",
+        a: "On the club's page, choose Settings. General has its name, description and who can join: anyone in the workspace, people who ask, or invite links only. Members, Join requests, Invite links, Roles and Attendance are there too, each for the people whose role allows it. A number on Settings means people are waiting to join.",
       },
       {
         q: "Can an event repeat?",

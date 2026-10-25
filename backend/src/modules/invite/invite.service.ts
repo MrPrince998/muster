@@ -8,12 +8,14 @@ import type { ClubAccess } from '../permission/club-access.js';
 import type {
   AcceptInviteResultDto,
   ClubJoinRequestDto,
+  ClubDirectoryEntryDto,
   CreateInviteDto,
   InviteDto,
   InvitePreviewDto,
   InviteStatus,
 } from './dto/invite.dto.js';
 import { audit, AuditAction } from '../audit/audit.js';
+import type { OrgMembership } from '../organisation/org-roles.js';
 
 const inviteNotFound = () => HttpError.notFound('This invite link does not exist', 'INVITE_NOT_FOUND');
 const requestNotFound = () =>
@@ -225,12 +227,22 @@ export class InviteService {
   pendingRequests(access: ClubAccess): Promise<ClubJoinRequestDto[]> {
     return this.inClub(access, async (m) => {
       // users is global (no RLS); join_requests limits the join to this club
-      const rows: { id: string; user_id: string; name: string; email: string; role_name: string | null; created_at: Date }[] =
+      const rows: {
+        id: string;
+        user_id: string;
+        name: string;
+        email: string;
+        role_name: string | null;
+        message: string | null;
+        via_link: boolean;
+        created_at: Date;
+      }[] =
         await m.query(
-          `SELECT jr.id, jr.user_id, u.name, u.email, r.name AS role_name, jr.created_at
+          `SELECT jr.id, jr.user_id, u.name, u.email, r.name AS role_name, jr.message,
+                  (jr.invite_id IS NOT NULL) AS via_link, jr.created_at
            FROM join_requests jr
            JOIN users u ON u.id = jr.user_id
-           JOIN invites i ON i.id = jr.invite_id
+           LEFT JOIN invites i ON i.id = jr.invite_id
            LEFT JOIN roles r ON r.id = i.default_role_id
            WHERE jr.club_id = $1 AND jr.status = 'pending'
            ORDER BY jr.created_at`,
@@ -242,6 +254,8 @@ export class InviteService {
         name: r.name,
         email: r.email,
         roleName: r.role_name,
+        message: r.message,
+        viaLink: r.via_link,
         createdAt: r.created_at,
       }));
     });
@@ -282,6 +296,97 @@ export class InviteService {
         clubId: access.clubId,
         subjectUserId: request.user_id,
       });
+    });
+  }
+
+  // --- the club directory (any workspace member) ----------------------------------
+
+  /**
+   * The workspace's clubs someone could join, and the ones they're in: all
+   * but the invite-only ones they aren't in (and the default club, which
+   * everyone is in). Each says whether they're in it or have asked.
+   */
+  directory(me: OrgMembership): Promise<ClubDirectoryEntryDto[]> {
+    return this.tenant.withTenant(me.orgId, async (m) => {
+      const rows: {
+        id: string;
+        name: string;
+        description: string | null;
+        join_policy: 'open' | 'request' | 'invite';
+        member_count: number;
+        upcoming_count: number;
+        is_member: boolean;
+        requested: boolean;
+      }[] = await m.query(
+        `SELECT c.id, c.name, c.description, c.join_policy,
+                (SELECT count(*) FROM club_members x WHERE x.club_id = c.id)::int AS member_count,
+                (SELECT count(*) FROM events e
+                  WHERE e.club_id = c.id AND e.status = 'published' AND e.starts_at > now())::int AS upcoming_count,
+                EXISTS (SELECT 1 FROM club_members cm WHERE cm.club_id = c.id AND cm.user_id = $1) AS is_member,
+                EXISTS (SELECT 1 FROM join_requests jr
+                        WHERE jr.club_id = c.id AND jr.user_id = $1 AND jr.status = 'pending') AS requested
+         FROM clubs c
+         WHERE NOT c.is_default
+           AND (c.join_policy <> 'invite'
+                OR EXISTS (SELECT 1 FROM club_members cm WHERE cm.club_id = c.id AND cm.user_id = $1))
+         ORDER BY lower(c.name)`,
+        [me.userId],
+      );
+      return rows.map((r) => ({
+        id: r.id,
+        name: r.name,
+        description: r.description,
+        joinPolicy: r.join_policy,
+        memberCount: r.member_count,
+        upcomingCount: r.upcoming_count,
+        isMember: r.is_member,
+        requested: r.requested,
+      }));
+    });
+  }
+
+  /**
+   * Joins a club from the directory: straight in if it's open, or asks if it
+   * asks (its approvers decide, from the club's settings). Invite-only clubs
+   * take an invite link instead. Asking twice is one request.
+   */
+  joinFromDirectory(me: OrgMembership, clubId: string, message?: string): Promise<{ status: 'joined' | 'requested' }> {
+    return this.tenant.withTenant(me.orgId, async (m) => {
+      const [club]: { join_policy: 'open' | 'request' | 'invite'; is_default: boolean }[] = await m.query(
+        `SELECT join_policy, is_default FROM clubs WHERE id = $1 FOR UPDATE`,
+        [clubId],
+      );
+      if (!club) throw HttpError.notFound('Club not found', 'CLUB_NOT_FOUND');
+      const [member]: unknown[] = await m.query(`SELECT 1 FROM club_members WHERE club_id = $1 AND user_id = $2`, [
+        clubId,
+        me.userId,
+      ]);
+      if (member || club.is_default) throw HttpError.conflict("You're in this club already", 'ALREADY_IN_CLUB');
+      if (club.join_policy === 'invite') {
+        throw HttpError.forbidden('This club takes people with an invite link', 'CLUB_INVITE_ONLY');
+      }
+      if (club.join_policy === 'open') {
+        await joinClub(m, { orgId: me.orgId, clubId, userId: me.userId, roleId: null, assignedBy: null });
+        return { status: 'joined' as const };
+      }
+      await m.query(
+        `INSERT INTO join_requests (org_id, club_id, invite_id, user_id, message)
+         VALUES ($1, $2, NULL, $3, $4)
+         ON CONFLICT (club_id, user_id) WHERE status = 'pending' DO UPDATE SET message = EXCLUDED.message`,
+        [me.orgId, clubId, me.userId, message?.trim() || null],
+      );
+      return { status: 'requested' as const };
+    });
+  }
+
+  /** Takes back a request to join a club. */
+  cancelDirectoryRequest(me: OrgMembership, clubId: string): Promise<void> {
+    return this.tenant.withTenant(me.orgId, async (m) => {
+      const [rows]: [unknown[], number] = await m.query(
+        `DELETE FROM join_requests WHERE club_id = $1 AND user_id = $2 AND status = 'pending' RETURNING id`,
+        [clubId, me.userId],
+      );
+      if (rows.length === 0) throw HttpError.notFound("You haven't asked to join this club", 'JOIN_REQUEST_NOT_FOUND');
     });
   }
 
@@ -328,7 +433,7 @@ export class InviteService {
   ): Promise<{ user_id: string; default_role_id: string | null }> {
     const rows: { user_id: string; default_role_id: string | null }[] = await m.query(
       `SELECT jr.user_id, i.default_role_id
-       FROM join_requests jr JOIN invites i ON i.id = jr.invite_id
+       FROM join_requests jr LEFT JOIN invites i ON i.id = jr.invite_id
        WHERE jr.id = $1 AND jr.club_id = $2 AND jr.status = 'pending'
        FOR UPDATE OF jr`,
       [requestId, access.clubId],

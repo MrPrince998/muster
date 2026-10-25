@@ -9,8 +9,10 @@ import { useApproveClubRequest, useClubJoinRequests, useRejectClubRequest } from
 import { timeAgo, workspaceErrorMessage } from "../../shared/workspace-errors";
 
 /**
- * One club's queue: people who opened a link that needs approval. Approving
- * lets them in with that link's role. For people with member.approve there.
+ * One club's queue: people who asked from Browse clubs, or opened a link
+ * that needs approval. Approving lets them in (with the link's role, if
+ * any). For people with member.approve there; it lives in the club's
+ * settings, under Join requests.
  */
 export function ClubRequestQueue({ club, orgId }: { club: ClubSummary; orgId: string }) {
   const requests = useClubJoinRequests(club.id);
@@ -36,20 +38,18 @@ export function ClubRequestQueue({ club, orgId }: { club: ClubSummary; orgId: st
   const list = requests.data ?? [];
 
   return (
-    <section aria-labelledby={`club-requests-${club.id}`} className="mt-10">
-      <h2 id={`club-requests-${club.id}`} className="text-2xl font-extrabold font-stretch-70%">
-        {club.name}
-        {!requests.isPending && <span className="ml-2 text-base font-normal text-muted-foreground">{list.length}</span>}
-      </h2>
-      <p className="mt-1 text-sm text-muted-foreground">
-        From invite links that need approval. Approving gives them the link&rsquo;s role
-        {club.isDefault ? "." : `, and adds them to the workspace if they aren't in it.`}
+    <section aria-label={`People waiting to join ${club.name}`}>
+      <p className="max-w-prose text-sm text-muted-foreground">
+        {club.joinPolicy === "request"
+          ? "People who asked from Browse clubs, and anyone who opened an invite link that needs approval."
+          : "People who opened an invite link that needs approval."}{" "}
+        Approving lets them in{club.isDefault ? "." : ", and adds them to the workspace if they aren't in it."}
       </p>
       <p className="sr-only" role="status">
         {announcement}
       </p>
 
-      <div className="mt-4">
+      <div className="mt-5">
         {requests.isPending ? (
           <div className="h-24 animate-pulse rounded-xl bg-muted/60 motion-reduce:animate-none" aria-hidden />
         ) : requests.isError ? (
@@ -69,7 +69,13 @@ export function ClubRequestQueue({ club, orgId }: { club: ClubSummary; orgId: st
                     </div>
                     <p className="text-sm text-muted-foreground">Asked {timeAgo(request.createdAt)}</p>
                   </div>
-                  <p className="mt-2 text-sm">
+                  {request.message && (
+                    <blockquote className="mt-3 border-l-2 border-cobalt pl-3 text-sm whitespace-pre-line">
+                      {request.message}
+                    </blockquote>
+                  )}
+                  <p className="mt-2 text-sm text-muted-foreground">
+                    {request.viaLink ? "Used an invite link. " : "Asked from Browse clubs. "}
                     {request.roleName ? `Approving makes them ${request.roleName}.` : "Approving makes them a member."}
                   </p>
                   {error?.id === request.id && (

@@ -1,4 +1,4 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
 import {
   ArrayMaxSize,
@@ -89,4 +89,44 @@ export class MoveRoleDto {
   @ApiProperty({ enum: ['up', 'down'] })
   @IsIn(['up', 'down'])
   direction: 'up' | 'down';
+}
+
+export const CLUB_JOIN_POLICIES = ['open', 'request', 'invite'] as const;
+export type ClubJoinPolicy = (typeof CLUB_JOIN_POLICIES)[number];
+
+export class UpdateClubDto {
+  /** @example 'Robotics Society' */
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(100)
+  name?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  description?: string;
+
+  /** open: anyone in the workspace joins from the club list. request: they ask, approvers decide. invite: invite links only. */
+  @ApiPropertyOptional({ enum: CLUB_JOIN_POLICIES })
+  @IsOptional()
+  @IsIn(CLUB_JOIN_POLICIES)
+  joinPolicy?: ClubJoinPolicy;
+}
+
+export class ClubDetailsDto {
+  @ApiProperty({ format: 'uuid' })
+  id: string;
+
+  @ApiProperty()
+  name: string;
+
+  @ApiPropertyOptional({ type: String, nullable: true })
+  description: string | null;
+
+  @ApiProperty({ enum: CLUB_JOIN_POLICIES })
+  joinPolicy: ClubJoinPolicy;
+
+  @ApiProperty()
+  isDefault: boolean;
 }

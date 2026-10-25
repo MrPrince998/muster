@@ -58,6 +58,10 @@ export interface ClubJoinRequest {
   email: string;
   // the role approving gives, from the link they used
   roleName: string | null;
+  // what they wrote when asking from the club list
+  message: string | null;
+  // came through an invite link that needs approval (otherwise they asked from the club list)
+  viaLink: boolean;
   createdAt: string;
 }
 

@@ -1,4 +1,4 @@
-import { expect, openClub, openEvent, test } from "./helpers";
+import { expect, openClub, openEvent, RIVERSIDE, test } from "./helpers";
 
 // A member's side of an event: a place, the ticket, giving it back, and the waitlist.
 
@@ -90,4 +90,15 @@ test("buy a ticket with a discount code, then give it back for a refund", async 
   await expect(confirm.getByText(/You'll get \$31\.50 back/)).toBeVisible();
   await confirm.getByRole("button", { name: "Give it back and refund" }).click();
   await expect(back.getByRole("button", { name: "Get a ticket, from $35.00" })).toBeVisible();
+});
+
+test("join an open club from Browse clubs", async ({ page }) => {
+  await page.goto(`/o/${RIVERSIDE}/clubs`);
+  await expect(page.getByRole("heading", { level: 1, name: "Clubs" })).toBeVisible();
+  // Film Club takes invite links only, so it shows only because you're in it
+  const chess = page.getByRole("listitem").filter({ hasText: "Chess Club" });
+  await chess.getByRole("button", { name: "Join" }).click();
+  await expect(chess.getByText("You’re in")).toBeVisible();
+  await chess.getByRole("link", { name: "Events" }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "Chess Club" })).toBeVisible();
 });

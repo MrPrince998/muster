@@ -35,6 +35,8 @@ import {
   SetMemberRolesDto,
   TransferClubDto,
   UpdateRoleDto,
+  ClubDetailsDto,
+  UpdateClubDto,
 } from './dto/club-admin.dto.js';
 
 const error = (description: string) => ({ description, type: ErrorResponseDto });
@@ -45,6 +47,27 @@ const below = error('Not below you in the hierarchy (MEMBER_ABOVE_YOU, ROLE_ABOV
 @Controller('clubs/:clubId')
 export class ClubMemberController {
   constructor(private readonly admin: ClubAdminService) {}
+
+  /** The club's name, description and who can join */
+  @Get('settings')
+  @RequirePermission()
+  @ApiOkResponse({ type: ClubDetailsDto })
+  details(@CurrentClubAccess() access: ClubAccess): Promise<ClubDetailsDto> {
+    return this.admin.details(access);
+  }
+
+  /**
+   * Change the club's name, description or who can join
+   *
+   * @remarks The owner, or anyone with role.manage. Who joins the default
+   * club is the workspace's setting (DEFAULT_CLUB).
+   */
+  @Patch('settings')
+  @RequirePermission()
+  @ApiOkResponse({ type: ClubDetailsDto })
+  updateDetails(@CurrentClubAccess() access: ClubAccess, @Body() dto: UpdateClubDto): Promise<ClubDetailsDto> {
+    return this.admin.updateDetails(access, dto);
+  }
 
   /** The club's members, senior first, each with their roles */
   @Get('members')

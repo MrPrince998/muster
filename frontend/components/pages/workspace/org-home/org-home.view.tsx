@@ -1,6 +1,6 @@
 "use client";
 
-import { CalendarPlus, ChartColumn, ShieldCheck, Users } from "lucide-react";
+import { CalendarPlus, Settings, Users } from "lucide-react";
 import Link from "next/link";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -25,9 +25,7 @@ export interface OrgHomePermissions {
   publishEvents: boolean;
   seeDrafts: boolean;
   viewAttendees: boolean;
-  // role.manage or member.remove: the club page has something for you to do
-  manageClub: boolean;
-  // analytics.view: the club page's attendance numbers
+  // analytics.view: attendance numbers and feedback
   seeAttendance: boolean;
 }
 
@@ -160,24 +158,19 @@ const OrgHomeView = ({
               </div>
               <div className="flex flex-wrap gap-2">
                 <FollowMenu clubId={club.id} clubName={club.name} />
-                {can.seeAttendance && (
-                  <Link
-                    href={`/o/${organisation.slug}/clubs/${club.id}?tab=attendance`}
-                    className={cn(buttonVariants({ size: "lg", variant: "outline" }), "h-11")}
-                  >
-                    <ChartColumn aria-hidden />
-                    Attendance
-                  </Link>
-                )}
-                {can.manageClub && (
-                  <Link
-                    href={`/o/${organisation.slug}/clubs/${club.id}`}
-                    className={cn(buttonVariants({ size: "lg", variant: "outline" }), "h-11")}
-                  >
-                    <ShieldCheck aria-hidden />
-                    Manage club
-                  </Link>
-                )}
+                <Link
+                  href={`/o/${organisation.slug}/clubs/${club.id}${club.pendingJoinRequests > 0 ? "?tab=requests" : ""}`}
+                  className={cn(buttonVariants({ size: "lg", variant: "outline" }), "h-11")}
+                >
+                  <Settings aria-hidden />
+                  Settings
+                  {club.pendingJoinRequests > 0 && (
+                    <span className="rounded-full bg-cobalt px-1.5 text-xs font-bold text-white tabular-nums">
+                      {club.pendingJoinRequests}
+                      <span className="sr-only"> waiting to join</span>
+                    </span>
+                  )}
+                </Link>
                 {can.createEvents && (
                   <Button size="lg" className="h-11 font-semibold" onClick={() => onDialogChange("new-event")}>
                     <CalendarPlus aria-hidden />

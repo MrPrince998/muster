@@ -1,6 +1,6 @@
 "use client";
 
-import { History, Inbox, Plus, Settings, Users } from "lucide-react";
+import { Compass, History, Inbox, Plus, Settings, Users } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { cn } from "@/lib/utils";
@@ -25,7 +25,7 @@ const rowState = (active: boolean) =>
  * it. Hidden below lg, where the section links and club chips take over.
  */
 export function WorkspaceSidebar() {
-  const { organisation, detail, can, clubs, approvableClubs, openCreateClub } = useWorkspace();
+  const { organisation, detail, can, clubs, openCreateClub } = useWorkspace();
   const pathname = usePathname();
   const clubParam = useSearchParams().get("club");
   const base = `/o/${organisation.slug}`;
@@ -33,13 +33,12 @@ export function WorkspaceSidebar() {
   // the events page opens the default club (listed first) when none is chosen
   const activeClubId = onEvents ? (clubParam ?? clubs.data[0]?.id) : null;
   const memberCount = clubs.data.find((club) => club.isDefault)?.memberCount ?? null;
-  // everyone waiting on you: the workspace's queue plus each club you approve for
-  const pending =
-    (detail?.pendingJoinRequests ?? 0) + approvableClubs.reduce((sum, club) => sum + club.pendingJoinRequests, 0);
+  // waiting to join the workspace; people waiting for a club show next to it
+  const pending = detail?.pendingJoinRequests ?? 0;
 
   const workspaceLinks = [
     can.seeMembers && { href: `${base}/members`, icon: Users, label: "Members", count: memberCount, highlight: false },
-    (can.reviewJoinRequests || approvableClubs.length > 0) && {
+    can.reviewJoinRequests && {
       href: `${base}/join-requests`,
       icon: Inbox,
       label: "Join requests",
@@ -79,7 +78,17 @@ export function WorkspaceSidebar() {
                   className={cn(rowClass, rowState(active))}
                 >
                   <span className="min-w-0 flex-1 truncate">{club.name}</span>
-                  {club.upcomingCount > 0 && (
+                  {club.pendingJoinRequests > 0 ? (
+                    <span
+                      className={cn(
+                        "rounded-full px-1.5 text-xs font-bold tabular-nums",
+                        active ? "bg-cobalt text-white" : "bg-white text-cobalt-800",
+                      )}
+                    >
+                      {club.pendingJoinRequests}
+                      <span className="sr-only"> waiting to join</span>
+                    </span>
+                  ) : club.upcomingCount > 0 && (
                     <span className={cn("text-xs tabular-nums", active ? "text-cobalt-600" : "text-white/60")}>
                       {club.upcomingCount}
                       <span className="sr-only"> upcoming events</span>
@@ -89,6 +98,16 @@ export function WorkspaceSidebar() {
               </li>
             );
           })}
+          <li>
+            <Link
+              href={`${base}/clubs`}
+              aria-current={pathname === `${base}/clubs` ? "page" : undefined}
+              className={cn(rowClass, rowState(pathname === `${base}/clubs`), pathname !== `${base}/clubs` && "text-white/70")}
+            >
+              <Compass className="size-4 shrink-0" aria-hidden />
+              Browse clubs
+            </Link>
+          </li>
           {can.createClubs && (
             <li>
               <button

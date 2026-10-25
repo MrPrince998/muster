@@ -18,7 +18,15 @@ const STATUS_NOTE: Record<Exclude<Invite["status"], "active">, string> = {
 };
 
 /** The links you can manage, one club at a time, with copy and turn off. */
-export function InviteLinks({ clubs, onCreate }: { clubs: ClubSummary[]; onCreate: (clubId: string) => void }) {
+export function InviteLinks({
+  clubs,
+  onCreate,
+  className = "mt-12",
+}: {
+  clubs: ClubSummary[];
+  onCreate: (clubId: string) => void;
+  className?: string;
+}) {
   const [clubId, setClubId] = useState(clubs[0]?.id);
   const club = clubs.find((c) => c.id === clubId) ?? clubs[0];
   const invites = useClubInvites(club?.id);
@@ -28,7 +36,7 @@ export function InviteLinks({ clubs, onCreate }: { clubs: ClubSummary[]; onCreat
   if (!club) return null;
 
   return (
-    <section aria-labelledby="invite-links" className="mt-12">
+    <section aria-labelledby="invite-links" className={className}>
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h2 id="invite-links" className="text-2xl font-extrabold font-stretch-70%">

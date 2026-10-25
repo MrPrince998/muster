@@ -12,6 +12,9 @@ export type ClubPermission =
   | "invite.manage"
   | "role.manage";
 
+/** Who can join a club: anyone in the workspace, by asking, or only with an invite link. */
+export type ClubJoinPolicy = "open" | "request" | "invite";
+
 /** GET /orgs/:orgId/clubs: a club you belong to, with what you may do in it. */
 export interface ClubSummary {
   id: string;
@@ -20,9 +23,10 @@ export interface ClubSummary {
   description: string | null;
   // the workspace's default club: everyone who joins is in it
   isDefault: boolean;
+  joinPolicy: ClubJoinPolicy;
   memberCount: number;
   upcomingCount: number;
-  // people waiting to join through links that need approval; 0 unless you can approve
+  // people waiting to join (they asked, or used a link that needs approval); 0 unless you can approve
   pendingJoinRequests: number;
   permissions: ClubPermission[];
 }
@@ -48,4 +52,32 @@ export interface ClubMember {
 export interface RoleInput {
   name: string;
   permissions: ClubPermission[];
+}
+
+/** GET /clubs/:clubId/settings: the club's own settings. */
+export interface ClubSettings {
+  id: string;
+  name: string;
+  description: string | null;
+  joinPolicy: ClubJoinPolicy;
+  isDefault: boolean;
+}
+
+export interface UpdateClubSettingsInput {
+  name?: string;
+  description?: string;
+  joinPolicy?: ClubJoinPolicy;
+}
+
+/** GET /orgs/:orgId/club-directory: a club you can see in the workspace (not invite-only ones you aren't in). */
+export interface ClubDirectoryEntry {
+  id: string;
+  name: string;
+  description: string | null;
+  joinPolicy: ClubJoinPolicy;
+  memberCount: number;
+  upcomingCount: number;
+  isMember: boolean;
+  // asked to join, and nobody has decided yet
+  requested: boolean;
 }

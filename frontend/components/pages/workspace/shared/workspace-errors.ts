@@ -17,6 +17,12 @@ export function workspaceErrorMessage(error: unknown): string {
       return "That link is already turned off.";
     case "JOIN_REQUEST_NOT_FOUND":
       return "Someone else already dealt with this request.";
+    case "ALREADY_IN_CLUB":
+      return "You're already in this club.";
+    case "CLUB_INVITE_ONLY":
+      return "This club now takes people by invite link only. Ask someone in it for one.";
+    case "CLUB_NOT_FOUND":
+      return "That club no longer exists.";
     case "SLUG_TAKEN":
       return "Another workspace already uses that address. Try a different one.";
     case "SLUG_RESERVED":

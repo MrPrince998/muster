@@ -36,8 +36,6 @@ interface JoinRequestsViewProps {
   errors: Record<string, string>;
   announcement: string;
   onDecide: (request: JoinRequest, decision: "approve" | "reject") => void;
-  // the club queues (for people who can approve in a club); rendered below
-  children?: React.ReactNode;
 }
 
 /** People asking to join, and what was decided before. Presentational. */
@@ -53,18 +51,17 @@ const JoinRequestsView = (props: JoinRequestsViewProps) => {
     loading,
     failed,
     onRetry,
-    children,
   } = props;
 
-  // neither the workspace's queue nor any club's
-  if (!allowed && !children) {
+  if (!allowed) {
     return (
       <section className="max-w-xl px-5 py-6 sm:px-8 lg:py-8">
         <h1 className="text-4xl leading-none font-extrabold font-stretch-70%">
           Join requests
         </h1>
         <p className="mt-3 text-muted-foreground">
-          Moderators and admins review who gets in. Your role can&rsquo;t.
+          Moderators and admins review who gets into the workspace. People
+          waiting to join a club are in that club&rsquo;s settings.
         </p>
       </section>
     );
@@ -180,9 +177,6 @@ const JoinRequestsView = (props: JoinRequestsViewProps) => {
           </div>
         </>
       )}
-
-      {/* one queue per club you can approve for */}
-      {children}
     </section>
   );
 };

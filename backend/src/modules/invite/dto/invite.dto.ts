@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsBoolean, IsInt, IsOptional, IsUUID, Max, Min, ValidateIf } from 'class-validator';
+import { IsBoolean, IsInt, IsOptional, IsString, IsUUID, Max, MaxLength, Min, ValidateIf } from 'class-validator';
 
 export const INVITE_STATUSES = ['active', 'expired', 'used_up', 'revoked'] as const;
 export type InviteStatus = (typeof INVITE_STATUSES)[number];
@@ -143,7 +143,53 @@ export class ClubJoinRequestDto {
   @ApiPropertyOptional({ type: String, nullable: true, description: 'The role approving gives (from the link)' })
   roleName: string | null;
 
+  @ApiPropertyOptional({ type: String, nullable: true, description: 'Their note, when they asked from the club list' })
+  message: string | null;
+
+  @ApiProperty({ description: 'They came through an invite link (otherwise they asked from the club list)' })
+  viaLink: boolean;
+
   @ApiProperty()
   createdAt: Date;
+}
+
+/** A club in the workspace's directory, as one member sees it. */
+export class ClubDirectoryEntryDto {
+  @ApiProperty({ format: 'uuid' })
+  id: string;
+
+  @ApiProperty()
+  name: string;
+
+  @ApiPropertyOptional({ type: String, nullable: true })
+  description: string | null;
+
+  @ApiProperty({ enum: ['open', 'request', 'invite'] })
+  joinPolicy: 'open' | 'request' | 'invite';
+
+  @ApiProperty()
+  memberCount: number;
+
+  @ApiProperty()
+  upcomingCount: number;
+
+  @ApiProperty({ description: "You're in it" })
+  isMember: boolean;
+
+  @ApiProperty({ description: "You've asked to join, and nobody has decided yet" })
+  requested: boolean;
+}
+
+export class JoinClubDto {
+  /** A note for the people deciding (clubs that ask). @example 'I built a robot arm last term.' */
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  message?: string;
+}
+
+export class JoinClubResultDto {
+  @ApiProperty({ enum: ['joined', 'requested'], description: "joined: you're in. requested: the club's approvers decide." })
+  status: 'joined' | 'requested';
 }
 

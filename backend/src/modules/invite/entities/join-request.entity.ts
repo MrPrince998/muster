@@ -54,8 +54,9 @@ export class JoinRequest {
   clubId: string;
 
   // the link they used: decides the role granted on approval
-  @Column({ name: 'invite_id', type: 'uuid' })
-  inviteId: string;
+  // the link they came through; null when they asked from the club directory
+  @Column({ name: 'invite_id', type: 'uuid', nullable: true })
+  inviteId: string | null;
 
   @Column({ name: 'user_id', type: 'uuid' })
   userId: string;
@@ -65,6 +66,10 @@ export class JoinRequest {
 
   // who approved or rejected it (member.approve); null while pending, or if
   // that user was later deleted
+  // a note to the people deciding
+  @Column({ type: 'varchar', length: 500, nullable: true })
+  message: string | null;
+
   @Column({ name: 'decided_by', type: 'uuid', nullable: true })
   decidedBy: string | null;
 

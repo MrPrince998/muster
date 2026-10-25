@@ -19,6 +19,7 @@ interface ClubSummaryRow {
   slug: string;
   description: string | null;
   is_default: boolean;
+  join_policy: 'open' | 'request' | 'invite';
   member_count: number;
   upcoming_count: number;
   pending_count: number;
@@ -35,6 +36,7 @@ const toDto = (row: ClubSummaryRow): ClubSummaryDto => {
     slug: row.slug,
     description: row.description,
     isDefault: row.is_default,
+    joinPolicy: row.join_policy,
     memberCount: row.member_count,
     upcomingCount: row.upcoming_count,
     // only approvers learn how many are waiting
@@ -109,7 +111,7 @@ export class OrgClubService {
     const rows: ClubSummaryRow[] = await m.query(
       `
       SELECT
-        c.id, c.name, c.slug, c.description, c.is_default,
+        c.id, c.name, c.slug, c.description, c.is_default, c.join_policy,
         (SELECT count(*) FROM club_members x WHERE x.club_id = c.id)::int AS member_count,
         (SELECT count(*) FROM events e
           WHERE e.club_id = c.id AND e.status = 'published' AND e.starts_at > now())::int AS upcoming_count,

@@ -1,11 +1,28 @@
 import { useApiMutation } from "@/lib/api/useApiMutation";
 import { useApiQuery } from "@/lib/api/useApiQuery";
-import type { ClubMember, ClubRole, RoleInput } from "@/types";
+import type { ClubMember, ClubRole, ClubSettings, RoleInput, UpdateClubSettingsInput } from "@/types";
 
 const membersKey = (clubId: string) => ["clubs", clubId, "members"];
 const rolesKey = (clubId: string) => ["clubs", clubId, "roles"];
 // role changes can change anyone's permissions (yours after a transfer), and the clubs list carries yours
 const refreshes = (clubId: string, orgId: string) => [membersKey(clubId), rolesKey(clubId), ["orgs", orgId, "clubs"]];
+
+const settingsKey = (clubId: string) => ["clubs", clubId, "settings"];
+
+/** The club's name, description and who can join. Any member may look. */
+export const useClubSettings = (clubId: string | undefined) =>
+  useApiQuery<ClubSettings>(settingsKey(clubId ?? ""), { url: `/clubs/${clubId}/settings` }, { enabled: !!clubId });
+
+/**
+ * Changes them (the owner, or role.manage). DEFAULT_CLUB when changing who
+ * joins the default club: that's the workspace's join setting.
+ */
+export const useUpdateClubSettings = (clubId: string, orgId: string) =>
+  useApiMutation<ClubSettings, UpdateClubSettingsInput>(
+    { method: "patch", url: `/clubs/${clubId}/settings` },
+    // the name shows in the sidebar, and the directory shows the join setting
+    { invalidates: [settingsKey(clubId), ["orgs", orgId, "clubs"], ["orgs", orgId, "club-directory"]] },
+  );
 
 /** Everyone in the club, senior first, with their roles. Any member may look. */
 export const useClubMembers = (clubId: string | undefined) =>

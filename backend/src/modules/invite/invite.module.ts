@@ -5,11 +5,13 @@ import { Invite } from './entities/invite.entity.js';
 import { JoinRequest } from './entities/join-request.entity.js';
 import { ClubInviteController, InviteLinkController } from './invite.controller.js';
 import { InviteService } from './invite.service.js';
+import { OrganisationModule } from '../organisation/organisation.module.js';
+import { ClubDirectoryController } from './club-directory.controller.js';
 
 @Module({
   // PermissionModule: the club routes are guarded by @RequirePermission()
-  imports: [TypeOrmModule.forFeature([Invite, JoinRequest]), PermissionModule],
-  controllers: [ClubInviteController, InviteLinkController],
+  imports: [TypeOrmModule.forFeature([Invite, JoinRequest]), PermissionModule, OrganisationModule],
+  controllers: [ClubInviteController, InviteLinkController, ClubDirectoryController],
   providers: [InviteService],
 })
 export class InviteModule {}

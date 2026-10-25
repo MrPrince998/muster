@@ -9,6 +9,7 @@ export const AuditAction = {
   OrgJoinApproved: 'org.join_approved',
   OrgJoinRejected: 'org.join_rejected',
   ClubCreated: 'club.created',
+  ClubUpdated: 'club.updated',
   ClubMemberRolesChanged: 'club.member_roles_changed',
   ClubMemberRemoved: 'club.member_removed',
   ClubOwnershipTransferred: 'club.ownership_transferred',

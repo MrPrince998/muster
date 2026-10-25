@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import ClubAdminContainer from "@/components/pages/workspace/club/club-admin.container";
 
 export const metadata: Metadata = {
-  title: "Club members and roles",
+  title: "Club settings",
 };
 
 // Rendered only in the browser, once the session is known (RequireSession in

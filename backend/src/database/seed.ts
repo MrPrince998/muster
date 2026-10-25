@@ -559,6 +559,22 @@ async function riverside(ds: DataSource, people: Awaited<ReturnType<typeof makeP
         [orgId, robotics.id, approvalInvite, person.id],
       );
     }
+    // each club's own join setting: Robotics asks (one person has, from Browse clubs),
+    // Hiking lets anyone in, Film is invite links only; and an open club you're not in yet
+    await m.query(`UPDATE clubs SET join_policy = 'request' WHERE id = $1`, [robotics.id]);
+    await m.query(`UPDATE clubs SET join_policy = 'open' WHERE id = $1`, [hiking.id]);
+    await m.query(
+      `INSERT INTO join_requests (org_id, club_id, user_id, message, created_at) VALUES ($1, $2, $3, $4, now() - interval '3 hours')`,
+      [orgId, robotics.id, members[32].id, 'I did FIRST Robotics at school and want to help with the line follower.'],
+    );
+    const chess = await makeClub(m, orgId, {
+      name: 'Chess Club',
+      slug: 'chess',
+      description: 'Casual games on Tuesday evenings, and a term tournament. All levels.',
+      owner: members[36],
+    });
+    await m.query(`UPDATE clubs SET join_policy = 'open' WHERE id = $1`, [chess.id]);
+    await join(m, orgId, chess, members.slice(34, 44).filter((p) => p !== members[36]));
     // and two people asking to join the workspace itself
     for (const [i, person] of applicants.entries()) {
       await m.query(

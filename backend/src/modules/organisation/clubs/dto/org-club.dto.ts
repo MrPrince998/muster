@@ -33,6 +33,12 @@ export class ClubSummaryDto {
   @ApiProperty({ description: "The workspace's default club; everyone who joins is in it" })
   isDefault: boolean;
 
+  @ApiProperty({
+    enum: ['open', 'request', 'invite'],
+    description: 'Who can join: anyone in the workspace, by asking, or only with an invite link',
+  })
+  joinPolicy: 'open' | 'request' | 'invite';
+
   @ApiProperty()
   memberCount: number;
 

@@ -233,7 +233,6 @@ export default function OrgHomeContainer() {
         seeDrafts: canSeeDrafts,
         viewAttendees: has("registration.view"),
         scanTickets: has("checkin.scan"),
-        manageClub: has("role.manage") || has("member.remove"),
         seeAttendance: has("analytics.view"),
       }}
       tab={tab}

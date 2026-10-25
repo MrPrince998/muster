@@ -99,6 +99,10 @@ export function describe(row: Pick<Row, 'action' | 'subject_name' | 'club_name' 
       return `turned down ${who}’s request to join`;
     case A.ClubCreated:
       return `created the club ${d.name ?? club}`;
+    case A.ClubUpdated:
+      return `changed ${club}'s ${Object.keys(d)
+        .map((key) => ({ name: 'name', description: 'description', joinPolicy: 'join setting' })[key] ?? key)
+        .join(' and ')}${d.joinPolicy ? ` (${({ open: 'anyone in the workspace', request: 'by asking', invite: 'invite links only' } as Record<string, string>)[d.joinPolicy]})` : ''}`;
     case A.ClubMemberRolesChanged:
       if (list(d.added) && list(d.removed)) return `gave ${who} ${list(d.added)} and took away ${list(d.removed)} in ${club}`;
       if (list(d.added)) return `gave ${who} ${list(d.added)} in ${club}`;

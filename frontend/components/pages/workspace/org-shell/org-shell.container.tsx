@@ -64,12 +64,13 @@ export default function OrgShellContainer({ children }: { children: React.ReactN
 
   const can = abilitiesFor(organisation.role);
   const approvableClubs = (clubs.data ?? []).filter((club) => club.permissions.includes("member.approve"));
-  // the Join requests page holds both queues: the workspace's (moderators) and each club's (approvers)
-  const showRequests = can.reviewJoinRequests || approvableClubs.length > 0;
+  // the workspace's queue; each club's is in its settings
+  const showRequests = can.reviewJoinRequests;
   const base = `/o/${organisation.slug}`;
   // phones have no clubs column: these links stand in for its workspace section
   const sections = [
     { href: base, label: "Events" },
+    { href: `${base}/clubs`, label: "Clubs" },
     { href: `${base}/members`, label: "Members" },
     ...(showRequests ? [{ href: `${base}/join-requests`, label: "Join requests" }] : []),
     ...(can.changeSettings

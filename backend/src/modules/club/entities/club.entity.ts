@@ -37,6 +37,7 @@ import { Organisation } from '../../organisation/entities/organisation.entity.js
 @Index('clubs_one_default', ['orgId'], { unique: true, where: `"is_default"` })
 // trigram search on names (migration 1760000000005; TypeORM can't express the operator class)
 @Index('clubs_name_trgm_idx', { synchronize: false })
+@Check('clubs_join_policy_check', `"join_policy" IN ('open', 'request', 'invite')`)
 export class Club {
   @PrimaryGeneratedColumn('uuid', { primaryKeyConstraintName: 'clubs_pkey' })
   id: string;
@@ -54,6 +55,10 @@ export class Club {
   description: string | null;
 
   // the default club cannot be deleted; the service enforces that
+  // who can join: anyone in the workspace, by asking, or only with an invite link
+  @Column({ name: 'join_policy', type: 'varchar', length: 20, default: 'invite' })
+  joinPolicy: 'open' | 'request' | 'invite';
+
   @Column({ name: 'is_default', type: 'boolean', default: false })
   isDefault: boolean;
 
