@@ -36,7 +36,7 @@ if (production && (process.env.SEED_PASSWORD ?? '').length < 12) {
   console.error('In production, set SEED_PASSWORD (12 characters or more) for the demo accounts.');
   process.exit(1);
 }
-const DEMO_PASSWORD = process.env.SEED_PASSWORD || 'muster-demo-2026';
+const DEMO_PASSWORD = process.env.SEED_PASSWORD || 'demopassword123';
 // development's pretend Stripe account: never on a real deployment, where it would break real payments
 const PRETEND_STRIPE = !production;
 const url = process.env.MIGRATION_DATABASE_URL;
