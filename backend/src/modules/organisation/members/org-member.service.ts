@@ -4,9 +4,35 @@ import { HttpError } from '../../../common/errors/http-error.js';
 import { TenantService } from '../../../database/tenant.service.js';
 import { OrgRole } from '../entities/org-member.entity.js';
 import { orgRoleRank, type OrgMembership } from '../org-roles.js';
-import type { AssignableOrgRole, OrgMemberDto } from './dto/member.dto.js';
+import type { AssignableOrgRole, OrgMembersPageDto } from './dto/member.dto.js';
 import { audit, AuditAction } from '../../audit/audit.js';
 import { seesEveryone, visibleTo } from '../member-visibility.js';
+
+// owner, admin, moderator, member: the list's order
+const RANK = `CASE m.role WHEN 'owner' THEN 0 WHEN 'admin' THEN 1 WHEN 'moderator' THEN 2 ELSE 3 END`;
+
+interface MemberRow {
+  user_id: string;
+  name: string;
+  email: string;
+  role: OrgRole;
+  joined_at: Date;
+  rank: number;
+}
+
+// the last row shown, to continue after: [rank, name, id] as base64url JSON
+const encodeCursor = (row: MemberRow) => Buffer.from(JSON.stringify([row.rank, row.name, row.user_id])).toString('base64url');
+
+function decodeCursor(cursor: string): { rank: number; name: string; id: string } | null {
+  try {
+    const [rank, name, id]: unknown[] = JSON.parse(Buffer.from(cursor, 'base64url').toString());
+    return Number.isInteger(rank) && typeof name === 'string' && typeof id === 'string' && /^[0-9a-f-]{36}$/.test(id)
+      ? { rank: rank as number, name, id }
+      : null;
+  } catch {
+    return null;
+  }
+}
 
 const memberNotFound = () => HttpError.notFound('Member not found', 'MEMBER_NOT_FOUND');
 
@@ -15,31 +41,48 @@ export class OrgMemberService {
   constructor(private readonly tenant: TenantService) {}
 
   /**
-   * The workspace's members you can see (member-visibility.ts: staff see
-   * everyone), owner first. Emails only for staff (moderator and above).
+   * A page of the workspace's members you can see (member-visibility.ts:
+   * staff see everyone), owner first, then by name. `q` filters by name, and
+   * for staff by email too. Keyset paging: `after` is the last row shown.
+   * Emails only for staff (moderator and above).
    */
-  list(me: OrgMembership): Promise<OrgMemberDto[]> {
+  list(me: OrgMembership, query: { q?: string; after?: string; limit?: number } = {}): Promise<OrgMembersPageDto> {
     const staff = seesEveryone(me.role);
+    const limit = query.limit ?? 50;
+    const cursor = query.after ? decodeCursor(query.after) : null;
+    if (query.after && !cursor) throw HttpError.badRequest('A wrong page cursor', 'INVALID_CURSOR');
+    const needle = query.q ? `%${query.q.replace(/[\\%_]/g, '\\$&')}%` : null;
+
     return this.tenant.withTenant(me.orgId, async (m) => {
+      const visible = `($3 OR ${visibleTo('$2', 'm.user_id', 'm.role')})`;
       // users is global (no RLS); org_members limits the join to this workspace
-      const rows: { user_id: string; name: string; email: string; role: OrgRole; joined_at: Date }[] =
-        await m.query(
-          `SELECT m.user_id, u.name, u.email, m.role, m.joined_at
-           FROM org_members m
-           JOIN users u ON u.id = m.user_id
-           WHERE m.org_id = $1 AND ($3 OR ${visibleTo('$2', 'm.user_id', 'm.role')})
-           ORDER BY CASE m.role WHEN 'owner' THEN 0 WHEN 'admin' THEN 1 WHEN 'moderator' THEN 2 ELSE 3 END,
-                    u.name`,
-          [me.orgId, me.userId, staff],
-        );
-      const showEmail = staff;
-      return rows.map((r) => ({
-        userId: r.user_id,
-        name: r.name,
-        ...(showEmail && { email: r.email }),
-        role: r.role,
-        joinedAt: r.joined_at,
-      }));
+      const rows: MemberRow[] = await m.query(
+        `SELECT m.user_id, u.name, u.email, m.role, m.joined_at, ${RANK} AS rank
+         FROM org_members m
+         JOIN users u ON u.id = m.user_id
+         WHERE m.org_id = $1 AND ${visible}
+           AND ($4::text IS NULL OR u.name ILIKE $4 OR ($3 AND u.email ILIKE $4))
+           AND ($5::int IS NULL OR (${RANK}, u.name, m.user_id) > ($5, $6, $7::uuid))
+         ORDER BY rank, u.name, m.user_id
+         LIMIT $8`,
+        [me.orgId, me.userId, staff, needle, cursor?.rank ?? null, cursor?.name ?? null, cursor?.id ?? null, limit + 1],
+      );
+      const [{ total }]: { total: number }[] = await m.query(
+        `SELECT count(*)::int AS total FROM org_members m WHERE m.org_id = $1 AND ${visible}`,
+        [me.orgId, me.userId, staff],
+      );
+      const page = rows.slice(0, limit);
+      return {
+        members: page.map((r) => ({
+          userId: r.user_id,
+          name: r.name,
+          ...(staff && { email: r.email }),
+          role: r.role,
+          joinedAt: r.joined_at,
+        })),
+        next: rows.length > limit ? encodeCursor(page[page.length - 1]) : null,
+        total,
+      };
     });
   }
 

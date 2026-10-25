@@ -1,7 +1,8 @@
 "use client";
 
+import { useDebouncedValue } from "@tanstack/react-pacer";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { useMe } from "@/components/pages/auth/services/auth.service";
 import type { OrgMember, OrgRole } from "@/types/organisation.interface";
 import { ROLE_RANK, useWorkspace } from "../org-shell/workspace-context";
@@ -23,13 +24,12 @@ const ASSIGNABLE: Record<OrgRole, Exclude<OrgRole, "owner">[]> = {
   member: [],
 };
 
-/** /o/[slug]/members: everyone in the workspace, and what you may do about each. */
+/** /o/[slug]/members: the workspace's members you can see, a page at a time, and what you may do about each. */
 export default function MembersContainer() {
   const router = useRouter();
   const { organisation, rank, clubs } = useWorkspace();
   const orgId = organisation.orgId;
   const me = useMe();
-  const members = useOrgMembers(orgId);
   // ?q= fills the filter: a person picked in search
   const qParam = useSearchParams().get("q") ?? "";
   const [query, setQuery] = useState(qParam);
@@ -43,20 +43,16 @@ export default function MembersContainer() {
   // clubs you can make invite links for (default club first); the dialog opens on one
   const invitableClubs = clubs.data.filter((club) => club.permissions.includes("invite.manage"));
   const [invitingTo, setInvitingTo] = useState<string | null>(null);
+  // the search runs on the server, once typing pauses
+  const [q] = useDebouncedValue(query.trim(), { wait: 300 });
+  const members = useOrgMembers(orgId, q);
+  const list = members.data?.pages.flatMap((page) => page.members) ?? [];
+  const total = members.data?.pages[0]?.total ?? 0;
 
   const changeRole = useChangeMemberRole(orgId);
   const remove = useRemoveMember(orgId);
   const transfer = useTransferOwnership(orgId);
   const leave = useLeaveOrganisation(orgId);
-
-  const visible = useMemo(() => {
-    const needle = query.trim().toLowerCase();
-    const list = members.data ?? [];
-    if (!needle) return list;
-    return list.filter(
-      (member) => member.name.toLowerCase().includes(needle) || member.email?.toLowerCase().includes(needle),
-    );
-  }, [members.data, query]);
 
   /** What your rank lets you do to this person (nothing to yourself here: you leave instead). */
   const actionsFor = (member: OrgMember) => {
@@ -97,8 +93,13 @@ export default function MembersContainer() {
 
   return (
     <MembersView
-      members={visible}
-      total={members.data?.length ?? 0}
+      members={list}
+      total={total}
+      // more to load (or still searching): the list shown is for the text typed
+      searching={members.isFetching && !members.isFetchingNextPage}
+      hasMore={members.hasNextPage}
+      loadingMore={members.isFetchingNextPage}
+      onMore={() => members.fetchNextPage()}
       loading={members.isPending}
       failed={members.isError}
       onRetry={() => members.refetch()}

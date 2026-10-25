@@ -5,7 +5,8 @@ import { isUniqueViolation } from '../../common/utils/pg-errors.js';
 import { TenantService } from '../../database/tenant.service.js';
 import type { ClubAccess } from '../permission/club-access.js';
 import { Permission } from '../permission/permissions.js';
-import type { ClubMemberDto, ClubRoleDto, CreateRoleDto, UpdateRoleDto } from './dto/club-admin.dto.js';
+import type { ClubMembersPageDto, ClubRoleDto, CreateRoleDto, UpdateRoleDto } from './dto/club-admin.dto.js';
+import type { ClubMemberDto } from './dto/club-admin.dto.js';
 import { audit, AuditAction } from '../audit/audit.js';
 import type { OrgRole } from '../organisation/entities/org-member.entity.js';
 import { seesEveryone, visibleTo } from '../organisation/member-visibility.js';
@@ -39,6 +40,39 @@ interface RoleRow {
 }
 
 // a club's members with their roles; $1 the club, $2 one member or null for all
+// a page of members: the same rows, filtered by \`where\` ($1 the club), with
+// owner_key (0 for the owner) so the senior-first order can be paged by keyset
+const MEMBER_ROWS = (where: string) => `
+  SELECT u.id AS user_id, u.name, cm.joined_at,
+         COALESCE(bool_or(r.is_owner), false)              AS is_owner,
+         CASE WHEN COALESCE(bool_or(r.is_owner), false) THEN 0 ELSE 1 END AS owner_key,
+         COALESCE(max(r.position), 0)::int                 AS highest_position,
+         COALESCE(array_agg(r.id ORDER BY r.position DESC)
+                  FILTER (WHERE r.id IS NOT NULL AND NOT r.is_owner), '{}') AS role_ids
+  FROM club_members cm
+  JOIN users u ON u.id = cm.user_id
+  JOIN org_members om ON om.org_id = cm.org_id AND om.user_id = cm.user_id
+  LEFT JOIN member_roles mr ON mr.club_id = cm.club_id AND mr.user_id = cm.user_id
+  LEFT JOIN roles r ON r.id = mr.role_id
+  WHERE cm.club_id = $1 AND ${where}
+  GROUP BY u.id, u.name, cm.joined_at`;
+
+// the last member shown, to continue after: [owner key, highest position, name, id] as base64url JSON
+const encodeMemberCursor = (row: MemberRow & { owner_key: number }) =>
+  Buffer.from(JSON.stringify([row.owner_key, row.highest_position, row.name, row.user_id])).toString('base64url');
+
+function decodeMemberCursor(cursor: string): { owner: number; position: number; name: string; id: string } | null {
+  try {
+    const [owner, position, name, id]: unknown[] = JSON.parse(Buffer.from(cursor, 'base64url').toString());
+    return Number.isInteger(owner) && Number.isInteger(position) && typeof name === 'string' &&
+      typeof id === 'string' && /^[0-9a-f-]{36}$/.test(id)
+      ? { owner: owner as number, position: position as number, name, id }
+      : null;
+  } catch {
+    return null;
+  }
+}
+
 const SELECT_MEMBERS = `
   SELECT u.id AS user_id, u.name, cm.joined_at,
          COALESCE(bool_or(r.is_owner), false)              AS is_owner,
@@ -121,33 +155,62 @@ export class ClubAdminService {
   // --- members ---------------------------------------------------------------
 
   /**
-   * Everyone in the club. The default club holds the whole workspace, so
-   * there a plain member sees only who they could see on the Members page
-   * (member-visibility.ts); its staff, and whoever runs its members, see all.
+   * A page of the club's members, senior first, then by name; `q` filters by
+   * name, `after` continues (keyset). The default club holds the whole
+   * workspace, so there a plain member sees only who they could see on the
+   * Members page (member-visibility.ts); its staff, and whoever runs its
+   * members, see all.
    */
-  members(access: ClubAccess): Promise<ClubMemberDto[]> {
+  members(access: ClubAccess, query: { q?: string; after?: string; limit?: number } = {}): Promise<ClubMembersPageDto> {
+    const limit = query.limit ?? 50;
+    const cursor = query.after ? decodeMemberCursor(query.after) : null;
+    if (query.after && !cursor) throw HttpError.badRequest('A wrong page cursor', 'INVALID_CURSOR');
+    const needle = query.q ? `%${query.q.replace(/[\\%_]/g, '\\$&')}%` : null;
+
     return this.inClub(access, async (m) => {
-      const rows: MemberRow[] = await m.query(SELECT_MEMBERS, [access.clubId, null]);
       const runsMembers =
         access.isOwner ||
         [Permission.RoleManage, Permission.MemberRemove, Permission.MemberApprove].some((p) => access.has(p));
-      if (!runsMembers) {
-        const [me]: { is_default: boolean; role: OrgRole }[] = await m.query(
-          `SELECT c.is_default, om.role FROM clubs c
-           JOIN org_members om ON om.org_id = c.org_id AND om.user_id = $2
-           WHERE c.id = $1`,
-          [access.clubId, access.userId],
-        );
-        if (me?.is_default && !seesEveryone(me.role)) {
-          const visible: { user_id: string }[] = await m.query(
-            `SELECT om.user_id FROM org_members om WHERE ${visibleTo('$1', 'om.user_id', 'om.role')}`,
-            [access.userId],
-          );
-          const ids = new Set(visible.map((v) => v.user_id));
-          return rows.filter((row) => ids.has(row.user_id)).map((row) => this.toMember(row, access));
-        }
-      }
-      return rows.map((row) => this.toMember(row, access));
+      const [me]: { is_default: boolean; role: OrgRole }[] = await m.query(
+        `SELECT c.is_default, om.role FROM clubs c
+         JOIN org_members om ON om.org_id = c.org_id AND om.user_id = $2
+         WHERE c.id = $1`,
+        [access.clubId, access.userId],
+      );
+      // everyone in any other club shares it with you
+      const seesAll = runsMembers || !me?.is_default || seesEveryone(me.role);
+      const visible = `($3 OR ${visibleTo('$2', 'cm.user_id', 'om.role')})`;
+
+      const rows: (MemberRow & { owner_key: number })[] = await m.query(
+        `SELECT * FROM (${MEMBER_ROWS(`${visible} AND ($4::text IS NULL OR u.name ILIKE $4)`)}) x
+         WHERE ($5::int IS NULL OR (x.owner_key, -x.highest_position, x.name, x.user_id) > ($5, $6, $7, $8::uuid))
+         ORDER BY x.owner_key, -x.highest_position, x.name, x.user_id
+         LIMIT $9`,
+        [
+          access.clubId,
+          access.userId,
+          seesAll,
+          needle,
+          cursor?.owner ?? null,
+          cursor === null ? null : -cursor.position,
+          cursor?.name ?? null,
+          cursor?.id ?? null,
+          limit + 1,
+        ],
+      );
+      const [{ total }]: { total: number }[] = await m.query(
+        `SELECT count(*)::int AS total FROM club_members cm
+         JOIN org_members om ON om.org_id = cm.org_id AND om.user_id = cm.user_id
+         WHERE cm.club_id = $1 AND ${visible}`,
+        [access.clubId, access.userId, seesAll],
+      );
+      const page = rows.slice(0, limit);
+      const last = page[page.length - 1];
+      return {
+        members: page.map((row) => this.toMember(row, access)),
+        next: rows.length > limit ? encodeMemberCursor(last) : null,
+        total,
+      };
     });
   }
 

@@ -171,11 +171,11 @@ describe('roles', () => {
 
   it('shows emails to staff only', async () => {
     const asMember = await t.api().get(`/orgs/${orgId}/members`).set('Authorization', member.auth).expect(200);
-    expect(asMember.body.every((m: object) => !('email' in m))).toBe(true);
-    expect(asMember.body.map((m: { role: string }) => m.role)).toEqual(['owner', 'admin', 'member']);
+    expect(asMember.body.members.every((m: object) => !('email' in m))).toBe(true);
+    expect(asMember.body.members.map((m: { role: string }) => m.role)).toEqual(['owner', 'admin', 'member']);
 
     const asAdmin = await t.api().get(`/orgs/${orgId}/members`).set('Authorization', admin.auth).expect(200);
-    expect(asAdmin.body.map((m: { email: string }) => m.email)).toContain(member.email);
+    expect(asAdmin.body.members.map((m: { email: string }) => m.email)).toContain(member.email);
   });
 });
 

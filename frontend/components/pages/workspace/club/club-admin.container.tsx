@@ -2,6 +2,7 @@
 
 import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
+import { useDebouncedValue } from "@tanstack/react-pacer";
 import { useState } from "react";
 import { useParams, usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -92,7 +93,13 @@ export default function ClubAdminContainer() {
   const tabParam = useSearchParams().get("tab");
   const me = useMe();
 
-  const members = useClubMembers(club?.id);
+  // the search runs on the server once typing pauses; the first unfiltered page names the owner (listed first)
+  const [memberQuery, setMemberQuery] = useState("");
+  const [q] = useDebouncedValue(memberQuery.trim(), { wait: 300 });
+  const everyone = useClubMembers(club?.id);
+  const members = useClubMembers(club?.id, q);
+  const memberList = members.data?.pages.flatMap((page) => page.members) ?? [];
+  const memberTotal = everyone.data?.pages[0]?.total ?? 0;
   const roles = useClubRoles(club?.id);
   const setRoles = useSetMemberRoles(clubId, orgId);
   const remove = useRemoveClubMember(clubId, orgId);
@@ -143,8 +150,7 @@ export default function ClubAdminContainer() {
   }
 
   const mine = new Set(club.permissions);
-  const list = members.data ?? [];
-  const owner = list.find((m) => m.isOwner) ?? null;
+  const owner = everyone.data?.pages[0]?.members.find((m) => m.isOwner) ?? null;
   const iAmOwner = !!owner && owner.userId === me.data?.id;
 
   return (
@@ -173,7 +179,7 @@ export default function ClubAdminContainer() {
           </TabsTrigger>
           <TabsTrigger value="members" className="flex-none px-0 text-[15px] data-active:text-cobalt-800">
             Members
-            {members.data && <span className="text-xs text-muted-foreground tabular-nums">{members.data.length}</span>}
+            {everyone.data && <span className="text-xs text-muted-foreground tabular-nums">{memberTotal}</span>}
           </TabsTrigger>
           {approves && (
             <TabsTrigger value="requests" className="flex-none px-0 text-[15px] data-active:text-cobalt-800">
@@ -246,7 +252,14 @@ export default function ClubAdminContainer() {
           <MembersTab
             clubName={club.name}
             isDefault={club.isDefault}
-            members={list}
+            members={memberList}
+            query={memberQuery}
+            onQueryChange={setMemberQuery}
+            searching={members.isFetching && !members.isFetchingNextPage}
+            total={memberTotal}
+            hasMore={members.hasNextPage}
+            loadingMore={members.isFetchingNextPage}
+            onMore={() => members.fetchNextPage()}
             roles={roles.data ?? []}
             loading={members.isPending || roles.isPending}
             failed={members.isError || roles.isError}

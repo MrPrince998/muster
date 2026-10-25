@@ -49,6 +49,13 @@ export interface ClubMember {
   manageable: boolean;
 }
 
+/** GET /clubs/:clubId/members: a page of the club's members, senior first. */
+export interface ClubMembersPage {
+  members: ClubMember[];
+  next: string | null;
+  total: number;
+}
+
 export interface RoleInput {
   name: string;
   permissions: ClubPermission[];

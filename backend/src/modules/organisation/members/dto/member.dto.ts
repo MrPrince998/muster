@@ -1,5 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsIn, IsUUID } from 'class-validator';
+import { Transform, Type } from 'class-transformer';
+import { IsIn, IsInt, IsOptional, IsString, IsUUID, Max, MaxLength, Min } from 'class-validator';
 import { OrgRole } from '../../entities/org-member.entity.js';
 
 // ownership moves only through transfer-ownership
@@ -33,4 +34,39 @@ export class OrgMemberDto {
 
   @ApiProperty()
   joinedAt: Date;
+}
+
+/** A page of the members list: ?q= filters, ?after= continues. */
+export class MembersQuery {
+  /** Part of a name (or, for staff, an email) */
+  @IsOptional()
+  @Transform(({ value }: { value: unknown }) => (typeof value === 'string' ? value.trim() : value))
+  @IsString()
+  @MaxLength(100)
+  q?: string;
+
+  /** The `next` of the page before */
+  @IsOptional()
+  @IsString()
+  @MaxLength(400)
+  after?: string;
+
+  @ApiPropertyOptional({ default: 50, maximum: 100 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  limit?: number;
+}
+
+export class OrgMembersPageDto {
+  @ApiProperty({ type: [OrgMemberDto] })
+  members: OrgMemberDto[];
+
+  @ApiPropertyOptional({ type: String, nullable: true, description: 'Pass as `after` for the next page; null at the end' })
+  next: string | null;
+
+  @ApiProperty({ description: 'How many you can see in all (ignoring q): everyone, for staff' })
+  total: number;
 }

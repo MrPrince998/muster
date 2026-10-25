@@ -13,7 +13,9 @@ import {
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
 import type { ClubMember, ClubRole } from "@/types";
 import { initialsOf } from "../../org-rail/org-rail.view";
+import { cn } from "@/lib/utils";
 import { ConfirmDialog } from "../../shared/confirm-dialog";
+import { LoadMore } from "../../shared/load-more";
 import { formatDay } from "../../shared/workspace-errors";
 import { MemberRolesDialog } from "./member-roles-dialog";
 
@@ -34,6 +36,14 @@ export interface MembersTabProps {
   onRemove: (userId: string) => Promise<string | null>;
   onTransfer: (userId: string) => Promise<string | null>;
   onLeave: () => Promise<string | null>;
+  // the search runs on the server: the text, and the next page
+  query: string;
+  onQueryChange: (query: string) => void;
+  searching: boolean;
+  total: number;
+  hasMore: boolean;
+  loadingMore: boolean;
+  onMore: () => void;
 }
 
 type Confirming =
@@ -45,12 +55,9 @@ type Confirming =
 
 /** Who's in the club and what they hold; the actions your roles allow. */
 export function MembersTab(props: MembersTabProps) {
-  const { members, roles, loading, failed, myId, iAmOwner, isDefault } = props;
-  const [query, setQuery] = useState("");
+  const { members: shown, roles, loading, failed, myId, iAmOwner, isDefault, query } = props;
   const [confirming, setConfirming] = useState<Confirming>(null);
   const roleName = new Map(roles.map((role) => [role.id, role.name]));
-  const needle = query.trim().toLowerCase();
-  const shown = needle ? members.filter((m) => m.name.toLowerCase().includes(needle)) : members;
   const close = (open: boolean) => !open && setConfirming(null);
 
   return (
@@ -65,7 +72,7 @@ export function MembersTab(props: MembersTabProps) {
             aria-label="Search the club's members"
             placeholder="Search by name"
             value={query}
-            onChange={(event) => setQuery(event.target.value)}
+            onChange={(event) => props.onQueryChange(event.target.value)}
           />
         </InputGroup>
         {!isDefault && !iAmOwner && !loading && !failed && (
@@ -95,9 +102,12 @@ export function MembersTab(props: MembersTabProps) {
             </Button>
           </div>
         ) : shown.length === 0 ? (
-          <p className="rounded-xl border border-dashed p-8 text-muted-foreground">Nobody matches &ldquo;{query}&rdquo;.</p>
+          <p className="rounded-xl border border-dashed p-8 text-muted-foreground">
+            {props.searching ? "Searching…" : <>Nobody matches &ldquo;{query.trim()}&rdquo;.</>}
+          </p>
         ) : (
-          <ul className="divide-y rounded-xl border">
+          <>
+          <ul className={cn("divide-y rounded-xl border transition-opacity", props.searching && "opacity-60")}>
             {shown.map((member) => {
               const isMe = member.userId === myId;
               const changeRoles = props.canManageRoles && member.manageable;
@@ -156,6 +166,10 @@ export function MembersTab(props: MembersTabProps) {
               );
             })}
           </ul>
+          {props.hasMore && (
+            <LoadMore shown={shown.length} total={query.trim() ? null : props.total} loading={props.loadingMore} onMore={props.onMore} />
+          )}
+          </>
         )}
       </div>
 

@@ -1,15 +1,18 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { Transform } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
   ArrayMaxSize,
   ArrayUnique,
   IsArray,
   IsIn,
+  IsInt,
   IsNotEmpty,
   IsOptional,
   IsString,
   IsUUID,
+  Max,
   MaxLength,
+  Min,
 } from 'class-validator';
 import { ALL_PERMISSIONS, type Permission } from '../../permission/permissions.js';
 
@@ -26,6 +29,40 @@ export class ClubMemberDto {
   roleIds: string[];
   @ApiProperty({ description: 'Below you in the hierarchy: you may change their roles or remove them' })
   manageable: boolean;
+}
+
+/** A page of the club's members: ?q= filters by name, ?after= continues. */
+export class ClubMembersQuery {
+  @IsOptional()
+  @Transform(trim)
+  @IsString()
+  @MaxLength(100)
+  q?: string;
+
+  /** The `next` of the page before */
+  @IsOptional()
+  @IsString()
+  @MaxLength(400)
+  after?: string;
+
+  @ApiPropertyOptional({ default: 50, maximum: 100 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  limit?: number;
+}
+
+export class ClubMembersPageDto {
+  @ApiProperty({ type: [ClubMemberDto] })
+  members: ClubMemberDto[];
+
+  @ApiPropertyOptional({ type: String, nullable: true, description: 'Pass as `after` for the next page; null at the end' })
+  next: string | null;
+
+  @ApiProperty({ description: 'How many you can see in all (ignoring q)' })
+  total: number;
 }
 
 export class SetMemberRolesDto {

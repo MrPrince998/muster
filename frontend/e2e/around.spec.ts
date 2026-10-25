@@ -103,3 +103,17 @@ test("choose new-event emails for a club, and a broken stop link says so", async
   await page.getByRole("button", { name: "Stop these emails" }).click();
   await expect(page.getByRole("heading", { name: "This link doesn’t work" })).toBeVisible();
 });
+
+test("the members list searches the whole workspace, not just what's loaded", async ({ page }) => {
+  await page.goto(`/o/${RIVERSIDE}/members`);
+  await expect(page.getByText(/^\d+ people in Riverside University/)).toBeVisible();
+  const asked: string[] = [];
+  page.on("request", (r) => {
+    if (r.url().includes("/members?")) asked.push(new URL(r.url()).searchParams.get("q") ?? "");
+  });
+  await page.getByRole("searchbox", { name: "Search members" }).pressSequentially("priya", { delay: 60 });
+  await expect(page.getByRole("listitem").filter({ hasText: "Priya Tanaka" })).toBeVisible();
+  await expect(page.getByRole("listitem").filter({ hasText: "@muster.test" })).toHaveCount(1);
+  // one request for the whole word, once typing paused
+  expect(asked).toEqual(["priya"]);
+});

@@ -1,6 +1,8 @@
+import { keepPreviousData, useInfiniteQuery } from "@tanstack/react-query";
+import { request } from "@/lib/api/client";
 import { useApiMutation } from "@/lib/api/useApiMutation";
 import { useApiQuery } from "@/lib/api/useApiQuery";
-import type { ClubMember, ClubRole, ClubSettings, RoleInput, UpdateClubSettingsInput } from "@/types";
+import type { ClubMember, ClubMembersPage, ClubRole, ClubSettings, RoleInput, UpdateClubSettingsInput } from "@/types";
 
 const membersKey = (clubId: string) => ["clubs", clubId, "members"];
 const rolesKey = (clubId: string) => ["clubs", clubId, "roles"];
@@ -24,9 +26,21 @@ export const useUpdateClubSettings = (clubId: string, orgId: string) =>
     { invalidates: [settingsKey(clubId), ["orgs", orgId, "clubs"], ["orgs", orgId, "club-directory"]] },
   );
 
-/** Everyone in the club, senior first, with their roles. Any member may look. */
-export const useClubMembers = (clubId: string | undefined) =>
-  useApiQuery<ClubMember[]>(membersKey(clubId ?? ""), { url: `/clubs/${clubId}/members` }, { enabled: !!clubId });
+/** The club's members, senior first, with their roles, 50 at a time; `q` searches names on the server. */
+export const useClubMembers = (clubId: string | undefined, q = "") =>
+  useInfiniteQuery({
+    queryKey: [...membersKey(clubId ?? ""), q],
+    queryFn: ({ pageParam, signal }) =>
+      request<ClubMembersPage>({
+        url: `/clubs/${clubId}/members`,
+        params: { ...(q && { q }), ...(pageParam && { after: pageParam }), limit: 50 },
+        signal,
+      }),
+    initialPageParam: null as string | null,
+    getNextPageParam: (last) => last.next,
+    enabled: !!clubId,
+    placeholderData: keepPreviousData,
+  });
 
 /** Replaces someone's roles. MEMBER_ABOVE_YOU or ROLE_ABOVE_YOU outside your reach. */
 export const useSetMemberRoles = (clubId: string, orgId: string) =>

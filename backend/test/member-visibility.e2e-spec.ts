@@ -22,8 +22,8 @@ const as = (u: TestUser) => ({
   patch: (path: string, body: object) => t.api().patch(path).set('Authorization', u.auth).send(body),
 });
 const names = (rows: { name: string }[]) => rows.map((r) => r.name).sort();
-const membersPage = async (u: TestUser) => names((await as(u).get(`/orgs/${orgId}/members`).expect(200)).body);
-const generalMembers = async (u: TestUser) => names((await as(u).get(`/clubs/${generalId}/members`).expect(200)).body);
+const membersPage = async (u: TestUser) => names((await as(u).get(`/orgs/${orgId}/members`).expect(200)).body.members);
+const generalMembers = async (u: TestUser) => names((await as(u).get(`/clubs/${generalId}/members`).expect(200)).body.members);
 const searchPeople = async (u: TestUser, q: string) =>
   names((await as(u).get(`/search?q=${encodeURIComponent(q)}`).expect(200)).body.people);
 
@@ -64,5 +64,49 @@ describe('who members can see', () => {
     expect(await membersPage(mod)).toEqual(everyone);
     expect(await generalMembers(mod)).toEqual(everyone);
     expect(await searchPeople(mod, stranger.name)).toEqual([stranger.name]);
+  });
+});
+
+describe('a page at a time', () => {
+  // every page, following `next`, as one list of names
+  const allPages = async (u: TestUser, path: string, extra = '') => {
+    const seen: string[] = [];
+    let after: string | null = null;
+    let pages = 0;
+    do {
+      const query = `?limit=2${extra}${after ? `&after=${after}` : ''}`;
+      const body: { members: { name: string }[]; next: string | null; total: number } = (
+        await as(u).get(`${path}${query}`).expect(200)
+      ).body;
+      seen.push(...body.members.map((m) => m.name));
+      after = body.next;
+      pages++;
+    } while (after && pages < 10);
+    return { seen, pages };
+  };
+
+  it('pages the workspace list in order, every member once, with the total', async () => {
+    const one = (await as(mod).get(`/orgs/${orgId}/members`).expect(200)).body;
+    expect(one).toMatchObject({ total: 5, next: null });
+    const { seen, pages } = await allPages(mod, `/orgs/${orgId}/members`);
+    expect(pages).toBe(3);
+    expect(seen).toEqual(one.members.map((m: { name: string }) => m.name));
+    // owner, then the moderator, then members by name
+    expect(seen.slice(0, 2)).toEqual([owner.name, mod.name]);
+  });
+
+  it('pages a club the same way, and both filter by name on the server', async () => {
+    const one = (await as(mod).get(`/clubs/${generalId}/members`).expect(200)).body;
+    const { seen } = await allPages(mod, `/clubs/${generalId}/members`);
+    expect(seen).toEqual(one.members.map((m: { name: string }) => m.name));
+    expect((await as(mod).get(`/orgs/${orgId}/members?q=${ada.name}`).expect(200)).body.members.map((m: { name: string }) => m.name)).toEqual([ada.name]);
+    expect((await as(mod).get(`/clubs/${generalId}/members?q=${bo.name}`).expect(200)).body.members.map((m: { name: string }) => m.name)).toEqual([bo.name]);
+    // a plain member's filter still only finds who they can see
+    expect((await as(stranger).get(`/orgs/${orgId}/members?q=${ada.name}`).expect(200)).body.members).toEqual([]);
+  });
+
+  it('refuses a cursor it did not make', async () => {
+    expect((await as(mod).get(`/orgs/${orgId}/members?after=nonsense`).expect(400)).body.code).toBe('INVALID_CURSOR');
+    expect((await as(mod).get(`/clubs/${generalId}/members?after=nonsense`).expect(400)).body.code).toBe('INVALID_CURSOR');
   });
 });

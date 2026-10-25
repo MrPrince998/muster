@@ -1,6 +1,8 @@
+import { keepPreviousData, useInfiniteQuery } from "@tanstack/react-query";
+import { request } from "@/lib/api/client";
 import { useApiMutation } from "@/lib/api/useApiMutation";
 import { useApiQuery } from "@/lib/api/useApiQuery";
-import type { JoinRequest, JoinRequestStatus, OrgMember, OrgRole } from "@/types/organisation.interface";
+import type { JoinRequest, JoinRequestStatus, OrgMembersPage, OrgRole } from "@/types/organisation.interface";
 import { MY_ORGANISATIONS } from "./organisation.service";
 
 // Everything that changes who is in a workspace refreshes the same things:
@@ -12,9 +14,26 @@ const workspaceKeys = (orgId: string) => [
   ["orgs", orgId, "join-requests"],
 ];
 
-/** Everyone in the workspace, owner first. Emails only for moderators and above. */
-export const useOrgMembers = (orgId: string | undefined) =>
-  useApiQuery<OrgMember[]>(["orgs", orgId ?? "", "members"], { url: `/orgs/${orgId}/members` }, { enabled: !!orgId });
+/**
+ * The workspace's members you can see, owner first, 50 at a time; `q`
+ * searches names (and emails, for staff) on the server. Emails only for
+ * moderators and above.
+ */
+export const useOrgMembers = (orgId: string | undefined, q = "") =>
+  useInfiniteQuery({
+    queryKey: ["orgs", orgId ?? "", "members", q],
+    queryFn: ({ pageParam, signal }) =>
+      request<OrgMembersPage>({
+        url: `/orgs/${orgId}/members`,
+        params: { ...(q && { q }), ...(pageParam && { after: pageParam }), limit: 50 },
+        signal,
+      }),
+    initialPageParam: null as string | null,
+    getNextPageParam: (last) => last.next,
+    enabled: !!orgId,
+    // the last list stays while a new search loads
+    placeholderData: keepPreviousData,
+  });
 
 /** Admins and up, for people ranked below them, to roles below their own. */
 export const useChangeMemberRole = (orgId: string) =>

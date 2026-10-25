@@ -10,6 +10,7 @@ import {
   Patch,
   Post,
   Put,
+  Query,
 } from '@nestjs/common';
 import {
   ApiBadRequestResponse,
@@ -29,6 +30,8 @@ import { Permission } from '../permission/permissions.js';
 import { ClubAdminService } from './club-admin.service.js';
 import {
   ClubMemberDto,
+  ClubMembersPageDto,
+  ClubMembersQuery,
   ClubRoleDto,
   CreateRoleDto,
   MoveRoleDto,
@@ -69,12 +72,12 @@ export class ClubMemberController {
     return this.admin.updateDetails(access, dto);
   }
 
-  /** The club's members, senior first, each with their roles */
+  /** The club's members, senior first, each with their roles, a page at a time */
   @Get('members')
   @RequirePermission()
-  @ApiOkResponse({ type: [ClubMemberDto] })
-  members(@CurrentClubAccess() access: ClubAccess): Promise<ClubMemberDto[]> {
-    return this.admin.members(access);
+  @ApiOkResponse({ type: ClubMembersPageDto })
+  members(@CurrentClubAccess() access: ClubAccess, @Query() query: ClubMembersQuery): Promise<ClubMembersPageDto> {
+    return this.admin.members(access, query);
   }
 
   /**

@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common';
 import {
   ApiBadRequestResponse,
   ApiConflictResponse,
@@ -12,7 +12,7 @@ import { CurrentOrgMember } from '../decorators/current-org-member.decorator.js'
 import { RequireOrgRole } from '../decorators/require-org-role.decorator.js';
 import { OrgRole } from '../entities/org-member.entity.js';
 import type { OrgMembership } from '../org-roles.js';
-import { OrgMemberDto, TransferOwnershipDto, UpdateMemberRoleDto } from './dto/member.dto.js';
+import { MembersQuery, OrgMembersPageDto, TransferOwnershipDto, UpdateMemberRoleDto } from './dto/member.dto.js';
 import { OrgMemberService } from './org-member.service.js';
 
 const error = (description: string) => ({ description, type: ErrorResponseDto });
@@ -22,12 +22,18 @@ const error = (description: string) => ({ description, type: ErrorResponseDto })
 export class OrgMemberController {
   constructor(private readonly members: OrgMemberService) {}
 
-  /** Members of the workspace */
+  /**
+   * Members of the workspace, a page at a time
+   *
+   * @remarks Plain members see the staff and people they share a club with;
+   * staff see everyone. Pass `next` as `after` for the following page.
+   */
   @Get('members')
   @RequireOrgRole(OrgRole.Member)
-  @ApiOkResponse({ type: [OrgMemberDto] })
-  list(@CurrentOrgMember() me: OrgMembership): Promise<OrgMemberDto[]> {
-    return this.members.list(me);
+  @ApiOkResponse({ type: OrgMembersPageDto })
+  @ApiBadRequestResponse(error('A wrong page cursor (INVALID_CURSOR)'))
+  list(@CurrentOrgMember() me: OrgMembership, @Query() query: MembersQuery): Promise<OrgMembersPageDto> {
+    return this.members.list(me, query);
   }
 
   /**

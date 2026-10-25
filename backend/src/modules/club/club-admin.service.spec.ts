@@ -29,8 +29,10 @@ function setup({ isDefault = false, roleList = roles } = {}) {
   const manager = {
     query: vi.fn(async (sql: string, params: unknown[] = []) => {
       calls.push({ sql, params });
+      if (sql.includes('count(*)::int AS total')) return [{ total: Object.keys(people).length }];
       if (sql.includes('FROM club_members cm')) {
-        const ids = params[1] ? [params[1] as string] : Object.keys(people);
+        // a page of everyone (owner_key), or one member ($2)
+        const ids = !sql.includes('owner_key') && params[1] ? [params[1] as string] : Object.keys(people);
         return ids
           .filter((id) => people[id])
           .map((id) => ({ user_id: id, name: id, joined_at: new Date(), ...people[id] }));
@@ -55,7 +57,7 @@ function setup({ isDefault = false, roleList = roles } = {}) {
 describe('ClubAdminService: members', () => {
   it("marks who you can manage: people below you, never yourself or the owner", async () => {
     const { service } = setup();
-    const list = await service.members(admin);
+    const list = (await service.members(admin)).members;
     const manageable = Object.fromEntries(list.map((m) => [m.userId, m.manageable]));
     expect(manageable).toEqual({ 'u-owner': false, 'u-admin': false, 'u-lead': true, 'u-ada': true });
   });

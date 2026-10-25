@@ -17,6 +17,7 @@ import type { ClubSummary } from "@/types/club.interface";
 import type { OrgMember, OrgRole } from "@/types/organisation.interface";
 import InviteDialog from "../dialogs/invite-dialog";
 import { ConfirmDialog } from "../shared/confirm-dialog";
+import { LoadMore } from "../shared/load-more";
 import { formatDay } from "../shared/workspace-errors";
 import { InviteLinks } from "./parts/invite-links";
 
@@ -38,6 +39,11 @@ const ROLE_HINT: Record<Exclude<OrgRole, "owner">, string> = {
 interface MembersViewProps {
   members: OrgMember[];
   total: number;
+  // a new search is loading (the last results stay on screen)
+  searching: boolean;
+  hasMore: boolean;
+  loadingMore: boolean;
+  onMore: () => void;
   loading: boolean;
   failed: boolean;
   onRetry: () => void;
@@ -126,14 +132,19 @@ const MembersView = (props: MembersViewProps) => {
           </div>
         ) : members.length === 0 ? (
           <p className="rounded-xl border border-dashed p-8 text-muted-foreground">
-            Nobody matches &ldquo;{query}&rdquo;.
+            {props.searching ? "Searching…" : <>Nobody matches &ldquo;{query.trim()}&rdquo;.</>}
           </p>
         ) : (
-          <ul className="divide-y rounded-xl border">
-            {members.map((member) => (
-              <MemberRow key={member.userId} member={member} isMe={member.userId === myId} {...props} />
-            ))}
-          </ul>
+          <>
+            <ul className={cn("divide-y rounded-xl border transition-opacity", props.searching && "opacity-60")}>
+              {members.map((member) => (
+                <MemberRow key={member.userId} member={member} isMe={member.userId === myId} {...props} />
+              ))}
+            </ul>
+            {props.hasMore && (
+              <LoadMore shown={members.length} total={query.trim() ? null : total} loading={props.loadingMore} onMore={props.onMore} />
+            )}
+          </>
         )}
       </div>
 
