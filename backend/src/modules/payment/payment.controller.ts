@@ -40,12 +40,28 @@ class GetTicketResultDto {
   registered: boolean;
 }
 
+class PaymentModeDto {
+  @ApiProperty({ description: 'Tickets can be sold at all (Stripe is set up)' })
+  enabled: boolean;
+
+  @ApiProperty({ description: "No real money moves: Stripe's test keys, so checkout takes test cards like 4242 4242 4242 4242" })
+  testMode: boolean;
+}
+
 const error = (description: string) => ({ description, type: ErrorResponseDto });
 
 @ApiTags('payments')
 @Controller()
 export class PaymentController {
   constructor(private readonly payments: PaymentService) {}
+
+  /** Whether payments are on, and whether they're real or test ones (anyone, signed in or not) */
+  @Public()
+  @Get('payments/mode')
+  @ApiOkResponse({ type: PaymentModeDto })
+  mode(): PaymentModeDto {
+    return this.payments.mode();
+  }
 
   /** Whether the workspace can sell tickets */
   @Get('orgs/:orgId/payments')

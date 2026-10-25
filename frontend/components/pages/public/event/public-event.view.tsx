@@ -17,6 +17,7 @@ import { formatFullDate, formatTimeRange } from "../../workspace/org-home/parts/
 import { AddToCalendar } from "../../workspace/shared/add-to-calendar";
 import { publicCalendarUrl, publicEventUrl } from "../services/public.service";
 import type { GuestPlaceValues } from "../validation/guest-place.schema";
+import { TestCardNote } from "@/components/common/test-card-note";
 
 // the stub's notches, where the form meets the band (the same ticket as everywhere else)
 const notches = [
@@ -339,6 +340,7 @@ function Card({ event, form, onSubmit, sentTo, onAskAgain, paymentReturn, questi
             ? "We'll email you a link to confirm, then you pay through Stripe. No account needed."
             : "We'll email you a link to confirm. No account needed."}
       </p>
+      {!waitlist && chosenType && chosenType.priceCents > 0 && <TestCardNote />}
     </form>
   );
 }

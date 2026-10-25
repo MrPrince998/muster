@@ -62,6 +62,11 @@ beforeAll(async () => {
 afterAll(() => t.close());
 
 describe('paid tickets', () => {
+  it('says, to anyone, whether payments are on and whether they are for real', async () => {
+    // the tests use a pretend gateway: on, and no real money
+    expect((await t.api().get('/payments/mode').expect(200)).body).toEqual({ enabled: true, testMode: true });
+  });
+
   it('takes a price only once the workspace has connected Stripe', async () => {
     expect((await as(ada).get(`/orgs/${orgId}/payments`).expect(200)).body).toEqual({
       available: true,

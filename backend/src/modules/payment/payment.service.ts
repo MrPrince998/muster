@@ -72,6 +72,11 @@ export class PaymentService {
     @Inject(BULK_PACE_MS) private readonly paceMs: number,
   ) {}
 
+  /** Whether this Muster takes payments, and whether they're for real (Stripe's live keys). */
+  mode(): { enabled: boolean; testMode: boolean } {
+    return { enabled: this.gateway.enabled, testMode: this.gateway.enabled && this.gateway.testMode };
+  }
+
   // --- the workspace's account ---------------------------------------------------------
 
   /** Whether the workspace can sell tickets. Any member may ask (it says nothing secret). */

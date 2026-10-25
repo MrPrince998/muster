@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 import type { Answers, ClubEvent, TicketType } from "@/types/event.interface";
 import { formatFullDate } from "../org-home/parts/format";
 import { answerProblems, QuestionFields } from "../shared/question-fields";
+import { TestCardNote } from "@/components/common/test-card-note";
 
 export interface TicketChoice {
   answers?: Answers;
@@ -149,6 +150,8 @@ export function GetTicketDialog({
           {event.questions.length > 0 && (
             <QuestionFields questions={event.questions} answers={answers} onChange={setAnswers} problems={problems} />
           )}
+
+          {paid && !waitlist && <TestCardNote />}
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>

@@ -28,7 +28,10 @@ import { PaymentService } from './payment.service.js';
           return new DisabledGateway();
         }
         if (!stripeWebhookSecret) throw new Error('STRIPE_WEBHOOK_SECRET is required with STRIPE_SECRET_KEY');
-        return new StripeGateway(new Stripe(stripeSecretKey), stripeWebhookSecret);
+        // test keys: checkouts take Stripe's test cards, and the app says so
+        return new StripeGateway(new Stripe(stripeSecretKey), stripeWebhookSecret, {
+          testMode: stripeSecretKey.startsWith('sk_test_'),
+        });
       },
     },
   ],

@@ -46,6 +46,8 @@ export abstract class PaymentGateway {
   abstract readonly enabled: boolean;
   // development only: checkout is skipped and every payment succeeds at once
   readonly paysAtOnce: boolean = false;
+  // no real money moves: Stripe's test keys (pay with 4242 4242 4242 4242), or the pretend gateway
+  readonly testMode: boolean = false;
   abstract createAccount(account: { orgId: string; name: string; email: string }): Promise<string>;
   abstract onboardingLink(accountId: string, returnUrl: string, refreshUrl: string): Promise<string>;
   abstract account(accountId: string): Promise<AccountStatus>;
@@ -64,12 +66,15 @@ export abstract class PaymentGateway {
  */
 export class StripeGateway extends PaymentGateway {
   readonly enabled = true;
+  override readonly testMode: boolean;
 
   constructor(
     private readonly stripe: Stripe,
     private readonly webhookSecret: string,
+    { testMode = false } = {},
   ) {
     super();
+    this.testMode = testMode;
   }
 
   async createAccount({ orgId, name, email }: { orgId: string; name: string; email: string }): Promise<string> {
@@ -211,6 +216,7 @@ export class DisabledGateway extends PaymentGateway {
  */
 export class FakeGateway extends PaymentGateway {
   readonly enabled = true;
+  override readonly testMode = true;
   // PAYMENTS_FAKE: no checkout page, straight back to the event, paid
   override readonly paysAtOnce: boolean;
 
