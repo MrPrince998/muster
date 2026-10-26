@@ -24,7 +24,8 @@ test("search goes straight to a page: tickets, or a workspace's settings", async
   await page.getByRole("button", { name: /Search pages, clubs, events and people/ }).click();
   // by another word for it
   await search.getByRole("combobox").fill("time zone");
-  await search.getByRole("option", { name: /Workspace settings/ }).click();
+  // (from My tickets, outside any workspace: each of yours has one)
+  await search.getByRole("option", { name: /Workspace settings Riverside/ }).click();
   await expect(page).toHaveURL(new RegExp(`/o/${RIVERSIDE}/settings$`));
 });
 

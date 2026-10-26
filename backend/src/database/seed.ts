@@ -68,6 +68,7 @@ const DAY = 86_400_000;
 // (each workspace has its own: Riverside uses APP_TIME_ZONE, Northside is in Perth)
 const RIVERSIDE_ZONE = process.env.APP_TIME_ZONE ?? 'UTC';
 const NORTHSIDE_ZONE = 'Australia/Perth';
+const KATHMANDU_ZONE = 'Asia/Kathmandu';
 let ZONE = RIVERSIDE_ZONE;
 
 // the zone's offset from UTC at that moment, in minutes ("GMT+11:00" -> 660)
@@ -212,7 +213,8 @@ interface EventPlan {
   waiting?: Person[];
   // one of a recurring series
   series?: { id: string; every: 'week' | 'fortnight' | 'month' };
-  // ticket types (prices in AUD cents) and discount codes; none: free
+  // ticket types (prices in cents of `currency`, AUD unless said) and discount codes; none: free
+  currency?: string;
   tickets?: { name: string; priceCents: number; membersOnly?: boolean; capacity?: number }[];
   codes?: { code: string; percentOff: number; maxUses?: number }[];
   // what it asks people taking a place (event/questions.ts)
@@ -245,7 +247,7 @@ async function makeEvent(m: Tx, orgId: string, clubId: string, by: Person, plan:
       plan.registrationClosed ? new Date(Date.now() - DAY) : null,
       plan.series?.id ?? null,
       plan.series?.every ?? null,
-      plan.tickets?.some((t) => t.priceCents > 0) ? 'aud' : null,
+      plan.tickets?.some((t) => t.priceCents > 0) ? (plan.currency ?? 'aud') : null,
       JSON.stringify(plan.questions ?? []),
     ],
   );
@@ -637,11 +639,89 @@ async function northside(ds: DataSource, people: Awaited<ReturnType<typeof makeP
   });
 }
 
+/**
+ * A walking club in Nepal, where Stripe doesn't go: tickets are paid to the
+ * organisers directly (eSewa, Khalti or cash), in rupees. Its next hike has
+ * places paid for already, and two payments waiting for you to confirm, one
+ * of whose hold has run out.
+ */
+async function kathmandu(ds: DataSource, people: Awaited<ReturnType<typeof makePeople>>) {
+  ZONE = KATHMANDU_ZONE;
+  const { demo, members } = people;
+  const orgId = randomUUID();
+  const crowd = members.slice(32, 44);
+  await inTenant(ds, orgId, async (m) => {
+    await m.query(
+      `INSERT INTO organisations (id, name, slug, join_policy, time_zone, created_at, payment_method, direct_currency,
+                                  direct_instructions, direct_hold_hours)
+       VALUES ($1, 'Kathmandu Trekkers', 'kathmandu-trekkers', 'open', $2, now() - interval '200 days', 'direct', 'npr',
+               $3, 48)`,
+      [orgId, KATHMANDU_ZONE, 'eSewa or Khalti: 9800000000 (Kathmandu Trekkers)\nOr cash at the Thamel meeting point, before we set off'],
+    );
+    await m.query(`INSERT INTO org_members (org_id, user_id, role) VALUES ($1, $2, 'owner')`, [orgId, demo.id]);
+    for (const person of crowd) {
+      await m.query(`INSERT INTO org_members (org_id, user_id, role) VALUES ($1, $2, 'member')`, [orgId, person.id]);
+    }
+    const general = await makeClub(m, orgId, {
+      name: 'General',
+      slug: 'general',
+      description: 'Weekend walks in and around the valley.',
+      owner: demo,
+      isDefault: true,
+    });
+    await join(m, orgId, general, [demo, ...crowd]);
+
+    await makeEvent(m, orgId, general.id, demo, {
+      title: 'Nagarkot Sunrise Walk',
+      location: 'Bhaktapur bus park',
+      start: daysFromNow(-20, 5, 30),
+      hours: 6,
+      capacity: 20,
+      going: crowd.slice(0, 9),
+      turnout: 0.85,
+    });
+    const price = 150_000; // NPR 1,500.00
+    const hike = await makeEvent(m, orgId, general.id, demo, {
+      title: 'Shivapuri Day Hike',
+      description: 'Up through the national park to the peak, back by dark. The ticket covers the park fee and lunch.',
+      location: 'Budhanilkantha temple gate',
+      start: daysFromNow(9, 7),
+      hours: 9,
+      capacity: 15,
+      visibility: 'public',
+      currency: 'npr',
+      tickets: [{ name: 'Day ticket', priceCents: price }],
+      going: crowd.slice(0, 5),
+    });
+    // those five paid the organisers, and were confirmed
+    await m.query(
+      `UPDATE registrations
+       SET amount_paid_cents = $2, currency = 'npr', paid_directly = true,
+           ticket_type_id = (SELECT id FROM ticket_types WHERE event_id = $1)
+       WHERE event_id = $1`,
+      [hike, price],
+    );
+    // two still to confirm: one held a day ago, one whose hold ran out yesterday
+    for (const [person, reference, heldHoursAgo] of [
+      [crowd[5], 'K7P2QX', 24],
+      [crowd[6], 'M4TR9C', 72],
+    ] as const) {
+      const created = new Date(Date.now() - heldHoursAgo * 3_600_000);
+      await m.query(
+        `INSERT INTO checkouts (org_id, event_id, user_id, amount_cents, currency, expires_at, ticket_type_id, method,
+                                reference, created_at)
+         VALUES ($1, $2, $3, $4, 'npr', $5, (SELECT id FROM ticket_types WHERE event_id = $2), 'direct', $6, $7)`,
+        [orgId, hike, person.id, price, new Date(created.getTime() + 48 * 3_600_000), reference, created],
+      );
+    }
+  });
+}
+
 // --- run ----------------------------------------------------------------------------
 
 async function removeDemo(ds: DataSource): Promise<void> {
   const orgs: { org_id: string }[] = await ds.query(
-    `SELECT id AS org_id FROM organisations WHERE slug IN ('riverside-uni', 'northside-makers')`,
+    `SELECT id AS org_id FROM organisations WHERE slug IN ('riverside-uni', 'northside-makers', 'kathmandu-trekkers')`,
   );
   for (const { org_id } of orgs) {
     // only ever a demo workspace: one whose owner is a demo account
@@ -680,6 +760,7 @@ async function main() {
     const people = await makePeople(ds, passwordHash);
     await riverside(ds, people);
     await northside(ds, people);
+    await kathmandu(ds, people);
 
     // the password isn't printed in production: it's the one you set
     const password = production ? '(your SEED_PASSWORD)' : DEMO_PASSWORD;
@@ -687,6 +768,7 @@ async function main() {
     console.log(`  Owner:           ${DEMO_EMAIL} / ${password}`);
     console.log(`  Workspace admin: ${ADMIN_EMAIL} / ${password}`);
     console.log(`  Riverside University (you own it, ${RIVERSIDE_ZONE}) and Northside Makers (you are a member, ${NORTHSIDE_ZONE}).`);
+    console.log(`  Kathmandu Trekkers (you own it, ${KATHMANDU_ZONE}): tickets paid to the organisers directly, in NPR.`);
     console.log(`  Every other demo account has the same password; all addresses end in @${DOMAIN}.`);
   } finally {
     await ds.destroy();
