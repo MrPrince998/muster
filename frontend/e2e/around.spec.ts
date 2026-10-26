@@ -117,3 +117,14 @@ test("the members list searches the whole workspace, not just what's loaded", as
   // one request for the whole word, once typing paused
   expect(asked).toEqual(["priya"]);
 });
+
+test("an open event survives the window changing size, as a tablet turning does", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await openClub(page, "Robotics Society");
+  await openEvent(page, "Build Night");
+  // a column beside the list when wide, a sheet when narrow, and back
+  for (const width of [390, 1440, 1024, 1366]) {
+    await page.setViewportSize({ width, height: 900 });
+    await expect(page.getByRole(width >= 1280 ? "complementary" : "dialog", { name: "Build Night" })).toBeVisible();
+  }
+});

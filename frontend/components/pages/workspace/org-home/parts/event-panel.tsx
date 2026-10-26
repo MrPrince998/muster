@@ -23,7 +23,7 @@ import {
 } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
-import { useState, useSyncExternalStore } from "react";
+import { createContext, useContext, useState, useSyncExternalStore } from "react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
   Sheet,
@@ -87,6 +87,11 @@ function usePaysDirectly(): boolean {
   const { organisation } = useWorkspace();
   return usePaymentStatus(organisation.orgId).data?.method === "direct";
 }
+
+// which layout the panel chose, for the parts inside it: asking the media
+// query again could answer differently mid-resize (each query's change event
+// arrives on its own), and a sheet's title outside a sheet crashes
+const WideContext = createContext(true);
 
 export type PanelAction =
   | "register"
@@ -155,7 +160,9 @@ export function EventPanel(props: EventPanelProps) {
         aria-label={event.title}
         className="sticky top-14 h-[calc(100svh-3.5rem)] w-[22rem] shrink-0 overflow-y-auto border-l bg-background"
       >
-        <PanelBody {...props} event={event} />
+        <WideContext.Provider value>
+          <PanelBody {...props} event={event} />
+        </WideContext.Provider>
       </aside>
     );
   }
@@ -167,7 +174,11 @@ export function EventPanel(props: EventPanelProps) {
         className="w-full overflow-y-auto p-0 sm:max-w-md"
         showCloseButton={false}
       >
-        {event && <PanelBody {...props} event={event} />}
+        {event && (
+          <WideContext.Provider value={false}>
+            <PanelBody {...props} event={event} />
+          </WideContext.Provider>
+        )}
       </SheetContent>
     </Sheet>
   );
@@ -381,7 +392,7 @@ function PanelBody(props: EventPanelProps & { event: ClubEvent }) {
 
 // Inside the sheet the heading must be the dialog's title for screen readers.
 function SheetTitleOrHeading({ children }: { children: React.ReactNode }) {
-  const wide = useWide();
+  const wide = useContext(WideContext);
   const className =
     "mt-0.5 text-3xl leading-none font-extrabold font-stretch-70%";
   if (wide) return <h2 className={className}>{children}</h2>;
